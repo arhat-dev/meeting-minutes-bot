@@ -22,8 +22,8 @@ import (
 	"arhat.dev/pkg/log"
 	"github.com/spf13/cobra"
 
-	"arhat.dev/template-application-go/pkg/conf"
-	"arhat.dev/template-application-go/pkg/constant"
+	"arhat.dev/meeting-minutes-bot/pkg/conf"
+	"arhat.dev/meeting-minutes-bot/pkg/constant"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -35,7 +35,7 @@ func NewRootCmd() *cobra.Command {
 	)
 
 	rootCmd := &cobra.Command{
-		Use:           "template-application-go",
+		Use:           "meeting-minutes-bot",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

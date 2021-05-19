@@ -1,4 +1,4 @@
-module arhat.dev/template-application-go
+module arhat.dev/meeting-minutes-bot
 
 go 1.15
 

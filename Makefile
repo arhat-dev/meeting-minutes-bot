@@ -31,28 +31,28 @@ vendor:
 include scripts/test/unit.mk
 
 # binary build
-include scripts/build/template-application-go.mk
+include scripts/build/meeting-minutes-bot.mk
 
 # image
-include scripts/image/template-application-go.mk
+include scripts/image/meeting-minutes-bot.mk
 
 image.build.linux.all: \
-	image.build.template-application-go.linux.all
+	image.build.meeting-minutes-bot.linux.all
 
 image.build.windows.all: \
-	image.build.template-application-go.windows.all
+	image.build.meeting-minutes-bot.windows.all
 
 image.push.linux.all: \
-	image.push.template-application-go.linux.all
+	image.push.meeting-minutes-bot.linux.all
 
 image.push.windows.all: \
-	image.push.template-application-go.windows.all
+	image.push.meeting-minutes-bot.windows.all
 
 # manifest gen
 include scripts/gen/manifests.mk
 
 # packaging
-include scripts/package/template-application-go.mk
+include scripts/package/meeting-minutes-bot.mk
 
 # optional private scripts
 -include private/scripts.mk
