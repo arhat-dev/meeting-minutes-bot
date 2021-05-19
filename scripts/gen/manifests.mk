@@ -12,9 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-gen.manifests.template-application-go:
+gen.manifests.meeting-minutes-bot:
 	helm template \
-		template-application-go \
-		cicd/deploy/charts/template-application-go \
+		meeting-minutes-bot \
+		cicd/deploy/charts/meeting-minutes-bot \
 		--include-crds --namespace ${NS} --debug \
-		| tee cicd/deploy/kube/template-application-go.yaml
+		| tee cicd/deploy/kube/meeting-minutes-bot.yaml

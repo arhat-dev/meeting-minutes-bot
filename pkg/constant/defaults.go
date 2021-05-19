@@ -17,5 +17,5 @@ limitations under the License.
 package constant
 
 const (
-	DefaultConfigFile = "/etc/template-application-go/config.yaml"
+	DefaultConfigFile = "/etc/meeting-minutes-bot/config.yaml"
 )

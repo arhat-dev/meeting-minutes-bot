@@ -22,8 +22,8 @@ import (
 	"os"
 	"time"
 
-	"arhat.dev/template-application-go/pkg/cmd"
-	"arhat.dev/template-application-go/pkg/version"
+	"arhat.dev/meeting-minutes-bot/pkg/cmd"
+	"arhat.dev/meeting-minutes-bot/pkg/version"
 )
 
 func main() {
@@ -34,7 +34,7 @@ func main() {
 
 	err := rootCmd.Execute()
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to run template-application-go %v: %v\n", os.Args, err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to run meeting-minutes-bot %v: %v\n", os.Args, err)
 		os.Exit(1)
 	}
 }

@@ -2,6 +2,6 @@ ARG ARCH=amd64
 
 FROM arhatdev/builder-go:alpine as builder
 FROM arhatdev/go:alpine-${ARCH}
-ARG APP=template-application-go
+ARG APP=meeting-minutes-bot
 
-ENTRYPOINT [ "/template-application-go" ]
+ENTRYPOINT [ "/meeting-minutes-bot" ]
