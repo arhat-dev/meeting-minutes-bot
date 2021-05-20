@@ -18,23 +18,43 @@ package conf
 
 import (
 	"arhat.dev/pkg/log"
+	"arhat.dev/pkg/tlshelper"
 	"github.com/spf13/pflag"
 )
 
 type Config struct {
-	App AppConfig `json:"app" yaml:"app"`
+	App  AppConfig  `json:"app" yaml:"app"`
+	Bots BotsConfig `json:"bots" yaml:"bots"`
 }
 
 type AppConfig struct {
 	Log log.ConfigSet `json:"log" yaml:"log"`
 
-	Foo string `json:"foo" yaml:"foo"`
+	PublicBaseURL string `json:"publicBaseURL" yaml:"publicBaseURL"`
+
+	Listen string              `json:"listen" yaml:"listen"`
+	TLS    tlshelper.TLSConfig `json:"tls" yaml:"tls"`
+}
+
+type BotsConfig struct {
+	Telegram TelegramConfig `json:"telegram" yaml:"telegram"`
 }
 
 func FlagsForAppConfig(prefix string, config *AppConfig) *pflag.FlagSet {
 	fs := pflag.NewFlagSet("app", pflag.ExitOnError)
 
-	fs.StringVar(&config.Foo, prefix+"foo", "bar", "set value of foo")
+	fs.StringVar(&config.Listen, prefix+"listen", ":18080",
+		"http server listen address, required if you need to serve webhook")
+	fs.StringVar(&config.PublicBaseURL, prefix+"publicBaseURL", "",
+		"url for external endpoints like telegram server to access")
+
+	return fs
+}
+
+func FlagsForBotsConfig(prefix string, config *BotsConfig) *pflag.FlagSet {
+	fs := pflag.NewFlagSet("bots", pflag.ExitOnError)
+
+	fs.AddFlagSet(flagsForTelegramConfig(prefix+"telegram.", &config.Telegram))
 
 	return fs
 }

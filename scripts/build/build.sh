@@ -32,7 +32,7 @@ _build() {
 
 meeting_minutes_bot() {
   # TODO: set mandatory tags and predefined tags for specific platforms
-  _build "${GOBUILD} -tags='nokube nocloud netgo ${PREDEFINED_BUILD_TAGS} ${TAGS}' ./cmd/meeting-minutes-bot"
+  _build "CGO_ENABLED=0 ${GOBUILD} -tags='nokube nocloud netgo ${PREDEFINED_BUILD_TAGS} ${TAGS}' ./cmd/meeting-minutes-bot"
 }
 
 COMP=$(printf "%s" "$@" | cut -d. -f1)
@@ -92,72 +92,6 @@ case "${GOOS}" in
     esac
   ;;
 esac
-
-CC="gcc"
-# STRIP="strip"
-CXX="g++"
-CFLAGS="-I/usr/include/glib-2.0 -I/usr/include"
-LDFLAGS=""
-
-PM_DEB=$(command -v apt-get || printf "")
-PM_APK=$(command -v apk || printf "")
-
-if [ -n "${PM_DEB}" ]; then
-  TRIPLE="$(_get_debian_triple "${ARCH}")"
-  if [ -n "${TRIPLE}" ]; then
-    # PKG_CONFIG_PATH="/usr/lib/${TRIPLE}/pkgconfig"
-    CFLAGS="-I/usr/include/${TRIPLE} -I/usr/${TRIPLE}/include -I/usr/lib/${TRIPLE}/glib-2.0/include ${CFLAGS}"
-    LDFLAGS="-L/lib/${TRIPLE} -L/usr/lib/${TRIPLE}"
-  fi
-
-  # TODO: Add required deb packages
-  deb_packages=""
-
-  # TODO: inspect why install packages directly will not setup pkgconfig files
-  INSTALL="apt-get install -y ${deb_packages}"
-  debian_arch="$(_get_debian_arch "${ARCH}")"
-  if [ -n "${debian_arch}" ]; then
-    packages_with_arch=""
-    for pkg in ${deb_packages}; do
-      packages_with_arch="${pkg}:${debian_arch} ${packages_with_arch}"
-    done
-    # TODO: fix install command here
-    # INSTALL="${INSTALL} python3-distutils=3.7.3-1 python3-lib2to3=3.7.3-1 python3=3.7.3-1 && apt-get install -y ${packages_with_arch}"
-  fi
-fi
-
-if [ -n "${PM_APK}" ]; then
-  TRIPLE="$(_get_alpine_triple "${ARCH}")"
-  if [ -n "${TRIPLE}" ]; then
-    # PKG_CONFIG_PATH="/${TRIPLE}/usr/lib/pkgconfig"
-    CFLAGS="-I/${TRIPLE}/include -I/${TRIPLE}/usr/include -I/${TRIPLE}/usr/lib/glib-2.0/include ${CFLAGS}"
-    LDFLAGS="-L/${TRIPLE}/lib -L/${TRIPLE}/usr/lib"
-  fi
-
-  # TODO: Add required apk packages
-  apk_packages=""
-
-  INSTALL="apk add ${apk_packages}"
-  alpine_arch="$(_get_alpine_arch "${ARCH}")"
-  if [ -n "${alpine_arch}" ]; then
-    apk_dirs_for_triple=""
-
-    apk_dirs="/var/lib/apk /var/cache/apk /usr/share/apk /etc/apk"
-    for d in ${apk_dirs}; do
-      apk_dirs_for_triple="/${TRIPLE}${d} ${apk_dirs_for_triple}"
-    done
-
-    INSTALL="mkdir -p ${apk_dirs_for_triple} && apk add --root /${TRIPLE} --arch ${alpine_arch} ${apk_packages}"
-  fi
-fi
-
-if [ -n "${TRIPLE}" ]; then
-  CC="${TRIPLE}-gcc"
-  CXX="${TRIPLE}-g++"
-  # STRIP="${TRIPLE}-strip"
-fi
-
-CGO_FLAGS="CC=${CC} CXX=${CXX} CC_FOR_TARGET=${CC} CXX_FOR_TARGET=${CXX} CGO_CFLAGS_ALLOW='-W' CGO_CFLAGS='${CFLAGS}' CGO_LDFLAGS='${LDFLAGS}'"
 
 GO_LDFLAGS="-s -w \
   -X arhat.dev/meeting-minutes-bot/pkg/version.branch=${GIT_BRANCH} \

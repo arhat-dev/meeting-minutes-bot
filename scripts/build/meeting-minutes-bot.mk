@@ -94,12 +94,12 @@ meeting-minutes-bot.linux.all: \
 meeting-minutes-bot.darwin.amd64:
 	sh scripts/build/build.sh $@
 
-# # currently darwin/arm64 build will fail due to golang link error
-# meeting-minutes-bot.darwin.arm64:
-# 	sh scripts/build/build.sh $@
+meeting-minutes-bot.darwin.arm64:
+	sh scripts/build/build.sh $@
 
 meeting-minutes-bot.darwin.all: \
-	meeting-minutes-bot.darwin.amd64
+	meeting-minutes-bot.darwin.amd64 \
+	meeting-minutes-bot.darwin.arm64
 
 meeting-minutes-bot.windows.x86:
 	sh scripts/build/build.sh $@
