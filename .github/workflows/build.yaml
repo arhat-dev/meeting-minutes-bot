@@ -35,19 +35,20 @@ jobs:
     - uses: actions/checkout@v2
     - uses: actions/setup-go@v2
       with:
-        # TODO: update to 1.15.x once 1.15.4 released
-        go-version: 1.15.x
+        go-version: 1.16.x
 
     - name: Build
       run: |
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.linux.all
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.freebsd.all TAGS=''
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.netbsd.all TAGS=''
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.openbsd.all TAGS=''
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.plan9.all TAGS=''
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.solaris.amd64 TAGS=''
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.aix.ppc64 TAGS=''
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.dragonfly.amd64 TAGS=''
+        make -j$(nproc --all) meeting-minutes-bot.linux.all
+        make -j$(nproc --all) meeting-minutes-bot.freebsd.all TAGS=''
+        make -j$(nproc --all) meeting-minutes-bot.netbsd.all TAGS=''
+        make -j$(nproc --all) meeting-minutes-bot.openbsd.all TAGS=''
+        make -j$(nproc --all) meeting-minutes-bot.plan9.all TAGS=''
+        make -j$(nproc --all) meeting-minutes-bot.solaris.amd64 TAGS=''
+        make -j$(nproc --all) meeting-minutes-bot.aix.ppc64 TAGS=''
+        make -j$(nproc --all) meeting-minutes-bot.dragonfly.amd64 TAGS=''
+        make -j$(nproc --all) meeting-minutes-bot.darwin.all
+        make -j$(nproc --all) meeting-minutes-bot.windows.all
 
     # - name: Package
     #   run: |
@@ -55,7 +56,7 @@ jobs:
 
     - name: Hash
       run: |
-        os_list="linux freebsd netbsd openbsd plan9 aix solaris dragonfly"
+        os_list="linux freebsd netbsd openbsd plan9 aix solaris dragonfly darwin windows"
 
         cd build
         for os in ${os_list}; do
@@ -71,137 +72,10 @@ jobs:
         name: build-on-linux
         path: build
 
-  # build-on-linux-cgo:
-  #   if: contains(github.head_ref, 'deps/') == false
-  #   runs-on: ubuntu-latest
-  #   container:
-  #     image: arhatdev/builder-go:debian
-  #   steps:
-  #   - name: Install docker-cli in Container
-  #     run: |
-  #       apt update
-  #       apt install -y apt-transport-https ca-certificates curl software-properties-common lsb-release
-  #       curl -fsSL https://download.docker.com/linux/debian/gpg | apt-key add -
-  #       add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/debian $(lsb_release -cs) stable"
-
-  #       apt update
-  #       apt install -y docker-ce-cli
-  #       docker -v
-
-  #   - name: Run in Host
-  #     uses: arhat-dev/actions-hostrun@main
-  #     with:
-  #       run: |
-  #         docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
-  #         sudo apt update
-  #         sudo apt install -y qemu-user-static
-
-  #   - uses: actions/checkout@v2
-  #   - name: Install Extra Packages
-  #     run: |
-  #       apt update
-  #       apt install -y python3-distutils=3.7.3-1 python3-lib2to3=3.7.3-1 python3=3.7.3-1
-
-  #   - name: Build
-  #     run: |
-  #       # may need to install some packages during build process, do not run in parallel
-  #       CGO_ENABLED=1 make meeting-minutes-bot.linux.all
-
-  #   - name: Package
-  #     run: |
-  #       make package.meeting-minutes-bot.linux.all
-
-  #   - name: Hash
-  #     run: |
-  #       cd build
-  #       sha256sum meeting-minutes-bot.linux* > sha256.linux.txt
-  #       sha512sum meeting-minutes-bot.linux* > sha512.linux.txt
-  #       md5sum meeting-minutes-bot.linux* > md5.linux.txt
-  #       cd -
-
-  #   - name: Upload Artifact
-  #     uses: actions/upload-artifact@v2
-  #     with:
-  #       name: build-on-linux-cgo
-  #       path: build
-
-  build-on-darwin:
-    if: contains(github.head_ref, 'deps/') == false
-    runs-on: macos-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-go@v2
-      with:
-        # TODO: update to 1.15.x once 1.15.4 released
-        go-version: 1.15.x
-
-    - name: Build
-      run: |
-        CGO_ENABLED=1 make meeting-minutes-bot.darwin.all
-
-    # # TODO: Support macos packaging
-    # - name: Package
-    #   run: |
-    #     make package.meeting-minutes-bot.darwin.all
-
-    - name: Install md5sum
-      run: |
-        brew install md5sha1sum
-
-    - name: Hash
-      run: |
-        cd build
-        shasum -a 256 meeting-minutes-bot.darwin* > sha256.darwin.txt
-        shasum -a 512 meeting-minutes-bot.darwin* > sha512.darwin.txt
-        md5sum meeting-minutes-bot.darwin* > md5.darwin.txt
-        cd -
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: build-on-darwin
-        path: build
-
-  build-on-windows:
-    if: contains(github.head_ref, 'deps/') == false
-    runs-on: windows-latest
-    steps:
-    - uses: actions/checkout@v2
-    - uses: actions/setup-go@v2
-      with:
-        # TODO: update to 1.15.x once 1.15.4 released
-        go-version: 1.15.x
-
-    - name: Build
-      run: |
-        CGO_ENABLED=0 make -j$(nproc --all) meeting-minutes-bot.windows.all
-
-    # # TODO: Support windows packaging
-    # - name: Package
-    #   run: |
-    #     make package.meeting-minutes-bot.windows.all
-
-    - name: Hash
-      run: |
-        cd build
-        sha256sum meeting-minutes-bot.windows* > sha256.windows.txt
-        sha512sum meeting-minutes-bot.windows* > sha512.windows.txt
-        md5sum meeting-minutes-bot.windows* > md5.windows.txt
-        cd -
-
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v2
-      with:
-        name: build-on-windows
-        path: build
-
   release:
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
     needs:
     - build-on-linux
-    - build-on-windows
-    - build-on-darwin
-    # - build-on-linux-cgo
 
     runs-on: ubuntu-latest
     steps:
@@ -209,18 +83,6 @@ jobs:
       uses: actions/download-artifact@v2
       with:
         name: build-on-linux
-        path: build
-
-    - name: Download windows builds
-      uses: actions/download-artifact@v2
-      with:
-        name: build-on-windows
-        path: build
-
-    - name: Download darwin builds
-      uses: actions/download-artifact@v2
-      with:
-        name: build-on-darwin
         path: build
 
     # - name: Download linux cgo builds

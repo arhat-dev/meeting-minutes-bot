@@ -1,11 +1,17 @@
 module arhat.dev/meeting-minutes-bot
 
-go 1.15
+go 1.16
 
 require (
 	arhat.dev/pkg v0.5.3
+	github.com/andybalholm/brotli v1.0.2 // indirect
+	github.com/json-iterator/go v1.1.11 // indirect
+	github.com/klauspost/compress v1.12.2 // indirect
 	github.com/spf13/cobra v1.1.1
 	github.com/spf13/pflag v1.0.5
+	github.com/valyala/fasthttp v1.24.0 // indirect
+	gitlab.com/toby3d/telegraph v1.2.1
+	golang.org/x/net v0.0.0-20210510120150-4163338589ed // indirect
 	gopkg.in/yaml.v3 v3.0.0-20200615113413-eeeca48fe776
 )
 

@@ -24,6 +24,7 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/conf"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
+	"arhat.dev/meeting-minutes-bot/pkg/server"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -61,13 +62,11 @@ func NewRootCmd() *cobra.Command {
 	flags.StringVarP(&configFile, "config", "c", constant.DefaultConfigFile,
 		"path to the config file")
 	flags.AddFlagSet(conf.FlagsForAppConfig("", &config.App))
+	flags.AddFlagSet(conf.FlagsForBotsConfig("", &config.Bots))
 
 	return rootCmd
 }
 
 func run(appCtx context.Context, config *conf.Config) error {
-	logger := log.Log.WithName("app")
-
-	_ = logger
-	return nil
+	return server.Run(appCtx, &config.App, &config.Bots)
 }

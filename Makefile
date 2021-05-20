@@ -50,6 +50,7 @@ image.push.windows.all: \
 
 # manifest gen
 include scripts/gen/manifests.mk
+include scripts/gen/openapi.mk
 
 # packaging
 include scripts/package/meeting-minutes-bot.mk
