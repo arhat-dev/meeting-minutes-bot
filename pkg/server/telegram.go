@@ -504,8 +504,10 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 					}
 				}()
 
+				msgID, _ := c.sendTextMessage(chatID, true, true, msg.MessageId, "Success!")
+				c.scheduleMessageDelete(chatID, uint64(msgID), 10*time.Second)
 				_, _ = c.sendTextMessage(
-					standbySession.ChatID, true, true, msg.MessageId,
+					standbySession.ChatID, true, true, 0,
 					"You can start your discussion now, the post will be updated after the discussion",
 				)
 
@@ -685,14 +687,6 @@ func (c *telegramBot) handleCmd(
 			return err
 		}
 
-		if !c.markSessionStandby(userID, chatID, defaultChatUsername, topic, url) {
-			_, err := c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				"You have already started a discussion with no telegraph auth token specified, please end that first",
-			)
-			return err
-		}
-
 		_, ok := c.getActiveSession(chatID)
 		if ok {
 			logger.D("invalid command usage", log.String("reason", "already in a session"))
@@ -701,6 +695,14 @@ func (c *telegramBot) handleCmd(
 				"Please <code>/end</code> current discussion before starting a new one",
 			)
 			return nil
+		}
+
+		if !c.markSessionStandby(userID, chatID, defaultChatUsername, topic, url) {
+			_, err := c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				"You have already started a discussion with no telegraph auth token specified, please end that first",
+			)
+			return err
 		}
 
 		return func() (err error) {
@@ -884,7 +886,7 @@ func (c *telegramBot) handleCmd(
 				standbySession.ChatID,
 				userID,
 				standbySession.Topic,
-				defaultChatUsername,
+				standbySession.ChatUsername,
 				gen,
 			)
 			if err2 != nil {
@@ -1036,7 +1038,7 @@ func (c *telegramBot) handleCmd(
 
 		_, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("Command `%s</code> is not supported", cmd),
+			fmt.Sprintf("Command <code>%s</code> is not supported", cmd),
 		)
 
 		return err
@@ -1068,7 +1070,6 @@ func (c *telegramBot) createTelegraphLoginConfigFromMessage(msg *telegram.Messag
 	return loginConfig
 }
 
-// nolint:unparam
 func (c telegramBot) scheduleMessageDelete(chatID, msgID uint64, after time.Duration) {
 	_ = c.msgDelQ.OfferWithDelay(msgDeleteKey{
 		ChatID:    chatID,
