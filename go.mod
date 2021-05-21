@@ -7,7 +7,7 @@ require (
 	github.com/andybalholm/brotli v1.0.2 // indirect
 	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/klauspost/compress v1.12.2 // indirect
-	github.com/spf13/cobra v1.1.1
+	github.com/spf13/cobra v1.1.3
 	github.com/spf13/pflag v1.0.5
 	github.com/valyala/fasthttp v1.24.0 // indirect
 	gitlab.com/toby3d/telegraph v1.2.1
