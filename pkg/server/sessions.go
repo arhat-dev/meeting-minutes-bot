@@ -3,8 +3,10 @@ package server
 import (
 	"bytes"
 	"fmt"
+	"html"
 	"strconv"
 	"sync"
+	"unicode/utf16"
 
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
@@ -160,8 +162,6 @@ func (s *session) generateHTMLContent() (msgOutCount int, _ []byte) {
 					msgAuthorLink += "(via) " + forwarderUserText
 				}
 			}
-
-			println("fwd:", msgAuthorLink)
 		case msg.From != nil:
 			// not a forwarded message
 			userText := msg.From.FirstName
@@ -174,13 +174,11 @@ func (s *session) generateHTMLContent() (msgOutCount int, _ []byte) {
 			} else {
 				msgAuthorLink += userText
 			}
-
-			println("from:", msgAuthorLink)
 		}
 
 		buf.WriteString(
 			fmt.Sprintf(
-				`<p>%s: <a href="https://t.me/%s/%s">`,
+				`<p>%s<a href="https://t.me/%s/%s"><br><blockquote>`,
 				msgAuthorLink,
 				chartUsername,
 				strconv.FormatInt(msgID, 10),
@@ -189,47 +187,62 @@ func (s *session) generateHTMLContent() (msgOutCount int, _ []byte) {
 
 		switch {
 		case msg.Text != nil:
-			text := *msg.Text
-			if msg.Entities == nil {
-				buf.WriteString(text + `</a></p><hr>`)
-				continue
+
+			// index is the position of plain text content
+			index := 0
+
+			text := utf16.Encode([]rune(*msg.Text))
+			if msg.Entities != nil {
+				for _, e := range *msg.Entities {
+					if index < e.Offset {
+						buf.WriteString(string(utf16.Decode(text[index:e.Offset])))
+					}
+
+					// mark next possible position of plain text
+					index = e.Offset + e.Length
+
+					data := string(utf16.Decode(text[e.Offset : e.Offset+e.Length]))
+
+					switch e.Type {
+					case telegram.MessageEntityTypeBold:
+						buf.WriteString(`<strong>` + data + `</strong>`)
+					case telegram.MessageEntityTypeBotCommand:
+						// TODO
+						buf.WriteString(html.EscapeString(data))
+					case telegram.MessageEntityTypeCashtag:
+						// TODO
+						buf.WriteString(html.EscapeString(data))
+					case telegram.MessageEntityTypeCode:
+						buf.WriteString(`<code>` + data + `</code>`)
+					case telegram.MessageEntityTypeEmail:
+						buf.WriteString(fmt.Sprintf(`<a href="mailto:%s">`, data) + data + `</a>`)
+					case telegram.MessageEntityTypeHashtag:
+						buf.WriteString(`<b>#` + data + `</b>`)
+					case telegram.MessageEntityTypeItalic:
+						buf.WriteString(`<em>` + data + `</em>`)
+					case telegram.MessageEntityTypeMention:
+						buf.WriteString(fmt.Sprintf(`<a href="https://t.me/%s">@`, data) + data + `</a>`)
+					case telegram.MessageEntityTypePhoneNumber:
+					case telegram.MessageEntityTypePre:
+						buf.WriteString(`<pre>` + data + `</pre>`)
+					case telegram.MessageEntityTypeStrikethrough:
+						buf.WriteString(`<del>` + data + `</del>`)
+					case telegram.MessageEntityTypeTextLink:
+						buf.WriteString(fmt.Sprintf(`<a href="%s">`, data) + data + `</a>`)
+					case telegram.MessageEntityTypeTextMention:
+						buf.WriteString(fmt.Sprintf(`<a href="https://t.me/%s">@`, data) + data + `</a>`)
+					case telegram.MessageEntityTypeUnderline:
+						buf.WriteString(`<u>` + data + `</u>`)
+					case telegram.MessageEntityTypeUrl:
+						// TODO: parse telegraph supported media url
+						buf.WriteString(fmt.Sprintf(`<a href="%s">`, data) + data + `</a>`)
+					}
+				}
 			}
 
-			for _, e := range *msg.Entities {
-				data := text[e.Offset : e.Offset+e.Length]
-
-				switch e.Type {
-				case telegram.MessageEntityTypeBold:
-					buf.WriteString(`<strong>` + data + `</strong>`)
-				case telegram.MessageEntityTypeBotCommand:
-					// TODO
-				case telegram.MessageEntityTypeCashtag:
-					// TODO
-					buf.WriteString(data)
-				case telegram.MessageEntityTypeCode:
-					buf.WriteString(`<code>` + data + `</code>`)
-				case telegram.MessageEntityTypeEmail:
-					buf.WriteString(fmt.Sprintf(`<a href="mailto:%s">`, data) + data + `</a>`)
-				case telegram.MessageEntityTypeHashtag:
-					buf.WriteString(`<b>#` + data + `</b>`)
-				case telegram.MessageEntityTypeItalic:
-					buf.WriteString(`<em>` + data + `</em>`)
-				case telegram.MessageEntityTypeMention:
-					buf.WriteString(fmt.Sprintf(`<a href="https://t.me/%s">@`, data) + data + `</a>`)
-				case telegram.MessageEntityTypePhoneNumber:
-				case telegram.MessageEntityTypePre:
-					buf.WriteString(`<pre>` + data + `</pre>`)
-				case telegram.MessageEntityTypeStrikethrough:
-					buf.WriteString(`<del>` + data + `</del>`)
-				case telegram.MessageEntityTypeTextLink:
-					buf.WriteString(fmt.Sprintf(`<a href="%s">`, data) + data + `</a>`)
-				case telegram.MessageEntityTypeTextMention:
-					buf.WriteString(fmt.Sprintf(`<a href="https://t.me/%s">@`, data) + data + `</a>`)
-				case telegram.MessageEntityTypeUnderline:
-					buf.WriteString(`<u>` + data + `</u>`)
-				case telegram.MessageEntityTypeUrl:
-					buf.WriteString(fmt.Sprintf(`<a href="%s">`, data) + data + `</a>`)
-				}
+			// write tail plain text
+			if index < len(text) {
+				buf.WriteString(string(utf16.Decode(text[index:])))
 			}
 		case msg.Audio != nil:
 			// TODO: sound to text
@@ -257,7 +270,7 @@ func (s *session) generateHTMLContent() (msgOutCount int, _ []byte) {
 			// TODO
 		}
 
-		buf.WriteString(`</a></p><hr>`)
+		buf.WriteString(`</a></blockquote></p><hr>`)
 	}
 
 	return len(msgCopy) + 1, buf.Bytes()
