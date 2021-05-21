@@ -15,7 +15,8 @@ output:
 linters:
   disable-all: true
   enable:
-  - golint
+  - revive
+  - exportloopref
   - errcheck
   - misspell
   - deadcode
@@ -26,11 +27,9 @@ linters:
   - varcheck
   - unconvert
   - bodyclose
-  - scopelint
   - goimports
   - ineffassign
   - gofmt
-  - maligned
   - goconst
   - gocyclo
   - unparam
