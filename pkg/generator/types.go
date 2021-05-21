@@ -1,7 +1,7 @@
 package generator
 
 type Interface interface {
-	Login(config interface{}) error
+	Login(config interface{}) (token string, _ error)
 
 	Retrieve(url string) (title string, _ error)
 
