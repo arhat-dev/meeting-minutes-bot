@@ -2,7 +2,7 @@ package conf
 
 import "github.com/spf13/pflag"
 
-// nolint:maligned
+// TelegramConfig for telegram bot
 type TelegramConfig struct {
 	Endpoint    string `json:"endpoint" yaml:"endpoint"`
 	BotToken    string `json:"botToken" yaml:"botToken"`

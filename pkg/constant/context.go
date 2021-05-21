@@ -18,6 +18,7 @@ package constant
 
 type ContextKey string
 
+// nolint:revive
 const (
 	ContextKeyConfig = ContextKey("config")
 )
