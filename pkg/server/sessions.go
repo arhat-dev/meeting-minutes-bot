@@ -94,7 +94,7 @@ func (s *session) generateHTMLContent() (msgOutCount int, _ []byte) {
 		}
 
 		chartUsername := s.defaultChatUsername
-		msgID := int64(msg.MessageId)
+		msgID := uint64(msg.MessageId)
 
 		// TODO: should we try to find original link?
 
@@ -103,7 +103,7 @@ func (s *session) generateHTMLContent() (msgOutCount int, _ []byte) {
 		// 	chartUsername = *msg.SenderChat.Username
 		// case msg.ForwardFromChat != nil && msg.ForwardFromChat.Username != nil:
 		// 	chartUsername = *msg.ForwardFromChat.Username
-		// 	msgID = int64(*msg.ForwardFromMessageId)
+		// 	msgID = uint64(*msg.ForwardFromMessageId)
 		// }
 
 		msgAuthorLink := ``
@@ -181,7 +181,7 @@ func (s *session) generateHTMLContent() (msgOutCount int, _ []byte) {
 				`<p>%s<a href="https://t.me/%s/%s"><br><blockquote>`,
 				msgAuthorLink,
 				chartUsername,
-				strconv.FormatInt(msgID, 10),
+				strconv.FormatUint(msgID, 10),
 			),
 		)
 
@@ -276,19 +276,92 @@ func (s *session) generateHTMLContent() (msgOutCount int, _ []byte) {
 	return len(msgCopy) + 1, buf.Bytes()
 }
 
+func newStandbySession(chatID uint64, chatUsername, topic, url string) *standbySession {
+	return &standbySession{
+		ChatID:       chatID,
+		ChatUsername: chatUsername,
+
+		Topic: topic,
+		URL:   url,
+	}
+}
+
+type standbySession struct {
+	ChatID       uint64
+	ChatUsername string
+
+	// only one of topic and url shall be specified
+	Topic string
+	URL   string
+}
+
 func newSessionManager() *SessionManager {
 	return &SessionManager{
-		sessions: &sync.Map{},
+		standbySessions: &sync.Map{},
+
+		expectingSessions: &sync.Map{},
+
+		activeSessions: &sync.Map{},
+
+		mu: &sync.Mutex{},
 	}
 }
 
 type SessionManager struct {
+	// user_id -> chat_id
+	standbySessions *sync.Map
+
+	// user_id -> message_id
+	expectingSessions *sync.Map
+
 	// chart_id -> session
-	sessions *sync.Map
+	activeSessions *sync.Map
+
+	mu *sync.Mutex
 }
 
-func (c *SessionManager) getActiveSession(chartID int64) (*session, bool) {
-	sVal, ok := c.sessions.Load(chartID)
+func (c *SessionManager) markSessionStandby(userID, chatID uint64, chatUsername, topic, url string) bool {
+	_, loaded := c.standbySessions.LoadOrStore(
+		userID, newStandbySession(chatID, chatUsername, topic, url),
+	)
+	return !loaded
+}
+
+func (c *SessionManager) getStandbySession(userID uint64) (*standbySession, bool) {
+	sVal, ok := c.standbySessions.Load(userID)
+	if !ok {
+		return nil, false
+	}
+
+	return sVal.(*standbySession), true
+}
+
+func (c *SessionManager) cancelSessionStandby(userID uint64) bool {
+	_, loaded := c.standbySessions.LoadAndDelete(userID)
+	return loaded
+}
+
+func (c *SessionManager) markSessionExpectingInput(userID, messageID uint64) bool {
+	_, loaded := c.expectingSessions.LoadOrStore(userID, messageID)
+	return !loaded
+}
+
+func (c *SessionManager) sessionIsExpectingInput(userID uint64) (msgID uint64, ok bool) {
+	msgIDVal, ok := c.expectingSessions.Load(userID)
+	if !ok {
+		return 0, false
+	}
+
+	return msgIDVal.(uint64), true
+}
+
+func (c *SessionManager) markSessionInputResolved(userID uint64) bool {
+	_, loaded := c.expectingSessions.LoadAndDelete(userID)
+	return loaded
+}
+
+func (c *SessionManager) getActiveSession(chatID uint64) (*session, bool) {
+	sVal, ok := c.activeSessions.Load(chatID)
 	if !ok {
 		return nil, false
 	}
@@ -296,22 +369,35 @@ func (c *SessionManager) getActiveSession(chartID int64) (*session, bool) {
 	return sVal.(*session), true
 }
 
-func (c *SessionManager) setSessionState(
-	chartID int64, active bool,
+func (c *SessionManager) activateSession(
+	chatID, userID uint64,
 	topic, defaultChatUsername string,
 	gen generator.Interface,
-) (_ *session, ok bool) {
-	if active {
-		newS := newSession(topic, defaultChatUsername, gen)
-		sVal, loaded := c.sessions.LoadOrStore(chartID, newS)
-		if !loaded {
-			return newS, true
-		}
+) (*session, error) {
 
-		return sVal.(*session), false
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	standbyVal, loaded := c.standbySessions.LoadAndDelete(userID)
+	if !loaded {
+		return nil, fmt.Errorf("not found")
 	}
 
-	sVal, loaded := c.sessions.LoadAndDelete(chartID)
+	if standbyVal.(*standbySession).ChatID != chatID {
+		return nil, fmt.Errorf("chat not match")
+	}
+
+	newS := newSession(topic, defaultChatUsername, gen)
+	sVal, loaded := c.activeSessions.LoadOrStore(chatID, newS)
+	if !loaded {
+		return newS, nil
+	}
+
+	return sVal.(*session), fmt.Errorf("already exists")
+}
+
+func (c *SessionManager) deactivateSession(chatID uint64) (_ *session, ok bool) {
+	sVal, loaded := c.activeSessions.LoadAndDelete(chatID)
 	if loaded {
 		return sVal.(*session), true
 	}

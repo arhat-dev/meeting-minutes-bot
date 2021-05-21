@@ -20,6 +20,8 @@ type TelegraphLoginConfig struct {
 	ShortName  string
 	AuthorName string
 	AuthorURL  string
+
+	AuthToken string
 }
 
 func NewTelegraph() (*Telegraph, error) {
@@ -28,7 +30,7 @@ func NewTelegraph() (*Telegraph, error) {
 	}, nil
 }
 
-func (t *Telegraph) Login(config interface{}) error {
+func (t *Telegraph) Login(config interface{}) (string, error) {
 	baseAccount := &telegraph.Account{
 		ShortName: DefaultTelegraphAccountShortName,
 	}
@@ -39,22 +41,37 @@ func (t *Telegraph) Login(config interface{}) error {
 			ShortName:  DefaultTelegraphAccountShortName,
 			AuthorName: cfg.AuthorName,
 			AuthURL:    cfg.AuthorURL,
+
+			AccessToken: cfg.AuthToken,
 		}
 		if len(cfg.ShortName) != 0 {
 			baseAccount.ShortName = cfg.ShortName
 		}
 	}
 
-	account, err := telegraph.CreateAccount(*baseAccount)
+	var (
+		account *telegraph.Account
+		err     error
+	)
+	if len(baseAccount.AccessToken) != 0 {
+		account, err = baseAccount.GetAccountInfo(
+			"short_name", "author_name", "author_url", "page_count",
+		)
+		if err == nil {
+			account.AccessToken = baseAccount.AccessToken
+		}
+	} else {
+		account, err = telegraph.CreateAccount(*baseAccount)
+	}
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	t.account = account
-	return nil
+	return account.AccessToken, nil
 }
 
 func (t *Telegraph) Retrieve(url string) (title string, _ error) {
@@ -77,10 +94,13 @@ func (t *Telegraph) Retrieve(url string) (title string, _ error) {
 
 		for _, p := range list.Pages {
 			if p.URL == url {
-				page := p
-				t.page = &page
+				page, err2 := telegraph.GetPage(p.Path, true)
+				if err2 != nil {
+					return "", err2
+				}
 
-				return p.Title, nil
+				t.page = page
+				return page.Title, nil
 			}
 		}
 	}
