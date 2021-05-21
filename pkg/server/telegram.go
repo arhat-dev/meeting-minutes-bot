@@ -517,15 +517,8 @@ func (c *telegramBot) handleCmd(logger log.Interface, chatID int64, cmd, params 
 		}
 
 		postURL, err := gen.Publish(params, []byte(
-			`<p>
-			   <em>
-			     powered by 
-				 <a href="https://github.com/arhat-dev/meeting-minutes-bot">
-				 meeting-minutes-bot
-				 </a>
-			   </em>
-			 </p>
-			<br>`,
+			// nolint:lll
+			`<p><em>powered by <a href="https://github.com/arhat-dev/meeting-minutes-bot">meeting-minutes-bot</a></em></p><br>`,
 		))
 		if err != nil {
 			_ = c.sendTextMessage(
