@@ -547,7 +547,7 @@ func (m *telegramMessage) Format(fm generator.Formatter) []byte {
 	}
 
 	// write author link
-	_, _ = buf.WriteString(fm.Format(generator.KindNewLine, msgAuthorLink))
+	_, _ = buf.WriteString(msgAuthorLink + "\n")
 
 	switch {
 	case m.msg.Text != nil:
