@@ -34,6 +34,9 @@ type AppConfig struct {
 
 	Listen string              `json:"listen" yaml:"listen"`
 	TLS    tlshelper.TLSConfig `json:"tls" yaml:"tls"`
+
+	ArchiveStorage struct {
+	} `json:"archiveStorage" yaml:"archiveStorage"`
 }
 
 type BotsConfig struct {

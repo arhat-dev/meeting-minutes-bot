@@ -2,12 +2,15 @@ package generator
 
 import (
 	"fmt"
+	"html"
 	"sync"
 
 	"gitlab.com/toby3d/telegraph"
 )
 
 const DefaultTelegraphAccountShortName = "meeting-minutes-bot"
+
+var _ Interface = (*Telegraph)(nil)
 
 type Telegraph struct {
 	account *telegraph.Account
@@ -28,6 +31,10 @@ func NewTelegraph() (*Telegraph, error) {
 	return &Telegraph{
 		mu: &sync.RWMutex{},
 	}, nil
+}
+
+func (t *Telegraph) Name() string {
+	return "Telegraph"
 }
 
 func (t *Telegraph) Login(config interface{}) (string, error) {
@@ -55,7 +62,11 @@ func (t *Telegraph) Login(config interface{}) (string, error) {
 	)
 	if len(baseAccount.AccessToken) != 0 {
 		account, err = baseAccount.GetAccountInfo(
-			"short_name", "author_name", "author_url", "page_count",
+			telegraph.FieldAuthURL,
+			telegraph.FieldAuthorName,
+			telegraph.FieldAuthorURL,
+			telegraph.FieldShortName,
+			telegraph.FieldPageCount,
 		)
 		if err == nil {
 			account.AccessToken = baseAccount.AccessToken
@@ -72,6 +83,17 @@ func (t *Telegraph) Login(config interface{}) (string, error) {
 
 	t.account = account
 	return account.AccessToken, nil
+}
+
+func (t *Telegraph) AuthURL() (string, error) {
+	t.mu.RLock()
+	defer t.mu.RUnlock()
+
+	if t.account == nil {
+		return "", fmt.Errorf("account not created")
+	}
+
+	return t.account.AuthURL, nil
 }
 
 func (t *Telegraph) Retrieve(url string) (title string, _ error) {
@@ -108,8 +130,8 @@ func (t *Telegraph) Retrieve(url string) (title string, _ error) {
 	return "", fmt.Errorf("not found")
 }
 
-func (t *Telegraph) Publish(title string, htmlContent []byte) (url string, _ error) {
-	content, err := telegraph.ContentFormat(htmlContent)
+func (t *Telegraph) Publish(title string, body []byte) (url string, _ error) {
+	content, err := telegraph.ContentFormat(body)
 	if err != nil {
 		return "", err
 	}
@@ -133,8 +155,8 @@ func (t *Telegraph) Publish(title string, htmlContent []byte) (url string, _ err
 	return page.URL, nil
 }
 
-func (t *Telegraph) Append(title string, htmlContent []byte) (url string, _ error) {
-	content, err := telegraph.ContentFormat(htmlContent)
+func (t *Telegraph) Append(title string, body []byte) (url string, _ error) {
+	content, err := telegraph.ContentFormat(body)
 	if err != nil {
 		return "", err
 	}
@@ -163,4 +185,45 @@ func (t *Telegraph) Append(title string, htmlContent []byte) (url string, _ erro
 
 	t.page = updatedPage
 	return updatedPage.URL, nil
+}
+
+func (t *Telegraph) Format(kind FormatKind, data string, params ...string) string {
+	switch kind {
+	case KindText:
+		return html.EscapeString(data)
+	case KindBold:
+		return `<strong>` + html.EscapeString(data) + `</strong>`
+	case KindItalic:
+		return `<em>` + html.EscapeString(data) + `</em>`
+	case KindStrikethrough:
+		return `<del>` + html.EscapeString(data) + `</del>`
+	case KindUnderline:
+		return `<u>` + html.EscapeString(data) + `</u>`
+	case KindPre:
+		return `<pre>` + html.EscapeString(data) + `</pre>`
+	case KindCode:
+		return `<code>` + data + `</code>`
+	case KindNewLine:
+		return data + `<br>`
+	case KindParagraph:
+		return `<p>` + data + `</p>`
+	case KindThematicBreak:
+		return data + `<hr>`
+	case KindBlockquote:
+		return `<blockquote>` + data + `</blockquote>`
+	case KindEmail:
+		return fmt.Sprintf(`<a href="mailto:%s">`, data) + html.EscapeString(data) + `</a>`
+	case KindPhoneNumber:
+		return fmt.Sprintf(`<a href="tel:%s">`, data) + html.EscapeString(data) + `</a>`
+	case KindURL:
+		// TODO: parse telegraph supported media url
+		url := data
+		if len(params) == 1 {
+			url = params[0]
+		}
+
+		return fmt.Sprintf(`<a href="%s">`, url) + html.EscapeString(data) + `</a>`
+	default:
+		return html.EscapeString(data)
+	}
 }
