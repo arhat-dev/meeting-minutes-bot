@@ -5,6 +5,7 @@ go 1.16
 require (
 	arhat.dev/pkg v0.5.5
 	github.com/andybalholm/brotli v1.0.2 // indirect
+	github.com/h2non/filetype v1.1.1
 	github.com/json-iterator/go v1.1.11 // indirect
 	github.com/klauspost/compress v1.12.2 // indirect
 	github.com/spf13/cobra v1.1.3
