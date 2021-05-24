@@ -16,6 +16,7 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/generator/telegraph"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 
@@ -32,12 +33,11 @@ func newTelegramMessage(msg *telegram.Message) *telegramMessage {
 		msg:  msg,
 		urls: make(map[string]string),
 
-		fileURL:     "",
-		fileCaption: "",
+		fileURL: "",
 
 		ready: 0,
 
-		mu: &sync.RWMutex{},
+		mu: &sync.Mutex{},
 	}
 }
 
@@ -59,20 +59,19 @@ type telegramMessage struct {
 	archiveScreenshotURLs map[string]string
 
 	// file url
-	fileURL     string
-	fileName    string
-	fileCaption string // updated by the next message
+	fileURL  string
+	fileName string
 
 	ready uint32
 
-	mu *sync.RWMutex
+	mu *sync.Mutex
 }
 
 func (m *telegramMessage) ID() string {
 	return m.id
 }
 
-// ready
+// ready for content generation
 func (m *telegramMessage) Ready() bool {
 	return atomic.LoadUint32(&m.ready) == 1
 }
@@ -95,6 +94,9 @@ func (m *telegramMessage) PreProcess(
 	u storage.Interface,
 	previousMessage Message,
 ) (errCh chan error, err error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	client, ok := c.(*telegramBot)
 	if !ok {
 		return nil, fmt.Errorf("Unexpected client type: need telegram bot")
@@ -106,7 +108,7 @@ func (m *telegramMessage) PreProcess(
 	)
 
 	switch {
-	case m.msg.Text != nil, m.msg.Caption != nil:
+	case m.msg.Text != nil:
 		var (
 			text     []uint16
 			entities *[]telegram.MessageEntity
@@ -116,12 +118,6 @@ func (m *telegramMessage) PreProcess(
 			text = utf16.Encode([]rune(*m.msg.Text))
 			entities = m.msg.Entities
 		} else {
-			if previousMessage != nil {
-				prevMsg := previousMessage.(*telegramMessage)
-				prevMsg.update(func() {
-					prevMsg.fileCaption = *m.msg.Caption
-				})
-			}
 			text = utf16.Encode([]rune(*m.msg.Caption))
 			entities = m.msg.CaptionEntities
 		}
@@ -247,12 +243,8 @@ func (m *telegramMessage) PreProcess(
 		}
 	case m.msg.Voice != nil:
 		// TODO: sound to text
-		voice := m.msg.Video
-
+		voice := m.msg.Voice
 		requestFileID = voice.FileId
-		if voice.FileName != nil {
-			requestFileName = *voice.FileName
-		}
 	default:
 		// nothing to pre-process
 		m.markReady()
@@ -587,22 +579,36 @@ func (m *telegramMessage) Format(fm generator.Formatter) []byte {
 	case m.msg.Text != nil:
 		m.formatText(fm, *m.msg.Text, m.msg.Entities, buf)
 	case m.msg.Audio != nil, m.msg.Voice != nil:
-		_, _ = buf.WriteString(fm.Format(generator.KindAudio, m.fileURL, m.fileCaption))
+		_, _ = buf.WriteString(
+			fm.Format(
+				generator.KindAudio, m.fileURL, m.formatFileCaptionText(fm),
+			),
+		)
 	case m.msg.Document != nil:
 		linkText := `[File]`
 		if len(m.fileName) != 0 {
 			linkText += " " + m.fileName
 		}
 
-		if len(m.fileCaption) != 0 {
-			linkText += " (" + m.fileCaption + ")"
+		if m.msg.Caption != nil {
+			linkText += " (" + m.formatFileCaptionText(fm) + ")"
 		}
 
-		_, _ = buf.WriteString(fm.Format(generator.KindURL, linkText, m.fileURL))
+		_, _ = buf.WriteString(
+			fm.Format(generator.KindURL, linkText, m.fileURL),
+		)
 	case m.msg.Photo != nil:
-		_, _ = buf.WriteString(fm.Format(generator.KindImage, m.fileURL, m.fileCaption))
+		_, _ = buf.WriteString(
+			fm.Format(
+				generator.KindImage, m.fileURL, m.formatFileCaptionText(fm),
+			),
+		)
 	case m.msg.Video != nil:
-		_, _ = buf.WriteString(fm.Format(generator.KindVideo, m.fileURL, m.fileCaption))
+		_, _ = buf.WriteString(
+			fm.Format(
+				generator.KindVideo, m.fileURL, m.formatFileCaptionText(fm),
+			),
+		)
 	case m.msg.Caption != nil:
 		// should have been consumed by audio/photo/video
 	case m.msg.VideoNote != nil:
@@ -622,4 +628,20 @@ func (m *telegramMessage) Format(fm generator.Formatter) []byte {
 	}
 
 	return buf.Bytes()
+}
+
+func (m *telegramMessage) formatFileCaptionText(fm generator.Formatter) string {
+	switch fm.Name() {
+	case telegraph.Name:
+		// telegraph doesn't support html tags in caption area
+		return fm.Format(generator.KindText, *m.msg.Caption)
+	default:
+		var caption string
+		if m.msg.Caption != nil {
+			captionBuf := &bytes.Buffer{}
+			m.formatText(fm, *m.msg.Caption, m.msg.CaptionEntities, captionBuf)
+			caption = captionBuf.String()
+		}
+		return caption
+	}
 }

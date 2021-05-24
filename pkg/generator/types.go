@@ -26,6 +26,8 @@ type Publisher interface {
 }
 
 type Formatter interface {
+	Name() string
+
 	Format(kind FormatKind, text string, params ...string) string
 }
 
