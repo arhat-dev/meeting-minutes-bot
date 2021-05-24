@@ -4,9 +4,8 @@ import "github.com/spf13/pflag"
 
 // TelegramConfig for telegram bot
 type TelegramConfig struct {
-	Endpoint    string `json:"endpoint" yaml:"endpoint"`
-	BotToken    string `json:"botToken" yaml:"botToken"`
-	BotUsername string `json:"botUsername" yaml:"botUsername"`
+	Endpoint string `json:"endpoint" yaml:"endpoint"`
+	BotToken string `json:"botToken" yaml:"botToken"`
 
 	Webhook struct {
 		Enabled        bool   `json:"enabled" yaml:"enabled"`
@@ -24,7 +23,6 @@ func flagsForTelegramConfig(prefix string, config *TelegramConfig) *pflag.FlagSe
 
 	fs.StringVar(&config.Endpoint, prefix+"endpoint", "api.telegram.org", "set telegram bot api server address")
 	fs.StringVar(&config.BotToken, prefix+"botToken", "", "set bot token, e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11")
-	fs.StringVar(&config.BotUsername, prefix+"botUsername", "", "set bot username, e.g. exampleBot")
 
 	fs.BoolVar(&config.Webhook.Enabled, prefix+"webhook.enabled", true, "enabled webhook when server address is not empty")
 	fs.StringVar(&config.Webhook.Path, prefix+"webhook.path", "", "set the http path for this webhook, relative to the server base url, https will be used, and server port can be one of [443, 80, 88, 8443]")

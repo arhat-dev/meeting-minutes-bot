@@ -35,8 +35,9 @@ type AppConfig struct {
 	Listen string              `json:"listen" yaml:"listen"`
 	TLS    tlshelper.TLSConfig `json:"tls" yaml:"tls"`
 
-	ArchiveStorage struct {
-	} `json:"archiveStorage" yaml:"archiveStorage"`
+	Storage     StorageConfig     `json:"storage" yaml:"storage"`
+	WebArchiver WebArchiverConfig `json:"webarchiver" yaml:"webarchiver"`
+	Generator   GeneratorConfig   `json:"generator" yaml:"generator"`
 }
 
 type BotsConfig struct {
@@ -50,6 +51,17 @@ func FlagsForAppConfig(prefix string, config *AppConfig) *pflag.FlagSet {
 		"http server listen address, required if you need to serve webhook")
 	fs.StringVar(&config.PublicBaseURL, prefix+"publicBaseURL", "",
 		"url for external endpoints like telegram server to access")
+
+	fs.AddFlagSet(tlshelper.FlagsForTLSConfig(prefix+"tls", &config.TLS))
+
+	fs.StringVar(&config.Storage.Driver,
+		prefix+"storage.driver", "", "set storage for files, one of [s3], leave empty to disable")
+	fs.StringVar(&config.WebArchiver.Driver,
+		prefix+"webarchiver.driver", "", "set web archive service provider, one of [chromedp], leave empty to disable")
+	fs.StringVar(&config.Generator.Driver,
+		prefix+"generator.driver", "",
+		"set site generator service provider, one of [telegraph], leave empty to disable",
+	)
 
 	return fs
 }

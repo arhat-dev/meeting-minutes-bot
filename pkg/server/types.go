@@ -1,8 +1,8 @@
 package server
 
 import (
-	"arhat.dev/meeting-minutes-bot/pkg/fileuploader"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
 
@@ -19,7 +19,7 @@ type Message interface {
 	PreProcess(
 		c Client,
 		w webarchiver.Interface,
-		u fileuploader.Interface,
+		u storage.Interface,
 		previousMessages Message,
 	) (chan error, error)
 
@@ -29,3 +29,5 @@ type Message interface {
 	// Format message with target formatter
 	Format(fm generator.Formatter) []byte
 }
+
+type generatorFactoryFunc func() (generator.Interface, generator.UserConfig, error)

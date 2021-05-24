@@ -1,14 +1,22 @@
 package webarchiver
 
-var _ Interface = (*NopArchiver)(nil)
+var _ Interface = (*Nop)(nil)
 
-type NopArchiver struct {
-}
+type NopConfig struct{}
 
-func (a *NopArchiver) Login(config interface{}) error {
+type Nop struct{}
+
+func (a *Nop) Login(config interface{}) error {
 	return nil
 }
 
-func (a *NopArchiver) Archive(url string) (archiveURL string, err error) {
-	return "", nil
+func (a *Nop) Archive(
+	url string,
+) (
+	archiveURL string,
+	screenshot []byte,
+	screenshotFileExt string,
+	err error,
+) {
+	return "", nil, "", nil
 }

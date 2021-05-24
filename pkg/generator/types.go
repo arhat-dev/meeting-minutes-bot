@@ -10,7 +10,7 @@ type Interface interface {
 
 type Publisher interface {
 	// Login to platform
-	Login(config interface{}) (token string, _ error)
+	Login(config UserConfig) (token string, _ error)
 
 	// AuthURL return a one click url for external authorization
 	AuthURL() (string, error)
@@ -57,3 +57,7 @@ const (
 	KindVideo
 	KindAudio
 )
+
+type UserConfig interface {
+	SetAuthToken(token string)
+}

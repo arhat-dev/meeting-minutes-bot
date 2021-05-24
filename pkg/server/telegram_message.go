@@ -7,7 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"net/http"
-	"path/filepath"
+	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -15,11 +15,12 @@ import (
 	"unicode/utf16"
 
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
-	"arhat.dev/meeting-minutes-bot/pkg/fileuploader"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 
 	"arhat.dev/pkg/hashhelper"
+	"arhat.dev/pkg/log"
 	"github.com/h2non/filetype"
 )
 
@@ -31,7 +32,7 @@ func newTelegramMessage(msg *telegram.Message) *telegramMessage {
 		msg:  msg,
 		urls: make(map[string]string),
 
-		fileURLs:    make(map[string]string),
+		fileURL:     "",
 		fileCaption: "",
 
 		ready: 0,
@@ -49,11 +50,17 @@ type telegramMessage struct {
 
 	msg *telegram.Message
 
-	// text -> url or url -> archive url
+	// text -> url (named links)
+	// or
+	// url -> archive url (for archived pages)
 	urls map[string]string
 
-	// file id -> file url
-	fileURLs    map[string]string
+	// url -> image url (for archived pages)
+	archiveScreenshotURLs map[string]string
+
+	// file url
+	fileURL     string
+	fileName    string
 	fileCaption string // updated by the next message
 
 	ready uint32
@@ -85,7 +92,7 @@ func (m *telegramMessage) update(do func()) {
 func (m *telegramMessage) PreProcess(
 	c Client,
 	w webarchiver.Interface,
-	u fileuploader.Interface,
+	u storage.Interface,
 	previousMessage Message,
 ) (errCh chan error, err error) {
 	client, ok := c.(*telegramBot)
@@ -93,13 +100,9 @@ func (m *telegramMessage) PreProcess(
 		return nil, fmt.Errorf("Unexpected client type: need telegram bot")
 	}
 
-	type fileRequest struct {
-		id   string
-		name string // can be empty
-	}
-
 	var (
-		requestFiles []*fileRequest
+		requestFileID   string
+		requestFileName string // can be empty
 	)
 
 	switch {
@@ -161,8 +164,9 @@ func (m *telegramMessage) PreProcess(
 				m.markReady()
 			}()
 
+			screenshotURLs := make(map[string]string)
 			for _, url := range urlsToArchive {
-				archiveURL, err := w.Archive(url)
+				archiveURL, screenshot, ext, err := w.Archive(url)
 				if err != nil {
 					select {
 					case errCh <- fmt.Errorf("Internal bot error: unable to archive web page %s: %w", url, err):
@@ -173,11 +177,33 @@ func (m *telegramMessage) PreProcess(
 				}
 
 				urls[url] = archiveURL
+
+				if len(screenshot) == 0 {
+					// no screenshot created
+					continue
+				}
+
+				filename := hex.EncodeToString(hashhelper.Sha256Sum(screenshot)) + ext
+				screenshotURL, err := u.Upload(client.ctx, filename, screenshot)
+				if err != nil {
+					select {
+					case errCh <- fmt.Errorf("unable to upload web page screenshot: %w", err):
+					case <-client.ctx.Done():
+					}
+
+					continue
+				}
+
+				screenshotURLs[url] = screenshotURL
 			}
 
 			m.update(func() {
 				for k, v := range urls {
 					m.urls[k] = v
+				}
+
+				for k, v := range screenshotURLs {
+					m.archiveScreenshotURLs[k] = v
 				}
 			})
 		}()
@@ -185,189 +211,195 @@ func (m *telegramMessage) PreProcess(
 		return
 	case m.msg.Audio != nil:
 		audio := m.msg.Audio
-		req := &fileRequest{
-			id: audio.FileId,
-		}
 
+		requestFileID = audio.FileId
 		if audio.FileName != nil {
-			req.name = *audio.FileName
+			requestFileName = *audio.FileName
 		}
-
-		requestFiles = append(requestFiles, req)
 	case m.msg.Document != nil:
 		doc := m.msg.Document
-		req := &fileRequest{
-			id: doc.FileId,
-		}
 
+		requestFileID = doc.FileId
 		if doc.FileName != nil {
-			req.name = *doc.FileName
+			requestFileName = *doc.FileName
 		}
-
-		requestFiles = append(requestFiles, req)
 	case m.msg.Photo != nil:
-		for _, photo := range *m.msg.Photo {
-			req := &fileRequest{
-				id: photo.FileId,
-			}
+		var (
+			maxSize int
+			id      string
+		)
 
-			requestFiles = append(requestFiles, req)
+		for _, photo := range *m.msg.Photo {
+			if size := photo.FileSize; size != nil {
+				if *size > maxSize {
+					id = photo.FileId
+				}
+			}
 		}
+
+		requestFileID = id
 	case m.msg.Video != nil:
 		video := m.msg.Video
-		req := &fileRequest{
-			id: video.FileId,
-		}
 
+		requestFileID = video.FileId
 		if video.FileName != nil {
-			req.name = *video.FileName
+			requestFileName = *video.FileName
 		}
-
-		requestFiles = append(requestFiles, req)
 	case m.msg.Voice != nil:
 		// TODO: sound to text
 		voice := m.msg.Video
-		req := &fileRequest{
-			id: voice.FileId,
-		}
 
+		requestFileID = voice.FileId
 		if voice.FileName != nil {
-			req.name = *voice.FileName
+			requestFileName = *voice.FileName
 		}
-
-		requestFiles = append(requestFiles, req)
 	default:
 		// nothing to pre-process
 		m.markReady()
 		return nil, nil
 	}
 
-	errCh = make(chan error, len(requestFiles))
-
-	wg := &sync.WaitGroup{}
-	wg.Add(len(requestFiles))
+	errCh = make(chan error, 1)
 	go func() {
-		wg.Wait()
+		defer func() {
+			close(errCh)
 
-		close(errCh)
+			m.markReady()
+		}()
 
-		m.markReady()
+		logger := client.logger.WithFields(
+			log.String("filename", requestFileName),
+			log.String("id", requestFileID),
+		)
+
+		logger.V("requesting file info")
+		resp, err := client.client.PostGetFile(client.ctx, telegram.PostGetFileJSONRequestBody{
+			FileId: requestFileID,
+		})
+		if err != nil {
+			logger.I("failed to request get file", log.Error(err))
+
+			select {
+			case errCh <- fmt.Errorf("failed to request file: %w", err):
+			case <-client.ctx.Done():
+			}
+
+			return
+		}
+
+		f, err := telegram.ParsePostGetFileResponse(resp)
+		_ = resp.Body.Close()
+		if err != nil {
+			logger.I("failed to parse get file response", log.Error(err))
+
+			select {
+			case errCh <- fmt.Errorf("failed to parse file response: %w", err):
+			case <-client.ctx.Done():
+			}
+
+			return
+		}
+
+		if f.JSON200 == nil || !f.JSON200.Ok {
+			logger.I("telegram get file error", log.String("reason", f.JSONDefault.Description))
+
+			select {
+			case errCh <- fmt.Errorf("failed to request file: telegram: %s", f.JSONDefault.Description):
+			case <-client.ctx.Done():
+			}
+
+			return
+		}
+
+		pathPtr := f.JSON200.Result.FilePath
+		if pathPtr == nil {
+			logger.I("telegram file path not found")
+
+			select {
+			case errCh <- fmt.Errorf("Invalid empty path for telegram file downloading"):
+			case <-client.ctx.Done():
+			}
+
+			return
+		}
+
+		downloadURL := fmt.Sprintf(
+			"https://api.telegram.org/file/bot%s/%s",
+			client.botToken, *pathPtr,
+		)
+
+		req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
+		if err != nil {
+			logger.I("failed to create bot file download request", log.Error(err))
+
+			select {
+			case errCh <- fmt.Errorf("Internal bot error: %w", err):
+			case <-client.ctx.Done():
+			}
+
+			return
+		}
+
+		resp, err = client.client.Client.Do(req)
+		if err != nil {
+			logger.I("failed to request file download", log.Error(err))
+
+			select {
+			case errCh <- fmt.Errorf("Internal bot error: %w", err):
+			case <-client.ctx.Done():
+			}
+
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		fileContent, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			logger.I("failed to download file", log.Error(err))
+
+			select {
+			case errCh <- fmt.Errorf("Internal bot error: failed to read file body: %w", err):
+			case <-client.ctx.Done():
+			}
+
+			return
+		}
+
+		var fileExt string
+		filename := hex.EncodeToString(hashhelper.Sha256Sum(fileContent))
+		if len(requestFileName) != 0 {
+			fileExt = path.Ext(requestFileName)
+		}
+
+		if len(fileExt) == 0 {
+			t, err2 := filetype.Match(fileContent)
+			if err2 == nil {
+				fileExt = "." + t.Extension
+			}
+		}
+
+		filename += fileExt
+		logger.V("uploading file",
+			log.String("upload_name", filename),
+			log.Int("size", len(fileContent)),
+		)
+		fileURL, err := u.Upload(client.ctx, filename, fileContent)
+		if err != nil {
+			select {
+			case errCh <- fmt.Errorf("failed to upload file: %w", err):
+			case <-client.ctx.Done():
+			}
+
+			return
+		}
+
+		logger.V("file uploaded", log.String("url", fileURL))
+
+		m.update(func() {
+			m.fileURL = fileURL
+			m.fileName = requestFileName
+		})
 	}()
-
-	for _, fr := range requestFiles {
-		go func(fr fileRequest) {
-			defer wg.Done()
-
-			resp, err := client.client.PostGetFile(client.ctx, telegram.PostGetFileJSONRequestBody{
-				FileId: fr.id,
-			})
-			if err != nil {
-				select {
-				case errCh <- fmt.Errorf("failed to request file: %w", err):
-				case <-client.ctx.Done():
-				}
-
-				return
-			}
-
-			f, err := telegram.ParsePostGetFileResponse(resp)
-			_ = resp.Body.Close()
-			if err != nil {
-				select {
-				case errCh <- fmt.Errorf("failed to parse file response: %w", err):
-				case <-client.ctx.Done():
-				}
-
-				return
-			}
-
-			if f.JSON200 == nil || !f.JSON200.Ok {
-				select {
-				case errCh <- fmt.Errorf("failed to request file: telegram: %s", f.JSONDefault.Description):
-				case <-client.ctx.Done():
-				}
-
-				return
-			}
-
-			pathPtr := f.JSON200.Result.FilePath
-			if pathPtr == nil {
-				select {
-				case errCh <- fmt.Errorf("Invalid empty path for telegram file downloading"):
-				case <-client.ctx.Done():
-				}
-
-				return
-			}
-
-			downloadURL := fmt.Sprintf(
-				"https://api.telegram.org/file/bot%s/%s",
-				client.botToken, *pathPtr,
-			)
-
-			req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
-			if err != nil {
-				select {
-				case errCh <- fmt.Errorf("Internal bot error: %w", err):
-				case <-client.ctx.Done():
-				}
-
-				return
-			}
-
-			resp, err = client.client.Client.Do(req)
-			if err != nil {
-				select {
-				case errCh <- fmt.Errorf("Internal bot error: %w", err):
-				case <-client.ctx.Done():
-				}
-
-				return
-			}
-			defer func() { _ = resp.Body.Close() }()
-
-			fileContent, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				select {
-				case errCh <- fmt.Errorf("Internal bot error: failed to read file body: %w", err):
-				case <-client.ctx.Done():
-				}
-
-				return
-			}
-
-			// TODO: upload file content to s3
-			_ = fileContent
-
-			var fileExt string
-			filename := hex.EncodeToString(hashhelper.Sha256Sum(fileContent))
-			if len(fr.name) != 0 {
-				fileExt = filepath.Ext(fr.name)
-			}
-
-			if len(fileExt) == 0 {
-				t, err2 := filetype.Match(fileContent)
-				if err2 == nil {
-					fileExt = t.Extension
-				}
-			}
-
-			filename += fileExt
-			fileURL, err := u.Upload(filename, fileContent)
-			if err != nil {
-				select {
-				case errCh <- fmt.Errorf("failed to upload file: %w", err):
-				case <-client.ctx.Done():
-				}
-
-				return
-			}
-
-			m.update(func() {
-				m.fileURLs[fr.id] = fileURL
-			})
-		}(*fr)
-	}
 
 	return errCh, nil
 }
@@ -405,8 +437,6 @@ func (m *telegramMessage) formatText(
 		telegram.MessageEntityTypeTextMention: generator.KindURL,
 	}
 
-	var appendArchiveURLs []string
-
 	if entities != nil {
 		for _, e := range *entities {
 			if index < e.Offset {
@@ -433,30 +463,34 @@ func (m *telegramMessage) formatText(
 				if ok {
 					params = append(params, urlVal)
 				}
-			case telegram.MessageEntityTypeUrl:
-				// append as appendix
-				appendArchiveURLs = append(appendArchiveURLs, data)
 			}
 
 			_, _ = buf.WriteString(fm.Format(kind, data, params...))
+
+			switch e.Type {
+			case telegram.MessageEntityTypeUrl:
+				archiveURL, hasArchiveURL := m.urls[data]
+				if hasArchiveURL && len(archiveURL) != 0 {
+					_, _ = buf.WriteString(fm.Format(generator.KindURL, " [archive]", archiveURL))
+				} else {
+					_, _ = buf.WriteString(fm.Format(generator.KindText, " [archive missing]"))
+				}
+
+				screenshotURL, hasScreenshotURL := m.archiveScreenshotURLs[data]
+				if hasScreenshotURL && len(screenshotURL) != 0 {
+					_, _ = buf.WriteString(fm.Format(generator.KindURL, " [screenshot]", screenshotURL))
+				} else {
+					_, _ = buf.WriteString(fm.Format(generator.KindText, " [screenshot missing]"))
+				}
+			default:
+				// other cases
+			}
 		}
 	}
 
 	// write tail plain text
 	if index < len(text) {
 		_, _ = buf.WriteString(string(utf16.Decode(text[index:])))
-	}
-
-	if len(appendArchiveURLs) != 0 {
-		_, _ = buf.WriteString(fm.Format(generator.KindNewLine, ""))
-		for _, url := range appendArchiveURLs {
-			archiveURLVal, ok := m.urls[url]
-			if ok && len(archiveURLVal) != 0 {
-				_, _ = buf.WriteString(fm.Format(generator.KindURL, "* Archive of "+url, archiveURLVal))
-			} else {
-				_, _ = buf.WriteString(fm.Format(generator.KindText, fmt.Sprintf("* Archive of %s missing", url), ""))
-			}
-		}
 	}
 }
 
@@ -552,26 +586,33 @@ func (m *telegramMessage) Format(fm generator.Formatter) []byte {
 	switch {
 	case m.msg.Text != nil:
 		m.formatText(fm, *m.msg.Text, m.msg.Entities, buf)
-	case m.msg.Audio != nil:
-		// waitingForCaption = true
+	case m.msg.Audio != nil, m.msg.Voice != nil:
+		_, _ = buf.WriteString(fm.Format(generator.KindAudio, m.fileURL, m.fileCaption))
 	case m.msg.Document != nil:
-		// waitingForCaption = true
+		linkText := `[File]`
+		if len(m.fileName) != 0 {
+			linkText += " " + m.fileName
+		}
+
+		if len(m.fileCaption) != 0 {
+			linkText += " (" + m.fileCaption + ")"
+		}
+
+		_, _ = buf.WriteString(fm.Format(generator.KindURL, linkText, m.fileURL))
 	case m.msg.Photo != nil:
-		// waitingForCaption = true
+		_, _ = buf.WriteString(fm.Format(generator.KindImage, m.fileURL, m.fileCaption))
 	case m.msg.Video != nil:
-		// waitingForCaption = true
-	case m.msg.Voice != nil:
-		// waitingForCaption = true
+		_, _ = buf.WriteString(fm.Format(generator.KindVideo, m.fileURL, m.fileCaption))
 	case m.msg.Caption != nil:
-		m.formatText(fm, *m.msg.Caption, m.msg.CaptionEntities, buf)
+		// should have been consumed by audio/photo/video
 	case m.msg.VideoNote != nil:
+		// TODO
 	case m.msg.Animation != nil:
 		// waitingForCaption = true
 	case m.msg.Sticker != nil,
 		m.msg.Dice != nil,
 		m.msg.Game != nil:
 		// TODO: shall we just ignore them
-		// TODO
 	case m.msg.Poll != nil:
 		// TODO
 	case m.msg.Venue != nil:
