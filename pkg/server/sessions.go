@@ -114,13 +114,10 @@ func (s *session) generateContent(fm generator.Formatter) (msgOutCount int, _ []
 				fm.Format(
 					generator.KindParagraph,
 					fm.Format(
-						generator.KindBlockquote,
-						fm.Format(
-							generator.KindURL,
-							"(link)",
-							fmt.Sprintf("https://t.me/%s/%s", chatUsername, msg.ID()),
-						)+" "+string(msg.Format(fm)),
-					),
+						generator.KindURL,
+						"[Link]",
+						fmt.Sprintf("https://t.me/%s/%s", chatUsername, msg.ID()),
+					)+" "+string(msg.Format(fm)),
 				),
 			),
 		)

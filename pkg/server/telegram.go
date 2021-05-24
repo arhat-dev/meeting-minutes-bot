@@ -553,13 +553,17 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 						}
 					case len(standbySession.URL) != 0:
 						// is /continue, find existing post to edit
-						title, err = gen.Retrieve(standbySession.URL)
-						if err != nil {
+						var err2 error
+
+						// we may not find the post if user provided a wrong url, don't count this error
+						// as session error
+						title, err2 = gen.Retrieve(standbySession.URL)
+						if err2 != nil {
 							_, _ = c.sendTextMessage(
 								chatID, true, true, msg.MessageId,
-								fmt.Sprintf("Retrieve %s post error: %v", gen.Name(), err),
+								fmt.Sprintf("Retrieve %s post error: %v", gen.Name(), err2),
 							)
-							return err
+							return nil
 						}
 					}
 

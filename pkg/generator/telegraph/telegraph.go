@@ -1,4 +1,4 @@
-package generator
+package telegraph
 
 import (
 	"fmt"
