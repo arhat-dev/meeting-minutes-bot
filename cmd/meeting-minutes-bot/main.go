@@ -24,6 +24,15 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/cmd"
 	"arhat.dev/meeting-minutes-bot/pkg/version"
+
+	// storage drivers
+	_ "arhat.dev/meeting-minutes-bot/pkg/storage/s3"
+
+	// site generator drivers
+	_ "arhat.dev/meeting-minutes-bot/pkg/generator/telegraph"
+
+	// web archive drivers
+	_ "arhat.dev/meeting-minutes-bot/pkg/webarchiver/cdp"
 )
 
 func main() {
