@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/Masterminds/sprig"
 	"gitlab.com/toby3d/telegraph"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
@@ -45,7 +46,9 @@ func init() {
 			}
 
 			_, err := template.New("").
-				Funcs(template.FuncMap(generator.CreateFuncMap(nil))).Parse(pageTpl)
+				Funcs(sprig.HermeticHtmlFuncMap()).
+				Funcs(template.FuncMap(generator.CreateFuncMap(nil))).
+				Parse(pageTpl)
 			if err != nil {
 				return nil, nil, fmt.Errorf("invalid page template: %w", err)
 			}
@@ -56,7 +59,9 @@ func init() {
 			}
 
 			_, err = template.New("").
-				Funcs(template.FuncMap(generator.CreateFuncMap(nil))).Parse(pagePrefixTpl)
+				Funcs(sprig.HermeticHtmlFuncMap()).
+				Funcs(template.FuncMap(generator.CreateFuncMap(nil))).
+				Parse(pagePrefixTpl)
 			if err != nil {
 				return nil, nil, fmt.Errorf("invalid page prefix template: %w", err)
 			}
@@ -387,7 +392,9 @@ func (t *Telegraph) FormatPageContent(
 	)
 
 	pageTpl, err := template.New("").
-		Funcs(template.FuncMap(generator.CreateFuncMap(nil))).Parse(t.pageTpl)
+		Funcs(sprig.HermeticHtmlFuncMap()).
+		Funcs(template.FuncMap(fm)).
+		Parse(t.pageTpl)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse page template: %w", err)
 	}

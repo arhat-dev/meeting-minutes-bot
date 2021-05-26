@@ -66,6 +66,8 @@ type Message interface {
 	OriginalAuthorURL() string
 	OriginalMessageURL() string
 
+	IsPrivateMessage() bool
+
 	IsReply() bool
 	ReplyToMessageID() string
 
@@ -138,8 +140,6 @@ func CreateFuncMap(findMessage MessageFindFunc) FuncMap {
 		"entityIsUnderline":     func(entity MessageEntity) bool { return entity.Kind == KindUnderline },
 		"entityIsPre":           func(entity MessageEntity) bool { return entity.Kind == KindPre },
 		"entityIsCode":          func(entity MessageEntity) bool { return entity.Kind == KindCode },
-		"entityIsNewLine":       func(entity MessageEntity) bool { return entity.Kind == KindNewLine },
-		"entityIsParagraph":     func(entity MessageEntity) bool { return entity.Kind == KindParagraph },
 		"entityIsThematicBreak": func(entity MessageEntity) bool { return entity.Kind == KindThematicBreak },
 		"entityIsBlockquote":    func(entity MessageEntity) bool { return entity.Kind == KindBlockquote },
 

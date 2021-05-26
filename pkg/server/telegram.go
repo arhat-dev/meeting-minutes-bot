@@ -508,7 +508,7 @@ func (c *telegramBot) appendSessionMessage(
 	}
 
 	logger.V("appending session meesage")
-	m := newTelegramMessage(msg)
+	m := newTelegramMessage(msg, c.botUsername)
 
 	errCh, err := m.PreProcess(c, c.webArchiver, c.storage, currentSession.peekLastMessage())
 	if err != nil {
@@ -805,12 +805,14 @@ func (c *telegramBot) handleCmd(
 
 		n, content, err := currentSession.generateContent()
 		if err != nil {
+			println("sending error message")
 			_, _ = c.sendTextMessage(
 				chatID, false, true, msg.MessageId,
 				fmt.Sprintf("Internal bot error: failed to generate post content: %v", err),
 			)
 
-			return err
+			// do not execute again on telegram redelivery
+			return nil
 		}
 
 		postURL, err := currentSession.generator.Append(currentSession.Topic, content)
@@ -820,7 +822,8 @@ func (c *telegramBot) handleCmd(
 				fmt.Sprintf("%s post update error: %v", currentSession.generator.Name(), err),
 			)
 
-			return err
+			// do not execute again on telegram redelivery
+			return nil
 		}
 
 		currentSession.deleteFirstNMessage(n)
@@ -831,10 +834,11 @@ func (c *telegramBot) handleCmd(
 				chatID, true, true, msg.MessageId,
 				"Internal bot error: active discussion already been ended out of no reason",
 			)
+
 			return nil
 		}
 
-		_, err = c.sendTextMessage(
+		_, _ = c.sendTextMessage(
 			chatID, false, false, 0,
 			fmt.Sprintf(
 				"Your discussion around %q has been ended, view and edit your post: %s",
@@ -842,7 +846,7 @@ func (c *telegramBot) handleCmd(
 			),
 		)
 
-		return err
+		return nil
 	case constant.CommandInclude:
 		replyTo := msg.ReplyToMessage
 		if replyTo == nil {
