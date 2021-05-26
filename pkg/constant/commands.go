@@ -8,7 +8,11 @@ const (
 	CommandEnd     = "/end"
 
 	CommandContinue = "/continue"
-	CommandEdit     = "/edit"
+
+	// post management
+	CommandEdit   = "/edit"
+	CommandList   = "/list"
+	CommandDelete = "/delete"
 
 	CommandHelp = "/help"
 
@@ -24,7 +28,10 @@ var (
 		CommandEnd,
 
 		CommandContinue,
+
 		CommandEdit,
+		CommandList,
+		CommandDelete,
 
 		CommandHelp,
 	}
@@ -36,7 +43,10 @@ var (
 		CommandEnd:     "end current discussion",
 
 		CommandContinue: "continue previously created discussion",
-		CommandEdit:     "edit discussion post",
+
+		CommandEdit:   "edit discussion post",
+		CommandList:   "list all discussion posts",
+		CommandDelete: "delete certain discussion post",
 
 		CommandHelp: "show help text",
 

@@ -112,7 +112,7 @@ func createTelegramBot(
 		botToken:    opts.BotToken,
 		botUsername: botUsername,
 
-		SessionManager: newSessionManager(),
+		SessionManager: newSessionManager(ctx),
 
 		webArchiver:     wa,
 		storage:         st,
@@ -463,7 +463,7 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 		}
 
 		if isCmd {
-			return c.handleCmd(logger, uint64(msg.Chat.Id), cmd, string(utf16.Decode(content)), msg)
+			return c.handleCmd(logger, uint64(msg.Chat.Id), cmd, strings.TrimSpace(string(utf16.Decode(content))), msg)
 		}
 
 		// filter private message for special replies to this bot
@@ -471,213 +471,15 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 			userID := uint64(msg.From.Id)
 			chatID := uint64(msg.Chat.Id)
 
-			// check if it's a reply for conversion started by links to /discuss or /continue
-			{
-				msgIDShouldReplyTo, isExpectingInput := c.sessionIsExpectingInput(userID)
-				standbySession, hasStandbySession := c.getStandbySession(userID)
-
-				// check if this message is an auth token
-				if isExpectingInput &&
-					uint64(msg.ReplyToMessage.MessageId) == msgIDShouldReplyTo &&
-					hasStandbySession {
-
-					gen, userConfig, err := c.createGenerator()
-					defer func() {
-						if err != nil {
-							_ = c.cancelSessionStandby(userID)
-
-							// best effort
-							_, _ = c.sendTextMessage(
-								chatID, true, true, 0,
-								fmt.Sprintf("The discussion was canceled due to error, please retry later: %v", err),
-							)
-
-							if standbySession.ChatID != chatID {
-								_, _ = c.sendTextMessage(
-									standbySession.ChatID, true, true, 0,
-									"The discussion was canceled due to error, please retry later",
-								)
-							}
-						}
-					}()
-
-					if err != nil {
-						_, _ = c.sendTextMessage(
-							chatID, true, true, msg.MessageId,
-							fmt.Sprintf("Internal bot error: %v", err),
-						)
-						return nil
-					}
-
-					userConfig.SetAuthToken(strings.TrimSpace(*msg.Text))
-					_, err = gen.Login(userConfig)
-					if err != nil {
-						_, _ = c.sendTextMessage(
-							chatID, true, true, msg.MessageId,
-							fmt.Sprintf("%s: auth error: %v", gen.Name(), err),
-						)
-						// usually not our fault, let user try again
-						err = nil
-						return nil
-					}
-
-					var title string
-					switch {
-					case len(standbySession.Topic) != 0:
-						// is /discuss, create a new post
-						title = standbySession.Topic
-
-						content, err2 := gen.FormatPagePrefix()
-						if err2 != nil {
-							return fmt.Errorf("failed to generate initial page: %w", err2)
-						}
-
-						postURL, err2 := gen.Publish(title, content)
-						if err2 != nil {
-							_, _ = c.sendTextMessage(
-								chatID, true, true, 0,
-								fmt.Sprintf("%s pre-publish failed: %v", gen.Name(), err2),
-							)
-							return err2
-						}
-
-						_, err2 = c.sendTextMessage(
-							standbySession.ChatID, true, true, 0,
-							fmt.Sprintf(
-								"The post for your discussion around %q has been created: %s",
-								title, postURL,
-							),
-						)
-						if err2 != nil {
-							return err2
-						}
-					case len(standbySession.URL) != 0:
-						// is /continue, find existing post to edit
-						var err2 error
-
-						// we may not find the post if user provided a wrong url, don't count this error
-						// as session error
-						title, err2 = gen.Retrieve(standbySession.URL)
-						if err2 != nil {
-							_, _ = c.sendTextMessage(
-								chatID, true, true, msg.MessageId,
-								fmt.Sprintf("Retrieve %s post error: %v", gen.Name(), err2),
-							)
-							return nil
-						}
-					}
-
-					_, err = c.activateSession(
-						standbySession.ChatID, userID, title,
-						standbySession.ChatUsername, gen,
-					)
-					if err != nil {
-						_, _ = c.sendTextMessage(
-							chatID, true, true, msg.MessageId,
-							fmt.Sprintf("Internal bot error: %v", err),
-						)
-						return err
-					}
-
-					c.resolveSessionInput(userID)
-					defer func() {
-						if err != nil {
-							// bset effort
-							_, _ = c.deactivateSession(standbySession.ChatID)
-						}
-					}()
-
-					msgID, _ := c.sendTextMessage(chatID, true, true, 0, "Success!")
-
-					// delete user provided token related messages
-					c.scheduleMessageDelete(
-						chatID, 10*time.Second,
-						uint64(msgID),
-						uint64(msg.MessageId),
-						msgIDShouldReplyTo,
-					)
-
-					_, _ = c.sendTextMessage(
-						standbySession.ChatID, true, true, 0,
-						"You can start your discussion now, the post will be updated after the discussion",
-					)
-
-					return nil
-				}
-			}
-
-			// check if it's a reply for conversion started by links to /edit
-			{
-				msgIDShouldReplyTo, isExpectingInput := c.getPendingEditing(userID)
-
-				if isExpectingInput &&
-					uint64(msg.ReplyToMessage.MessageId) == msgIDShouldReplyTo {
-
-					gen, userConfig, err := c.createGenerator()
-					defer func() {
-						if err != nil {
-							c.resolvePendingEditing(userID)
-
-							// best effort
-							_, _ = c.sendTextMessage(
-								chatID, true, true, 0,
-								fmt.Sprintf("The edit was canceled due to error, please retry later: %v", err),
-							)
-						}
-					}()
-
-					if err != nil {
-						_, _ = c.sendTextMessage(
-							chatID, true, true, msg.MessageId,
-							fmt.Sprintf("Internal bot error: %v", err),
-						)
-						return nil
-					}
-
-					userConfig.SetAuthToken(strings.TrimSpace(*msg.Text))
-					_, err = gen.Login(userConfig)
-					if err != nil {
-						_, _ = c.sendTextMessage(
-							chatID, true, true, msg.MessageId,
-							fmt.Sprintf("%s: auth error: %v", gen.Name(), err),
-						)
-						// usually not our fault, let user try again
-						err = nil
-						return nil
-					}
-
-					authURL, err := gen.AuthURL()
-					if err != nil {
-						_, _ = c.sendTextMessage(
-							chatID, true, true, msg.MessageId,
-							fmt.Sprintf("%s: unable to get auth url: %v", gen.Name(), err),
-						)
-						return err
-					}
-
-					c.resolvePendingEditing(userID)
-
-					msgID, _ := c.sendTextMessage(
-						chatID, true, true, 0, "Login Success!",
-						telegram.InlineKeyboardMarkup{
-							InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
-								Text: "Edit on this device",
-								Url:  &authURL,
-							}}},
-						},
-					)
-
-					// delete user provided token related messages
-					c.scheduleMessageDelete(
-						chatID, 10*time.Second,
-						uint64(msg.MessageId),
-						msgIDShouldReplyTo,
-					)
-
-					// delete auth url later
-					c.scheduleMessageDelete(chatID, 5*time.Minute, uint64(msgID))
-
-					return nil
+			for _, handle := range []tokenInputHandleFunc{
+				c.tryToHandleInputForDiscussOrContinue,
+				c.tryToHandleInputForEditing,
+				c.tryToHandleInputForListing,
+				c.tryToHandleInputForDeleting,
+			} {
+				handled, err := handle(chatID, userID, msg)
+				if handled {
+					return err
 				}
 			}
 		}
@@ -687,6 +489,8 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 		return c.appendSessionMessage(logger, uint64(msg.Chat.Id), msg)
 	}
 }
+
+type tokenInputHandleFunc func(chatID uint64, userID uint64, msg *telegram.Message) (bool, error)
 
 func (c *telegramBot) appendSessionMessage(
 	logger log.Interface,
@@ -857,50 +661,15 @@ func (c *telegramBot) handleCmd(
 	}
 
 	switch cmd {
-	case constant.CommandEdit:
-		if !isPrivateMessage {
-			msgID, _ := c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				"You cannot use <code>/edit</code> command in groups",
-			)
-
-			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
-			return nil
-		}
-
-		// base64-url(edit:hex(userID):hex(chatID))
-		userIDPart := encodeUint64Hex(userID)
-		chatIDPart := encodeUint64Hex(chatID)
-
-		urlForEdit := fmt.Sprintf(
-			"https://t.me/%s?start=%s",
-			c.botUsername,
-			base64.URLEncoding.EncodeToString(
-				[]byte(fmt.Sprintf("edit:%s:%s", userIDPart, chatIDPart)),
-			),
-		)
-
-		_, err := c.sendTextMessage(
-			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("Enter your %s token to edit", c.generatorName),
-			telegram.InlineKeyboardMarkup{
-				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
-					Text: "Enter",
-					Url:  &urlForEdit,
-				}}},
-			},
-		)
-
-		return err
 	case constant.CommandDiscuss, constant.CommandContinue:
 		// mark this session as standby, wait for reply from bot private message
 		var topic, url, onInvalidCmdMsg string
 		switch cmd {
 		case constant.CommandDiscuss:
-			topic = strings.TrimSpace(params)
+			topic = params
 			onInvalidCmdMsg = "Please specify a discussion topic, e.g. <code>%s foo</code>"
 		case constant.CommandContinue:
-			url = strings.TrimSpace(params)
+			url = params
 			// nolint:lll
 			onInvalidCmdMsg = "Please specify the url of the discussion post, e.g. <code>%s https://telegra.ph/foo-01-21-100</code>"
 		}
@@ -928,7 +697,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		if !c.markSessionStandby(userID, chatID, defaultChatUsername, topic, url) {
+		if !c.markSessionStandby(userID, chatID, defaultChatUsername, topic, url, 5*time.Minute) {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
 				"You have already started a discussion with no auth token specified, please end that first",
@@ -941,7 +710,7 @@ func (c *telegramBot) handleCmd(
 		return func() (err error) {
 			defer func() {
 				if err != nil {
-					c.cancelSessionStandby(userID)
+					c.resolvePendingRequest(userID)
 				}
 			}()
 
@@ -996,246 +765,26 @@ func (c *telegramBot) handleCmd(
 			return err
 		}()
 	case constant.CommandStart:
-		if !isPrivateMessage {
-			msgID, _ := c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				"You cannot <code>/start</code> this bot in groups",
-			)
-
-			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
-			return nil
-		}
-
-		payload := strings.TrimSpace(params)
-		if len(payload) == 0 {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Welcome, need some <code>/help</code> ?")
-			return nil
-		}
-
-		createOrEnter, err := base64.URLEncoding.DecodeString(payload)
-		if err != nil {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "I am alive.")
-			return nil
-		}
-
-		parts := strings.SplitN(string(createOrEnter), ":", 3)
-		if len(parts) != 3 {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Told you, I'm alive.")
-			return nil
-		}
-
-		action := parts[0]
-
-		originalUserID, err := decodeUint64Hex(parts[1])
-		if err != nil {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, fmt.Sprintf("Internal bot error: %s", err))
-			return nil
-		}
-
-		// ensure same user
-		if originalUserID != userID {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "The link is not for you :(")
-			return nil
-		}
-
-		originalChatID, err := decodeUint64Hex(parts[2])
-		if err != nil {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, fmt.Sprintf("Internal bot error: %s", err))
-			return nil
-		}
-
-		var (
-			standbySession         *standbySession
-			expectedOriginalChatID uint64
-		)
-
-		switch action {
-		case "create", "enter":
-			var ok bool
-			standbySession, ok = c.getStandbySession(userID)
-			if !ok {
-				_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "No discussion requested")
-				return nil
-			}
-
-			expectedOriginalChatID = standbySession.ChatID
-		case "edit":
-			expectedOriginalChatID = chatID
-		default:
-			return nil
-		}
-
-		// delete `/start` message
-		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msg.MessageId))
-
-		if expectedOriginalChatID != originalChatID {
-			// should not happen, defensive check
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Unexpected chat id not match")
-			return nil
-		}
-
-		switch action {
-		case "create":
-			gen, userConfig, err2 := c.createGenerator()
-			defer func() {
-				if err2 != nil {
-					_ = c.cancelSessionStandby(userID)
-
-					// best effort
-					_, _ = c.sendTextMessage(
-						chatID, true, true, 0,
-						fmt.Sprintf("The discussion was canceled due to error, please retry later: %v", err2),
-					)
-
-					if standbySession.ChatID != chatID {
-						_, _ = c.sendTextMessage(
-							standbySession.ChatID, true, true, 0,
-							"The discussion was canceled due to error, please retry later",
-						)
-					}
-				}
-			}()
-
-			if err2 != nil {
-				_, _ = c.sendTextMessage(
-					chatID, true, true, msg.MessageId,
-					fmt.Sprintf("Internal bot error: %v", err2),
-				)
-				return err2
-			}
-
-			token, err2 := gen.Login(userConfig)
-			if err2 != nil {
-				_, _ = c.sendTextMessage(
-					chatID, true, true, msg.MessageId,
-					fmt.Sprintf("%s login failed: %v", gen.Name(), err2),
-				)
-				return err2
-			}
-
-			_, err2 = c.sendTextMessage(
-				chatID, false, true, 0,
-				fmt.Sprintf(
-					"Here is your %s token, keep it on your own for later use:\n\n<pre>%s</pre>",
-					gen.Name(), token,
-				),
-			)
-			if err2 != nil {
-				_, _ = c.sendTextMessage(
-					chatID, false, true, msg.MessageId,
-					fmt.Sprintf("Internal bot error: unable to send %s token: %v", gen.Name(), err2),
-				)
-				return err2
-			}
-
-			content, err2 := gen.FormatPagePrefix()
-			if err2 != nil {
-				return fmt.Errorf("failed to generate initial page: %w", err2)
-			}
-
-			postURL, err2 := gen.Publish(standbySession.Topic, content)
-			if err2 != nil {
-				_, _ = c.sendTextMessage(
-					chatID, true, true, msg.MessageId,
-					fmt.Sprintf("%s pre-publish failed: %v", gen.Name(), err2),
-				)
-				return err2
-			}
-
-			currentSession, err2 := c.activateSession(
-				standbySession.ChatID,
-				userID,
-				standbySession.Topic,
-				standbySession.ChatUsername,
-				gen,
-			)
-			if err2 != nil {
-				logger.D("invalid usage of discuss", log.String("reason", err2.Error()))
-				_, _ = c.sendTextMessage(
-					standbySession.ChatID, true, true, 0,
-					fmt.Sprintf("Could not activate discussion: %v", err2),
-				)
-				return err2
-			}
-
-			defer func() {
-				if err2 != nil {
-					// bset effort
-					_, _ = c.deactivateSession(standbySession.ChatID)
-				}
-			}()
-
-			_, err2 = c.sendTextMessage(
-				standbySession.ChatID, true, true, 0,
-				fmt.Sprintf(
-					"The post for your discussion around %q has been created: %s",
-					currentSession.Topic, postURL,
-				),
-			)
-
-			return nil
-		case "enter":
-			msgID, err2 := c.sendTextMessage(chatID, false, true, 0,
-				fmt.Sprintf("Enter your %s token as a reply to this message", c.generatorName),
-				telegram.ForceReply{
-					ForceReply: true,
-					Selective:  constant.True(),
-				},
-			)
-			if err2 != nil {
-				// this message must be sent to user, this error will trigger message redelivery
-				return err2
-			}
-
-			if !c.markSessionExpectingInput(userID, uint64(msgID)) {
-				msgID2, _ := c.sendTextMessage(
-					chatID, false, true, msg.MessageId,
-					"The discussion is not expecting any input",
-				)
-
-				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msgID2))
-
-				return nil
-			}
-
-			return nil
-		case "edit":
-			msgID, err2 := c.sendTextMessage(
-				chatID, true, true, 0,
-				fmt.Sprintf("Enter your %s token as a reply to this message", c.generatorName),
-				telegram.ForceReply{
-					ForceReply: true,
-					Selective:  constant.True(),
-				},
-			)
-			if err2 != nil {
-				// this message must be sent to user, this error will trigger message redelivery
-				return err2
-			}
-
-			_ = c.markPendingEditing(userID, uint64(msgID))
-
-			return nil
-		default:
-			_, _ = c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				"Nice try!",
-			)
-
-			return nil
-		}
+		return c.handleStartCommand(logger, chatID, userID, isPrivateMessage, params, msg)
 	case constant.CommandEnd:
-		if c.cancelSessionStandby(userID) {
-			c.resolveSessionInput(userID)
-
-			// a standby session, no more action
-
+		prevReq, ok := c.resolvePendingRequest(userID)
+		if ok {
+			// a pending request, no generator involved
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"You have canceled the unstarted discussion",
+				fmt.Sprintf("You have canceled the pending <code>%s</code>", getCommandFromRequest(prevReq)),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
+
+			if sr, isSR := prevReq.(*sessionRequest); isSR {
+				if sr.ChatID != chatID {
+					_, _ = c.sendTextMessage(
+						sr.ChatID, true, true, 0,
+						"Discussion was canceled by the initiator.",
+					)
+				}
+			}
 
 			return nil
 		}
@@ -1288,7 +837,7 @@ func (c *telegramBot) handleCmd(
 		_, err = c.sendTextMessage(
 			chatID, false, false, 0,
 			fmt.Sprintf(
-				"Your discussion around %q has been ended, view and edit post here: %s",
+				"Your discussion around %q has been ended, view and edit your post: %s",
 				currentSession.Topic, postURL,
 			),
 		)
@@ -1373,6 +922,149 @@ func (c *telegramBot) handleCmd(
 		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID))
 
 		return nil
+	case constant.CommandEdit:
+		if !isPrivateMessage {
+			msgID, _ := c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				"You cannot use <code>/edit</code> command in groups",
+			)
+
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
+			return nil
+		}
+
+		prevCmd, ok := c.markPendingEditing(userID, 5*time.Minute)
+		if !ok {
+			_, _ = c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				fmt.Sprintf("You have pending <code>%s</code> request not finished", prevCmd),
+			)
+			return nil
+		}
+
+		// base64-url(edit:hex(userID):hex(chatID))
+		userIDPart := encodeUint64Hex(userID)
+		chatIDPart := encodeUint64Hex(chatID)
+
+		urlForEdit := fmt.Sprintf(
+			"https://t.me/%s?start=%s",
+			c.botUsername,
+			base64.URLEncoding.EncodeToString(
+				[]byte(fmt.Sprintf("edit:%s:%s", userIDPart, chatIDPart)),
+			),
+		)
+
+		_, err := c.sendTextMessage(
+			chatID, true, true, msg.MessageId,
+			fmt.Sprintf("Enter your %s token to edit", c.generatorName),
+			telegram.InlineKeyboardMarkup{
+				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
+					Text: "Enter",
+					Url:  &urlForEdit,
+				}}},
+			},
+		)
+
+		return err
+	case constant.CommandDelete:
+		if !isPrivateMessage {
+			msgID, _ := c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				"You cannot use <code>/delete</code> command in groups",
+			)
+
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
+			return nil
+		}
+
+		if len(params) == 0 {
+			logger.D("invalid command usage", log.String("reason", "missing param"))
+			msgID, _ := c.sendTextMessage(
+				chatID, false, false, msg.MessageId,
+				fmt.Sprintf("Please specify the url(s) of the %s post(s) to be deleted", c.generatorName),
+			)
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
+
+			return nil
+		}
+
+		prevCmd, ok := c.markPendingDeleting(userID, strings.Split(params, " "), 5*time.Minute)
+		if !ok {
+			_, _ = c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				fmt.Sprintf("You have pending <code>%s</code> request not finished", prevCmd),
+			)
+			return nil
+		}
+
+		// base64-url(delete:hex(userID):hex(chatID))
+		userIDPart := encodeUint64Hex(userID)
+		chatIDPart := encodeUint64Hex(chatID)
+
+		urlForDelete := fmt.Sprintf(
+			"https://t.me/%s?start=%s",
+			c.botUsername,
+			base64.URLEncoding.EncodeToString(
+				[]byte(fmt.Sprintf("delete:%s:%s", userIDPart, chatIDPart)),
+			),
+		)
+
+		_, err := c.sendTextMessage(
+			chatID, true, true, msg.MessageId,
+			fmt.Sprintf("Enter your %s token to delete the post", c.generatorName),
+			telegram.InlineKeyboardMarkup{
+				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
+					Text: "Enter",
+					Url:  &urlForDelete,
+				}}},
+			},
+		)
+
+		return err
+	case constant.CommandList:
+		if !isPrivateMessage {
+			msgID, _ := c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				"You cannot use <code>/list</code> command in groups",
+			)
+
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
+			return nil
+		}
+
+		prevCmd, ok := c.markPendingListing(userID, 5*time.Minute)
+		if !ok {
+			_, _ = c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				fmt.Sprintf("You have pending <code>%s</code> request not finished", prevCmd),
+			)
+			return nil
+		}
+
+		// base64-url(list:hex(userID):hex(chatID))
+		userIDPart := encodeUint64Hex(userID)
+		chatIDPart := encodeUint64Hex(chatID)
+
+		urlForList := fmt.Sprintf(
+			"https://t.me/%s?start=%s",
+			c.botUsername,
+			base64.URLEncoding.EncodeToString(
+				[]byte(fmt.Sprintf("list:%s:%s", userIDPart, chatIDPart)),
+			),
+		)
+
+		_, err := c.sendTextMessage(
+			chatID, true, true, msg.MessageId,
+			fmt.Sprintf("Enter your %s token to list your posts", c.generatorName),
+			telegram.InlineKeyboardMarkup{
+				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
+					Text: "Enter",
+					Url:  &urlForList,
+				}}},
+			},
+		)
+
+		return err
 	case constant.CommandHelp:
 		_, _ = c.sendTextMessage(chatID, true, true, 0, constant.CommandHelpText())
 		return nil
@@ -1387,10 +1079,6 @@ func (c *telegramBot) handleCmd(
 		return err
 	}
 }
-
-// func (c *telegramBot) handleMessageEdit(me *telegram.Message) error {
-// 	return nil
-// }
 
 func (c telegramBot) scheduleMessageDelete(chatID uint64, after time.Duration, msgIDs ...uint64) {
 	for _, msgID := range msgIDs {
@@ -1453,4 +1141,249 @@ func (c *telegramBot) sendTextMessage(
 	}
 
 	return result.JSON200.Result.MessageId, nil
+}
+
+func (c *telegramBot) handleStartCommand(
+	logger log.Interface,
+	chatID uint64,
+	userID uint64,
+	isPrivateMessage bool,
+	params string,
+	msg *telegram.Message,
+) error {
+	if !isPrivateMessage {
+		msgID, _ := c.sendTextMessage(
+			chatID, true, true, msg.MessageId,
+			"You cannot <code>/start</code> this bot in groups",
+		)
+
+		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
+		return nil
+	}
+
+	if len(params) == 0 {
+		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Welcome, need some <code>/help</code> ?")
+		return nil
+	}
+
+	createOrEnter, err := base64.URLEncoding.DecodeString(params)
+	if err != nil {
+		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "I am alive.")
+		return nil
+	}
+
+	parts := strings.SplitN(string(createOrEnter), ":", 3)
+	if len(parts) != 3 {
+		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Told you, I'm alive.")
+		return nil
+	}
+
+	action := parts[0]
+
+	originalUserID, err := decodeUint64Hex(parts[1])
+	if err != nil {
+		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, fmt.Sprintf("Internal bot error: %s", err))
+		return nil
+	}
+
+	// ensure same user
+	if originalUserID != userID {
+		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "The link is not for you :(")
+		return nil
+	}
+
+	originalChatID, err := decodeUint64Hex(parts[2])
+	if err != nil {
+		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, fmt.Sprintf("Internal bot error: %s", err))
+		return nil
+	}
+
+	var (
+		standbySession         *sessionRequest
+		expectedOriginalChatID uint64
+	)
+
+	switch action {
+	case "create", "enter":
+		var ok bool
+		standbySession, ok = c.getStandbySession(userID)
+		if !ok {
+			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "No discussion requested")
+			return nil
+		}
+
+		expectedOriginalChatID = standbySession.ChatID
+	case "edit", "delete", "list":
+		expectedOriginalChatID = chatID
+	default:
+		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Unknown action")
+		return nil
+	}
+
+	// delete `/start` message
+	c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msg.MessageId))
+
+	if expectedOriginalChatID != originalChatID {
+		// should not happen, defensive check
+		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Unexpected chat id not match")
+		return nil
+	}
+
+	switch action {
+	case "create":
+		gen, userConfig, err2 := c.createGenerator()
+		defer func() {
+			if err2 != nil {
+				_, _ = c.resolvePendingRequest(userID)
+
+				// best effort
+				_, _ = c.sendTextMessage(
+					chatID, true, true, 0,
+					fmt.Sprintf("The discussion was canceled due to error, please retry later: %v", err2),
+				)
+
+				if standbySession.ChatID != chatID {
+					_, _ = c.sendTextMessage(
+						standbySession.ChatID, true, true, 0,
+						"The discussion was canceled due to error, please retry later",
+					)
+				}
+			}
+		}()
+
+		if err2 != nil {
+			_, _ = c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				fmt.Sprintf("Internal bot error: %v", err2),
+			)
+			return err2
+		}
+
+		token, err2 := gen.Login(userConfig)
+		if err2 != nil {
+			_, _ = c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				fmt.Sprintf("%s login failed: %v", gen.Name(), err2),
+			)
+			return err2
+		}
+
+		_, err2 = c.sendTextMessage(
+			chatID, false, true, 0,
+			fmt.Sprintf(
+				"Here is your %s token, keep it on your own for later use:\n\n<pre>%s</pre>",
+				gen.Name(), token,
+			),
+		)
+		if err2 != nil {
+			_, _ = c.sendTextMessage(
+				chatID, false, true, msg.MessageId,
+				fmt.Sprintf("Internal bot error: unable to send %s token: %v", gen.Name(), err2),
+			)
+			return err2
+		}
+
+		content, err2 := gen.FormatPagePrefix()
+		if err2 != nil {
+			return fmt.Errorf("failed to generate initial page: %w", err2)
+		}
+
+		postURL, err2 := gen.Publish(standbySession.Topic, content)
+		if err2 != nil {
+			_, _ = c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				fmt.Sprintf("%s pre-publish failed: %v", gen.Name(), err2),
+			)
+			return err2
+		}
+
+		currentSession, err2 := c.activateSession(
+			standbySession.ChatID,
+			userID,
+			standbySession.Topic,
+			standbySession.ChatUsername,
+			gen,
+		)
+		if err2 != nil {
+			logger.D("invalid usage of discuss", log.String("reason", err2.Error()))
+			_, _ = c.sendTextMessage(
+				standbySession.ChatID, true, true, 0,
+				fmt.Sprintf("Could not activate discussion: %v", err2),
+			)
+			return err2
+		}
+
+		defer func() {
+			if err2 != nil {
+				// bset effort
+				_, _ = c.deactivateSession(standbySession.ChatID)
+			}
+		}()
+
+		_, err2 = c.sendTextMessage(
+			standbySession.ChatID, true, true, 0,
+			fmt.Sprintf(
+				"The post for your discussion around %q has been created: %s",
+				currentSession.Topic, postURL,
+			),
+		)
+
+		return nil
+	case "enter":
+		msgID, err2 := c.sendTextMessage(chatID, false, true, 0,
+			fmt.Sprintf("Enter your %s token as a reply to this message", c.generatorName),
+			telegram.ForceReply{
+				ForceReply: true,
+				Selective:  constant.True(),
+			},
+		)
+		if err2 != nil {
+			// this message must be sent to user, this error will trigger message redelivery
+			return err2
+		}
+
+		if !c.markRequestExpectingInput(userID, uint64(msgID)) {
+			msgID2, _ := c.sendTextMessage(
+				chatID, false, true, msg.MessageId,
+				"The discussion is not expecting any input",
+			)
+
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msgID2))
+
+			return nil
+		}
+
+		return nil
+	case "edit", "delete", "list":
+		msgID, err2 := c.sendTextMessage(
+			chatID, true, true, 0,
+			fmt.Sprintf("Enter your %s token as a reply to this message", c.generatorName),
+			telegram.ForceReply{
+				ForceReply: true,
+				Selective:  constant.True(),
+			},
+		)
+
+		if !c.markRequestExpectingInput(userID, uint64(msgID)) {
+			_, _ = c.sendTextMessage(
+				chatID, true, true, 0,
+				"Internal bot error: could not find your pending request",
+			)
+
+			c.scheduleMessageDelete(chatID, 100*time.Millisecond, uint64(msgID))
+
+			return nil
+		}
+
+		// this message must be sent to user, when the error is not nil
+		// telegram will redeliver message
+		return err2
+	default:
+		_, _ = c.sendTextMessage(
+			chatID, true, true, msg.MessageId,
+			"Nice try!",
+		)
+
+		return nil
+	}
 }
