@@ -1,10 +1,8 @@
 package server
 
 import (
-	"bytes"
 	"encoding/hex"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"net/http"
 	"path"
@@ -12,11 +10,11 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 	"unicode/utf16"
 
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/generator/telegraph"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 
@@ -29,11 +27,10 @@ var _ Message = (*telegramMessage)(nil)
 
 func newTelegramMessage(msg *telegram.Message) *telegramMessage {
 	return &telegramMessage{
-		id:   formatTelegramMessageID(msg.MessageId),
-		msg:  msg,
-		urls: make(map[string]string),
+		id:  formatTelegramMessageID(msg.MessageId),
+		msg: msg,
 
-		fileURL: "",
+		entities: make([]generator.MessageEntity, 0, 1),
 
 		ready: 0,
 
@@ -50,17 +47,7 @@ type telegramMessage struct {
 
 	msg *telegram.Message
 
-	// text -> url (named links)
-	// or
-	// url -> archive url (for archived pages)
-	urls map[string]string
-
-	// url -> image url (for archived pages)
-	archiveScreenshotURLs map[string]string
-
-	// file url
-	fileURL  string
-	fileName string
+	entities []generator.MessageEntity
 
 	ready uint32
 
@@ -69,6 +56,146 @@ type telegramMessage struct {
 
 func (m *telegramMessage) ID() string {
 	return m.id
+}
+
+func (m *telegramMessage) MessageURL() string {
+	url := m.ChatURL()
+	if len(url) == 0 {
+		return ""
+	}
+
+	return url + "/" + formatTelegramMessageID(m.msg.MessageId)
+}
+
+func (m *telegramMessage) Timestamp() time.Time {
+	// TODO
+	return time.Time{}
+}
+
+func (m *telegramMessage) ChatName() string {
+	var name string
+
+	if cfn := m.msg.Chat.FirstName; cfn != nil {
+		name = *cfn
+	}
+
+	if cln := m.msg.Chat.LastName; cln != nil {
+		name += " " + *cln
+	}
+
+	return name
+}
+
+func (m *telegramMessage) ChatURL() string {
+	if cu := m.msg.Chat.Username; cu != nil {
+		return "https://t.me/" + *cu
+	}
+
+	return ""
+}
+
+func (m *telegramMessage) Author() string {
+	if m.msg.From == nil {
+		return ""
+	}
+
+	name := m.msg.From.FirstName
+	if fln := m.msg.From.LastName; fln != nil {
+		name += " " + *fln
+	}
+
+	return name
+}
+
+func (m *telegramMessage) AuthorURL() string {
+	if m.msg.From == nil {
+		return ""
+	}
+
+	if fu := m.msg.From.Username; fu != nil {
+		return "https://t.me/" + *fu
+	}
+
+	return ""
+}
+
+func (m *telegramMessage) IsForwarded() bool {
+	return m.msg.ForwardFrom != nil
+}
+
+func (m *telegramMessage) OriginalMessageURL() string {
+	chatURL := m.OriginalChatURL()
+	if len(chatURL) == 0 {
+		return ""
+	}
+
+	if ffmi := m.msg.ForwardFromMessageId; ffmi != nil {
+		return chatURL + "/" + strconv.FormatInt(int64(*ffmi), 10)
+	}
+
+	return ""
+}
+
+func (m *telegramMessage) OriginalChatName() string {
+	if fc := m.msg.ForwardFromChat; fc != nil {
+		var name string
+		if fc.FirstName != nil {
+			name += *fc.FirstName
+		}
+
+		if fc.LastName != nil {
+			name += " " + *fc.LastName
+		}
+
+		return name
+	}
+
+	return ""
+}
+
+func (m *telegramMessage) OriginalChatURL() string {
+	if fc := m.msg.ForwardFromChat; fc != nil && fc.Username != nil {
+		return "https://t.me/" + *fc.Username
+	}
+
+	return ""
+}
+
+func (m *telegramMessage) OriginalAuthor() string {
+	if ff := m.msg.ForwardFrom; ff != nil {
+		name := ff.FirstName
+		if ff.LastName != nil {
+			name += " " + *ff.LastName
+		}
+
+		return name
+	}
+
+	return ""
+}
+
+func (m *telegramMessage) OriginalAuthorURL() string {
+	if ff := m.msg.ForwardFrom; ff != nil && ff.Username != nil {
+		return "https://t.me/" + *m.msg.ForwardFrom.Username
+	}
+
+	return ""
+}
+
+func (m *telegramMessage) IsReply() bool {
+	return m.msg.ReplyToMessage != nil
+}
+
+func (m *telegramMessage) ReplyToMessageID() string {
+	if m.msg.ReplyToMessage != nil {
+		return formatTelegramMessageID(m.msg.ReplyToMessage.MessageId)
+	}
+
+	return ""
+}
+
+func (m *telegramMessage) Entities() []generator.MessageEntity {
+	return m.entities
 }
 
 // ready for content generation
@@ -109,41 +236,101 @@ func (m *telegramMessage) PreProcess(
 
 	switch {
 	case m.msg.Text != nil:
-		var (
-			text     []uint16
-			entities *[]telegram.MessageEntity
-		)
-
-		if m.msg.Text != nil {
-			text = utf16.Encode([]rune(*m.msg.Text))
-			entities = m.msg.Entities
-		} else {
-			text = utf16.Encode([]rune(*m.msg.Caption))
-			entities = m.msg.CaptionEntities
-		}
+		entities := m.msg.Entities
 
 		if entities == nil {
+			m.entities = []generator.MessageEntity{{
+				Kind: generator.KindText,
+				Text: *m.msg.Text,
+			}}
 			m.markReady()
 			return
 		}
 
-		var (
-			urlsToArchive []string
-		)
+		// url -> index of the related entry in `m.entities`
+		urlsToArchive := make(map[string][]int)
 
-		urls := make(map[string]string)
+		text := utf16.Encode([]rune(*m.msg.Text))
 
+		textIndex := 0
 		for _, e := range *entities {
+			if e.Offset > textIndex {
+				// append previous unhandled plain text
+				m.entities = append(m.entities, generator.MessageEntity{
+					Kind:   generator.KindText,
+					Text:   string(utf16.Decode(text[textIndex:e.Offset])),
+					Params: nil,
+				})
+			}
+
 			data := string(utf16.Decode(text[e.Offset : e.Offset+e.Length]))
+			textIndex = e.Offset + e.Length
+
+			kind, ok := map[telegram.MessageEntityType]generator.FormatKind{
+				telegram.MessageEntityTypeBotCommand: generator.KindText,
+				telegram.MessageEntityTypeHashtag:    generator.KindText,
+				telegram.MessageEntityTypeCashtag:    generator.KindText,
+				telegram.MessageEntityTypeTextLink:   generator.KindText,
+
+				telegram.MessageEntityTypeBold:          generator.KindBold,
+				telegram.MessageEntityTypeItalic:        generator.KindItalic,
+				telegram.MessageEntityTypeStrikethrough: generator.KindStrikethrough,
+				telegram.MessageEntityTypeUnderline:     generator.KindUnderline,
+				telegram.MessageEntityTypeCode:          generator.KindCode,
+				telegram.MessageEntityTypePre:           generator.KindPre,
+
+				telegram.MessageEntityTypeEmail:       generator.KindEmail,
+				telegram.MessageEntityTypePhoneNumber: generator.KindPhoneNumber,
+			}[e.Type]
+
+			if ok {
+				m.entities = append(m.entities, generator.MessageEntity{
+					Kind:   kind,
+					Text:   data,
+					Params: nil,
+				})
+
+				continue
+			}
 
 			switch e.Type {
 			case telegram.MessageEntityTypeUrl:
-				urlsToArchive = append(urlsToArchive, data)
+				m.entities = append(m.entities, generator.MessageEntity{
+					Kind: generator.KindURL,
+					Text: data,
+					Params: map[generator.EntityParamKind]string{
+						generator.EntityParamURL:                     data,
+						generator.EntityParamWebArchiveURL:           "",
+						generator.EntityParamWebArchiveScreenshotURL: "",
+					},
+				})
+
+				urlsToArchive[data] = append(urlsToArchive[data], len(m.entities)-1)
 			case telegram.MessageEntityTypeMention, telegram.MessageEntityTypeTextMention:
-				urls[data] = fmt.Sprintf("https://t.me/%s", strings.TrimPrefix(data, "@"))
+				url := "https://t.me/" + strings.TrimPrefix(data, "@")
+				m.entities = append(m.entities, generator.MessageEntity{
+					Kind: generator.KindURL,
+					Text: data,
+					Params: map[generator.EntityParamKind]string{
+						generator.EntityParamURL:                     url,
+						generator.EntityParamWebArchiveURL:           "",
+						generator.EntityParamWebArchiveScreenshotURL: "",
+					},
+				})
+
+				// TODO: do we really need to archive user page? (while reasonable to me)
+				urlsToArchive[data] = append(urlsToArchive[data], len(m.entities)-1)
 			default:
-				// TODO: check other type of text message we can pre-process
+				client.logger.E("message entity unhandled", log.String("type", string(e.Type)))
 			}
+		}
+
+		if textIndex < len(text)-1 {
+			m.entities = append(m.entities, generator.MessageEntity{
+				Kind:   generator.KindText,
+				Text:   string(utf16.Decode(text[textIndex:])),
+				Params: nil,
+			})
 		}
 
 		if len(urlsToArchive) == 0 {
@@ -160,8 +347,15 @@ func (m *telegramMessage) PreProcess(
 				m.markReady()
 			}()
 
+			// url -> archive url
+			archiveURLs := make(map[string]string)
+			// url -> screen shot url
 			screenshotURLs := make(map[string]string)
-			for _, url := range urlsToArchive {
+			for url, indexes := range urlsToArchive {
+				if indexes == nil {
+					urlsToArchive[url] = make([]int, 0, 1)
+				}
+
 				archiveURL, screenshot, ext, err := w.Archive(url)
 				if err != nil {
 					select {
@@ -172,10 +366,10 @@ func (m *telegramMessage) PreProcess(
 					continue
 				}
 
-				urls[url] = archiveURL
+				archiveURLs[url] = archiveURL
 
 				if len(screenshot) == 0 {
-					// no screenshot created
+					// no screenshot
 					continue
 				}
 
@@ -194,12 +388,11 @@ func (m *telegramMessage) PreProcess(
 			}
 
 			m.update(func() {
-				for k, v := range urls {
-					m.urls[k] = v
-				}
-
-				for k, v := range screenshotURLs {
-					m.archiveScreenshotURLs[k] = v
+				for url, idxes := range urlsToArchive {
+					for _, idx := range idxes {
+						m.entities[idx].Params[generator.EntityParamWebArchiveURL] = archiveURLs[url]
+						m.entities[idx].Params[generator.EntityParamWebArchiveScreenshotURL] = screenshotURLs[url]
+					}
 				}
 			})
 		}()
@@ -212,6 +405,15 @@ func (m *telegramMessage) PreProcess(
 		if audio.FileName != nil {
 			requestFileName = *audio.FileName
 		}
+
+		m.entities = append(m.entities, generator.MessageEntity{
+			Kind: generator.KindAudio,
+			Text: "",
+			Params: map[generator.EntityParamKind]string{
+				generator.EntityParamURL:     "",
+				generator.EntityParamCaption: "",
+			},
+		})
 	case m.msg.Document != nil:
 		doc := m.msg.Document
 
@@ -219,6 +421,15 @@ func (m *telegramMessage) PreProcess(
 		if doc.FileName != nil {
 			requestFileName = *doc.FileName
 		}
+
+		m.entities = append(m.entities, generator.MessageEntity{
+			Kind: generator.KindDocument,
+			Text: "",
+			Params: map[generator.EntityParamKind]string{
+				generator.EntityParamURL:     "",
+				generator.EntityParamCaption: "",
+			},
+		})
 	case m.msg.Photo != nil:
 		var (
 			maxSize int
@@ -234,6 +445,15 @@ func (m *telegramMessage) PreProcess(
 		}
 
 		requestFileID = id
+
+		m.entities = append(m.entities, generator.MessageEntity{
+			Kind: generator.KindImage,
+			Text: "",
+			Params: map[generator.EntityParamKind]string{
+				generator.EntityParamURL:     "",
+				generator.EntityParamCaption: "",
+			},
+		})
 	case m.msg.Video != nil:
 		video := m.msg.Video
 
@@ -241,12 +461,55 @@ func (m *telegramMessage) PreProcess(
 		if video.FileName != nil {
 			requestFileName = *video.FileName
 		}
+
+		m.entities = append(m.entities, generator.MessageEntity{
+			Kind: generator.KindVideo,
+			Text: "",
+			Params: map[generator.EntityParamKind]string{
+				generator.EntityParamURL:     "",
+				generator.EntityParamCaption: "",
+			},
+		})
 	case m.msg.Voice != nil:
 		// TODO: sound to text
 		voice := m.msg.Voice
 		requestFileID = voice.FileId
+
+		m.entities = append(m.entities, generator.MessageEntity{
+			Kind: generator.KindVideo,
+			Text: "",
+			Params: map[generator.EntityParamKind]string{
+				generator.EntityParamURL:     "",
+				generator.EntityParamCaption: "",
+			},
+		})
+	case m.msg.VideoNote != nil:
+		// TODO
+		m.markReady()
+		return nil, nil
+	case m.msg.Animation != nil:
+		m.markReady()
+		return nil, nil
+	case m.msg.Sticker != nil,
+		m.msg.Dice != nil,
+		m.msg.Game != nil:
+		// TODO: shall we just ignore them
+		m.markReady()
+		return nil, nil
+	case m.msg.Poll != nil:
+		// TODO
+		m.markReady()
+		return nil, nil
+	case m.msg.Venue != nil:
+		// TODO
+		m.markReady()
+		return nil, nil
+	case m.msg.Location != nil:
+		// TODO
+		m.markReady()
+		return nil, nil
 	default:
-		// nothing to pre-process
+		client.logger.E("unhandled telegram message", log.Any("msg", m.msg))
 		m.markReady()
 		return nil, nil
 	}
@@ -388,260 +651,10 @@ func (m *telegramMessage) PreProcess(
 		logger.V("file uploaded", log.String("url", fileURL))
 
 		m.update(func() {
-			m.fileURL = fileURL
-			m.fileName = requestFileName
+			m.entities[0].Params[generator.EntityParamURL] = fileURL
+			m.entities[0].Params[generator.EntityParamFilename] = requestFileName
 		})
 	}()
 
 	return errCh, nil
-}
-
-func (m *telegramMessage) formatText(
-	fm generator.Formatter,
-	content string,
-	entities *[]telegram.MessageEntity,
-	buf io.StringWriter,
-) {
-	// index is the position of plain text content
-	index := 0
-
-	text := utf16.Encode([]rune(content))
-
-	msgEntityKindMapping := map[telegram.MessageEntityType]generator.FormatKind{
-		telegram.MessageEntityTypeBotCommand: generator.KindText,
-		telegram.MessageEntityTypeHashtag:    generator.KindText,
-		telegram.MessageEntityTypeCashtag:    generator.KindText,
-		telegram.MessageEntityTypeTextLink:   generator.KindText,
-
-		telegram.MessageEntityTypeBold:          generator.KindBold,
-		telegram.MessageEntityTypeItalic:        generator.KindItalic,
-		telegram.MessageEntityTypeStrikethrough: generator.KindStrikethrough,
-		telegram.MessageEntityTypeUnderline:     generator.KindUnderline,
-		telegram.MessageEntityTypeCode:          generator.KindCode,
-		telegram.MessageEntityTypePre:           generator.KindPre,
-
-		telegram.MessageEntityTypeEmail:       generator.KindEmail,
-		telegram.MessageEntityTypePhoneNumber: generator.KindPhoneNumber,
-		telegram.MessageEntityTypeUrl:         generator.KindURL,
-
-		// need pre-process
-		telegram.MessageEntityTypeMention:     generator.KindURL,
-		telegram.MessageEntityTypeTextMention: generator.KindURL,
-	}
-
-	if entities != nil {
-		for _, e := range *entities {
-			if index < e.Offset {
-				_, _ = buf.WriteString(string(utf16.Decode(text[index:e.Offset])))
-			}
-
-			// mark next possible position of plain text
-			index = e.Offset + e.Length
-
-			data := string(utf16.Decode(text[e.Offset : e.Offset+e.Length]))
-
-			var params []string
-			kind, ok := msgEntityKindMapping[e.Type]
-			if !ok {
-				// unsupported type
-				_, _ = buf.WriteString(data)
-				continue
-			}
-
-			switch e.Type {
-			case telegram.MessageEntityTypeMention, telegram.MessageEntityTypeTextMention:
-				// find pre-processed url
-				urlVal, ok := m.urls[data]
-				if ok {
-					params = append(params, urlVal)
-				}
-			}
-
-			_, _ = buf.WriteString(fm.Format(kind, data, params...))
-
-			switch e.Type {
-			case telegram.MessageEntityTypeUrl:
-				archiveURL, hasArchiveURL := m.urls[data]
-				if hasArchiveURL && len(archiveURL) != 0 {
-					_, _ = buf.WriteString(fm.Format(generator.KindURL, " [archive]", archiveURL))
-				} else {
-					_, _ = buf.WriteString(fm.Format(generator.KindText, " [archive missing]"))
-				}
-
-				screenshotURL, hasScreenshotURL := m.archiveScreenshotURLs[data]
-				if hasScreenshotURL && len(screenshotURL) != 0 {
-					_, _ = buf.WriteString(fm.Format(generator.KindURL, " [screenshot]", screenshotURL))
-				} else {
-					_, _ = buf.WriteString(fm.Format(generator.KindText, " [screenshot missing]"))
-				}
-			default:
-				// other cases
-			}
-		}
-	}
-
-	// write tail plain text
-	if index < len(text) {
-		_, _ = buf.WriteString(string(utf16.Decode(text[index:])))
-	}
-}
-
-func (m *telegramMessage) Format(fm generator.Formatter) []byte {
-	buf := &bytes.Buffer{}
-
-	msgAuthorLink := ``
-	switch {
-	case m.msg.ForwardFrom != nil:
-		originalUserText := m.msg.ForwardFrom.FirstName
-		{
-			if m.msg.ForwardFrom.LastName != nil {
-				originalUserText += " " + *m.msg.ForwardFrom.LastName
-			}
-
-			if m.msg.ForwardFrom.Username != nil {
-				msgAuthorLink += fm.Format(
-					generator.KindURL,
-					"(forwarded from) "+originalUserText,
-					fmt.Sprintf("https://t.me/%s", *m.msg.ForwardFrom.Username),
-				)
-			} else {
-				msgAuthorLink += "(forwarded from) " + originalUserText
-			}
-
-			originalChatText := ``
-			if fc := m.msg.ForwardFromChat; fc != nil {
-				if fc.FirstName != nil {
-					originalChatText += *fc.FirstName
-				}
-
-				if fc.LastName != nil {
-					if len(originalChatText) != 0 {
-						originalChatText += " "
-					}
-
-					originalChatText += *fc.LastName
-				}
-
-				if len(originalChatText) != 0 {
-					originalChatText += " @ "
-					if fc.Username != nil {
-						msgAuthorLink += fm.Format(
-							generator.KindURL,
-							originalChatText,
-							fmt.Sprintf("https://t.me/%s", *fc.Username),
-						)
-					} else {
-						msgAuthorLink += originalChatText
-					}
-				}
-			}
-		}
-
-		forwarderUserText := ""
-		if m.msg.From != nil {
-			forwarderUserText = m.msg.From.FirstName
-			if m.msg.From.LastName != nil {
-				forwarderUserText += " " + *m.msg.From.LastName
-			}
-
-			if m.msg.From.Username != nil {
-				msgAuthorLink += fm.Format(
-					generator.KindURL,
-					" (via) "+forwarderUserText,
-					fmt.Sprintf("https://t.me/%s", *m.msg.From.Username),
-				)
-			} else {
-				msgAuthorLink += "(via) " + forwarderUserText
-			}
-		}
-	case m.msg.From != nil:
-		// not a forwarded message
-		userText := m.msg.From.FirstName
-		if m.msg.From.LastName != nil {
-			userText += " " + *m.msg.From.LastName
-		}
-
-		if m.msg.From.Username != nil {
-			msgAuthorLink += fm.Format(
-				generator.KindURL,
-				userText,
-				fmt.Sprintf("https://t.me/%s", *m.msg.From.Username),
-			)
-		} else {
-			msgAuthorLink += userText
-		}
-	}
-
-	// write author link
-	_, _ = buf.WriteString(msgAuthorLink + "\n")
-
-	switch {
-	case m.msg.Text != nil:
-		m.formatText(fm, *m.msg.Text, m.msg.Entities, buf)
-	case m.msg.Audio != nil, m.msg.Voice != nil:
-		_, _ = buf.WriteString(
-			fm.Format(
-				generator.KindAudio, m.fileURL, m.formatFileCaptionText(fm),
-			),
-		)
-	case m.msg.Document != nil:
-		linkText := `[File]`
-		if len(m.fileName) != 0 {
-			linkText += " " + m.fileName
-		}
-
-		if m.msg.Caption != nil {
-			linkText += " (" + m.formatFileCaptionText(fm) + ")"
-		}
-
-		_, _ = buf.WriteString(
-			fm.Format(generator.KindURL, linkText, m.fileURL),
-		)
-	case m.msg.Photo != nil:
-		_, _ = buf.WriteString(
-			fm.Format(
-				generator.KindImage, m.fileURL, m.formatFileCaptionText(fm),
-			),
-		)
-	case m.msg.Video != nil:
-		_, _ = buf.WriteString(
-			fm.Format(
-				generator.KindVideo, m.fileURL, m.formatFileCaptionText(fm),
-			),
-		)
-	case m.msg.Caption != nil:
-		// should have been consumed by audio/photo/video
-	case m.msg.VideoNote != nil:
-		// TODO
-	case m.msg.Animation != nil:
-		// waitingForCaption = true
-	case m.msg.Sticker != nil,
-		m.msg.Dice != nil,
-		m.msg.Game != nil:
-		// TODO: shall we just ignore them
-	case m.msg.Poll != nil:
-		// TODO
-	case m.msg.Venue != nil:
-		// TODO
-	case m.msg.Location != nil:
-		// TODO
-	}
-
-	return buf.Bytes()
-}
-
-func (m *telegramMessage) formatFileCaptionText(fm generator.Formatter) string {
-	switch fm.Name() {
-	case telegraph.Name:
-		// telegraph doesn't support html tags in caption area
-		return fm.Format(generator.KindText, *m.msg.Caption)
-	default:
-		var caption string
-		if m.msg.Caption != nil {
-			captionBuf := &bytes.Buffer{}
-			m.formatText(fm, *m.msg.Caption, m.msg.CaptionEntities, captionBuf)
-			caption = captionBuf.String()
-		}
-		return caption
-	}
 }

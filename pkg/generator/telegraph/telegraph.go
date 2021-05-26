@@ -1,18 +1,30 @@
 package telegraph
 
 import (
+	"bytes"
 	"fmt"
-	"html"
+	"html/template"
+	"strings"
 	"sync"
 
 	"gitlab.com/toby3d/telegraph"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+
+	_ "embed"
 )
 
 // nolint:revive
 const (
 	Name = "telegraph"
+)
+
+var (
+	//go:embed page.tpl
+	defaultPageTemplate string
+
+	//go:embed page-prefix.tpl
+	defaultPagePrefixTemplate string
 )
 
 func init() {
@@ -21,17 +33,47 @@ func init() {
 		func(config interface{}) (generator.Interface, generator.UserConfig, error) {
 			c, ok := config.(*Config)
 			if !ok {
-				return nil, nil, fmt.Errorf("Unexpected non telegraph config: %T", config)
+				return nil, nil, fmt.Errorf("unexpected non telegraph config: %T", config)
+			}
+
+			// TODO: move message template and page template to user config
+			// 		 need to find a better UX for template editing
+
+			pageTpl := c.PageTemplate
+			if len(strings.TrimSpace(pageTpl)) == 0 {
+				pageTpl = defaultPageTemplate
+			}
+
+			_, err := template.New("").
+				Funcs(template.FuncMap(generator.CreateFuncMap(nil))).Parse(pageTpl)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid page template: %w", err)
+			}
+
+			pagePrefixTpl := c.PagePrefixTemplate
+			if len(strings.TrimSpace(pagePrefixTpl)) == 0 {
+				pagePrefixTpl = defaultPagePrefixTemplate
+			}
+
+			_, err = template.New("").
+				Funcs(template.FuncMap(generator.CreateFuncMap(nil))).Parse(pagePrefixTpl)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid page prefix template: %w", err)
 			}
 
 			return &Telegraph{
+				pageTpl:       pageTpl,
+				pagePrefixTpl: pagePrefixTpl,
+
 				defaultAccountShortName: c.DefaultAccountShortName,
 
 				mu: &sync.RWMutex{},
-			}, &UserConfig{}, nil
+			}, &userConfig{}, nil
 		},
 		func() interface{} {
 			return &Config{
+				PageTemplate: defaultPageTemplate,
+
 				DefaultAccountShortName: "meeting-minutes-bot",
 			}
 		},
@@ -39,12 +81,17 @@ func init() {
 }
 
 type Config struct {
+	PageTemplate       string `json:"pageTemplate" yaml:"pageTemplate"`
+	PagePrefixTemplate string `json:"pagePrefixTemplate" yaml:"pagePrefixTemplate"`
+
 	DefaultAccountShortName string `json:"defaultAccountShortName" yaml:"defaultAccountShortName"`
 }
 
 var _ generator.Interface = (*Telegraph)(nil)
 
 type Telegraph struct {
+	pageTpl, pagePrefixTpl string
+
 	defaultAccountShortName string
 
 	account *telegraph.Account
@@ -53,18 +100,18 @@ type Telegraph struct {
 	mu *sync.RWMutex
 }
 
-var _ generator.UserConfig = (*UserConfig)(nil)
+var _ generator.UserConfig = (*userConfig)(nil)
 
-type UserConfig struct {
-	ShortName  string
-	AuthorName string
-	AuthorURL  string
+type userConfig struct {
+	shortName  string
+	authorName string
+	authorURL  string
 
-	AuthToken string
+	authToken string
 }
 
-func (c *UserConfig) SetAuthToken(token string) {
-	c.AuthToken = token
+func (c *userConfig) SetAuthToken(token string) {
+	c.authToken = token
 }
 
 func NewTelegraph() (*Telegraph, error) {
@@ -82,17 +129,17 @@ func (t *Telegraph) Login(config generator.UserConfig) (string, error) {
 		ShortName: t.defaultAccountShortName,
 	}
 
-	cfg, ok := config.(*UserConfig)
+	cfg, ok := config.(*userConfig)
 	if ok {
 		baseAccount = &telegraph.Account{
 			ShortName:  t.defaultAccountShortName,
-			AuthorName: cfg.AuthorName,
-			AuthURL:    cfg.AuthorURL,
+			AuthorName: cfg.authorName,
+			AuthURL:    cfg.authorURL,
 
-			AccessToken: cfg.AuthToken,
+			AccessToken: cfg.authToken,
 		}
-		if len(cfg.ShortName) != 0 {
-			baseAccount.ShortName = cfg.ShortName
+		if len(cfg.shortName) != 0 {
+			baseAccount.ShortName = cfg.shortName
 		}
 	}
 
@@ -227,59 +274,43 @@ func (t *Telegraph) Append(title string, body []byte) (url string, _ error) {
 	return updatedPage.URL, nil
 }
 
-func (t *Telegraph) Format(kind generator.FormatKind, data string, params ...string) string {
-	switch kind {
-	case generator.KindText:
-		return html.EscapeString(data)
-	case generator.KindBold:
-		return `<strong>` + html.EscapeString(data) + `</strong>`
-	case generator.KindItalic:
-		return `<em>` + html.EscapeString(data) + `</em>`
-	case generator.KindStrikethrough:
-		return `<del>` + html.EscapeString(data) + `</del>`
-	case generator.KindUnderline:
-		return `<u>` + html.EscapeString(data) + `</u>`
-	case generator.KindPre:
-		return `<pre>` + html.EscapeString(data) + `</pre>`
-	case generator.KindCode:
-		return `<code>` + data + `</code>`
-	case generator.KindNewLine:
-		return data + `<br>`
-	case generator.KindParagraph:
-		return `<p>` + data + `</p>`
-	case generator.KindThematicBreak:
-		return data + `<hr>`
-	case generator.KindBlockquote:
-		return `<blockquote>` + data + `</blockquote>`
-	case generator.KindEmail:
-		return fmt.Sprintf(`<a href="mailto:%s">`, data) + html.EscapeString(data) + `</a>`
-	case generator.KindPhoneNumber:
-		return fmt.Sprintf(`<a href="tel:%s">`, data) + html.EscapeString(data) + `</a>`
-	case generator.KindVideo, generator.KindAudio:
-		result := `<figure>` + fmt.Sprintf(`<video src="%s"></video>`, data)
-		caption := ""
-		if len(params) != 0 {
-			caption = params[0]
-		}
-
-		return result + fmt.Sprintf(`<figcaption>%s</figcaption></figure>`, html.EscapeString(caption))
-	case generator.KindImage:
-		result := `<figure>` + fmt.Sprintf(`<img src="%s">`, data)
-		caption := ""
-		if len(params) != 0 {
-			caption = params[0]
-		}
-
-		return result + fmt.Sprintf(`<figcaption>%s</figcaption></figure>`, html.EscapeString(caption))
-	case generator.KindURL:
-		// TODO: parse telegraph supported media url (e.g. youtube)
-		url := data
-		if len(params) == 1 {
-			url = params[0]
-		}
-
-		return fmt.Sprintf(`<a href="%s">`, url) + html.EscapeString(data) + `</a>`
-	default:
-		return html.EscapeString(data)
+func (t *Telegraph) FormatPagePrefix() ([]byte, error) {
+	pagePrefixTpl, err := template.New("").
+		Funcs(template.FuncMap(generator.CreateFuncMap(nil))).Parse(t.pagePrefixTpl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse page prefix template: %w", err)
 	}
+
+	buf := &bytes.Buffer{}
+	err = pagePrefixTpl.Execute(buf, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute page prefix template: %w", err)
+	}
+
+	return buf.Bytes(), nil
+}
+
+func (t *Telegraph) FormatPageContent(
+	messages []generator.Message, fm generator.FuncMap,
+) ([]byte, error) {
+	var (
+		buf = &bytes.Buffer{}
+		err error
+	)
+
+	pageTpl, err := template.New("").
+		Funcs(template.FuncMap(generator.CreateFuncMap(nil))).Parse(t.pageTpl)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse page template: %w", err)
+	}
+
+	buf.Reset()
+	err = pageTpl.Execute(buf, &generator.TemplateData{
+		Messages: messages,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute page template: %w", err)
+	}
+
+	return buf.Bytes(), nil
 }
