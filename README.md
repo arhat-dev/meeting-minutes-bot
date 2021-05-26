@@ -21,7 +21,7 @@ Build your knowledgebase in Chat
 - Chat Platform
   - [x] `telegram`
 - Storage
-  - [x] `s3` (with public read access)
+  - [x] `s3` (with public read access, no presign support)
 - Post Generator
   - [x] `telegraph`
 - Web Archiver
@@ -41,7 +41,7 @@ Build your knowledgebase in Chat
 - [x] `/list` (Private Message Only)
   - List your posts
 - [x] `/delete url1{ url2 ... urlN}` (Private Message Only)
-  - Delete post(s) using their `POST_URL`s, you can provide multiple space separated urls
+  - Delete post(s) using their `POST_URL`s, you can provide multiple space separated URLs
 - [x] `/end` - end current discussion or cancel current operation
 - [ ] `/include` (During Discussion)
   - Use this command as a reply to the message out of the scope of current  you want to include in the final post
