@@ -29,6 +29,12 @@ func (a *nop) Publish(title string, body []byte) (url string, _ error) { return 
 // Append content to local post cache
 func (a *nop) Append(title string, body []byte) (url string, _ error) { return "", nil }
 
+// List all posts for this user
+func (a *nop) List() ([]PostInfo, error) { return nil, nil }
+
+// Delete one post according to the url
+func (a *nop) Delete(urls ...string) error { return nil }
+
 func (a *nop) FormatPagePrefix() ([]byte, error) {
 	return nil, nil
 }

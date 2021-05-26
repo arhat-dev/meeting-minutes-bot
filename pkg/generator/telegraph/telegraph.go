@@ -242,6 +242,94 @@ func (t *Telegraph) Publish(title string, body []byte) (url string, _ error) {
 	return page.URL, nil
 }
 
+// List all posts for this user
+func (t *Telegraph) List() ([]generator.PostInfo, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.account == nil {
+		return nil, fmt.Errorf("account not created")
+	}
+
+	const limit = 20
+	max := limit
+	var result []generator.PostInfo
+	for i := 0; i < max; i += limit {
+		list, err := t.account.GetPageList(i, limit)
+		if err != nil {
+			return result, fmt.Errorf("failed to get page list: %w", err)
+		}
+
+		max = list.TotalCount
+
+		for _, p := range list.Pages {
+			result = append(result, generator.PostInfo{
+				Title: p.Title,
+				URL:   p.URL,
+			})
+		}
+	}
+
+	return result, nil
+}
+
+// Delete one post according to the url, however we cannot delete telegraph posts
+// we just make it empty
+func (t *Telegraph) Delete(urls ...string) error {
+	if len(urls) == 0 {
+		return nil
+	}
+
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.account == nil {
+		return fmt.Errorf("account not created")
+	}
+
+	const limit = 20
+	max := limit
+
+	toDelete := make(map[string]struct{})
+	for _, u := range urls {
+		toDelete[u] = struct{}{}
+	}
+
+	for i := 0; i < max; i += limit {
+		list, err := t.account.GetPageList(i, limit)
+		if err != nil {
+			return fmt.Errorf("failed to get page list: %w", err)
+		}
+
+		max = list.TotalCount
+
+		for _, p := range list.Pages {
+			_, ok := toDelete[p.URL]
+			if !ok {
+				continue
+			}
+
+			p.AuthorName = ""
+			p.AuthorURL = ""
+			p.Description = ""
+			p.ImageURL = ""
+			p.Title = "[Removed]"
+
+			p.Content, err = telegraph.ContentFormat("<p>[Content Removed]</p>")
+			if err != nil {
+				panic(err)
+			}
+
+			_, err2 := t.account.EditPage(p, false)
+			if err2 != nil {
+				return fmt.Errorf("failed to remove post content: %w", err2)
+			}
+		}
+	}
+
+	return nil
+}
+
 func (t *Telegraph) Append(title string, body []byte) (url string, _ error) {
 	content, err := telegraph.ContentFormat(body)
 	if err != nil {
