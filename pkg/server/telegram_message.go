@@ -25,9 +25,12 @@ import (
 
 var _ Message = (*telegramMessage)(nil)
 
-func newTelegramMessage(msg *telegram.Message) *telegramMessage {
+func newTelegramMessage(msg *telegram.Message, botUsername string) *telegramMessage {
 	return &telegramMessage{
-		id:  formatTelegramMessageID(msg.MessageId),
+		id: formatTelegramMessageID(msg.MessageId),
+
+		botUsername: botUsername,
+
 		msg: msg,
 
 		entities: make([]generator.MessageEntity, 0, 1),
@@ -44,6 +47,8 @@ func formatTelegramMessageID(msgID int) string {
 
 type telegramMessage struct {
 	id string
+
+	botUsername string
 
 	msg *telegram.Message
 
@@ -87,6 +92,9 @@ func (m *telegramMessage) ChatName() string {
 }
 
 func (m *telegramMessage) ChatURL() string {
+	if m.IsPrivateMessage() {
+
+	}
 	if cu := m.msg.Chat.Username; cu != nil {
 		return "https://t.me/" + *cu
 	}
@@ -120,7 +128,10 @@ func (m *telegramMessage) AuthorURL() string {
 }
 
 func (m *telegramMessage) IsForwarded() bool {
-	return m.msg.ForwardFrom != nil
+	return m.msg.ForwardFrom != nil ||
+		m.msg.ForwardFromChat != nil ||
+		m.msg.ForwardSenderName != nil ||
+		m.msg.ForwardFromMessageId != nil
 }
 
 func (m *telegramMessage) OriginalMessageURL() string {
@@ -180,6 +191,10 @@ func (m *telegramMessage) OriginalAuthorURL() string {
 	}
 
 	return ""
+}
+
+func (m *telegramMessage) IsPrivateMessage() bool {
+	return m.msg.Chat.Type == telegram.ChatTypePrivate
 }
 
 func (m *telegramMessage) IsReply() bool {
