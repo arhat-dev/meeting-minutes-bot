@@ -22,7 +22,6 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/conf"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
@@ -528,11 +527,12 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 						// is /discuss, create a new post
 						title = standbySession.Topic
 
-						postURL, err2 := gen.Publish(
-							title, []byte(
-								gen.Format(generator.KindNewLine, generatePoweredByContent(gen)),
-							),
-						)
+						content, err2 := gen.FormatPagePrefix()
+						if err2 != nil {
+							return fmt.Errorf("failed to generate initial page: %w", err2)
+						}
+
+						postURL, err2 := gen.Publish(title, content)
 						if err2 != nil {
 							_, _ = c.sendTextMessage(
 								chatID, true, true, 0,
@@ -1061,7 +1061,12 @@ func (c *telegramBot) handleCmd(
 			expectedOriginalChatID = standbySession.ChatID
 		case "edit":
 			expectedOriginalChatID = chatID
+		default:
+			return nil
 		}
+
+		// delete `/start` message
+		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msg.MessageId))
 
 		if expectedOriginalChatID != originalChatID {
 			// should not happen, defensive check
@@ -1069,7 +1074,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		switch parts[0] {
+		switch action {
 		case "create":
 			gen, userConfig, err2 := c.createGenerator()
 			defer func() {
@@ -1123,12 +1128,12 @@ func (c *telegramBot) handleCmd(
 				return err2
 			}
 
-			postURL, err2 := gen.Publish(
-				standbySession.Topic,
-				[]byte(
-					gen.Format(generator.KindNewLine, generatePoweredByContent(gen)),
-				),
-			)
+			content, err2 := gen.FormatPagePrefix()
+			if err2 != nil {
+				return fmt.Errorf("failed to generate initial page: %w", err2)
+			}
+
+			postURL, err2 := gen.Publish(standbySession.Topic, content)
 			if err2 != nil {
 				_, _ = c.sendTextMessage(
 					chatID, true, true, msg.MessageId,
@@ -1249,7 +1254,16 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		n, content := currentSession.generateContent(currentSession.generator)
+		n, content, err := currentSession.generateContent()
+		if err != nil {
+			_, _ = c.sendTextMessage(
+				chatID, false, true, msg.MessageId,
+				fmt.Sprintf("Internal bot error: failed to generate post content: %v", err),
+			)
+
+			return err
+		}
+
 		postURL, err := currentSession.generator.Append(currentSession.Topic, content)
 		if err != nil {
 			_, _ = c.sendTextMessage(

@@ -16,10 +16,10 @@ var (
 	supportedDrivers = map[string]*bundle{
 		"": {
 			f: func(interface{}) (Interface, UserConfig, error) {
-				return &Nop{}, &NopUserConfig{}, nil
+				return &nop{}, &nopUserConfig{}, nil
 			},
 			cf: func() interface{} {
-				return &NopConfig{}
+				return &nopConfig{}
 			},
 		},
 	}

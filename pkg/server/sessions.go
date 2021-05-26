@@ -1,7 +1,6 @@
 package server
 
 import (
-	"bytes"
 	"fmt"
 	"sync"
 	"time"
@@ -82,48 +81,35 @@ func (s *session) deleteFirstNMessage(n int) {
 	}
 }
 
-func (s *session) generateContent(fm generator.Formatter) (msgOutCount int, _ []byte) {
+func (s *session) generateContent() (msgOutCount int, _ []byte, _ error) {
 	s.mu.RLock()
-	msgCopy := make([]Message, 0, len(s.Messages))
-	msgCopy = append(msgCopy, s.Messages...)
-	s.mu.RUnlock()
+	msgOutCount = len(s.Messages)
 
-	buf := &bytes.Buffer{}
-	for _, msg := range msgCopy {
-		chatUsername := s.defaultChatUsername
-
-		// TODO: should we try to find original link?
-
-		// switch {
-		// case msg.SenderChat != nil && msg.SenderChat.Username != nil:
-		// 	chatUsername = *msg.SenderChat.Username
-		// case msg.ForwardFromChat != nil && msg.ForwardFromChat.Username != nil:
-		// 	chatUsername = *msg.ForwardFromChat.Username
-		// 	msgID = uint64(*msg.ForwardFromMessageId)
-		// }
-
-		for !msg.Ready() {
-			// TODO: support cancel
-			println("waiting for message ready")
-			time.Sleep(1 * time.Second)
-		}
-
-		_, _ = buf.WriteString(
-			fm.Format(
-				generator.KindThematicBreak,
-				fm.Format(
-					generator.KindParagraph,
-					fm.Format(
-						generator.KindURL,
-						"[Link]",
-						fmt.Sprintf("https://t.me/%s/%s", chatUsername, msg.ID()),
-					)+" "+string(msg.Format(fm)),
-				),
-			),
-		)
+	index := make(map[string]generator.Message)
+	msgCopy := make([]generator.Message, 0, msgOutCount)
+	for i := range s.Messages[:msgOutCount] {
+		msgCopy = append(msgCopy, s.Messages[i])
+		index[s.Messages[i].ID()] = s.Messages[i]
 	}
 
-	return len(msgCopy), buf.Bytes()
+	s.mu.RUnlock()
+
+	// ensure every message is ready
+	for _, m := range msgCopy {
+		if !m.(Message).Ready() {
+			// TODO: log output
+			time.Sleep(1 * time.Second)
+		}
+	}
+
+	result, err := s.generator.FormatPageContent(
+		msgCopy,
+		generator.CreateFuncMap(func(id string) generator.Message {
+			return index[id]
+		}),
+	)
+
+	return msgOutCount, result, err
 }
 
 func newStandbySession(chatID uint64, chatUsername, topic, url string) *standbySession {

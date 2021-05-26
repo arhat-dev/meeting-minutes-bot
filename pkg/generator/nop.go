@@ -1,32 +1,38 @@
 package generator
 
-var _ UserConfig = (*NopUserConfig)(nil)
+var _ UserConfig = (*nopUserConfig)(nil)
 
-type NopUserConfig struct{}
+type nopUserConfig struct{}
 
-func (c *NopUserConfig) SetAuthToken(token string) {}
+func (c *nopUserConfig) SetAuthToken(token string) {}
 
-type NopConfig struct{}
+type nopConfig struct{}
 
-var _ Interface = (*Nop)(nil)
+var _ Interface = (*nop)(nil)
 
-type Nop struct{}
+type nop struct{}
 
-func (a *Nop) Name() string { return "Nop" }
+func (a *nop) Name() string { return "nop" }
 
 // Login to platform
-func (a *Nop) Login(config UserConfig) (token string, _ error) { return "", nil }
+func (a *nop) Login(config UserConfig) (token string, _ error) { return "", nil }
 
 // AuthURL return a one click url for external authorization
-func (a *Nop) AuthURL() (string, error) { return "", nil }
+func (a *nop) AuthURL() (string, error) { return "", nil }
 
 // Retrieve post and cache it locally according to the url
-func (a *Nop) Retrieve(url string) (title string, _ error) { return "", nil }
+func (a *nop) Retrieve(url string) (title string, _ error) { return "", nil }
 
 // Publish a new post
-func (a *Nop) Publish(title string, body []byte) (url string, _ error) { return "", nil }
+func (a *nop) Publish(title string, body []byte) (url string, _ error) { return "", nil }
 
 // Append content to local post cache
-func (a *Nop) Append(title string, body []byte) (url string, _ error) { return "", nil }
+func (a *nop) Append(title string, body []byte) (url string, _ error) { return "", nil }
 
-func (a *Nop) Format(kind FormatKind, text string, params ...string) string { return "" }
+func (a *nop) FormatPagePrefix() ([]byte, error) {
+	return nil, nil
+}
+
+func (a *nop) FormatPageContent(messages []Message, funcMap FuncMap) ([]byte, error) {
+	return nil, nil
+}

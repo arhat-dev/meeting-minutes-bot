@@ -10,7 +10,7 @@ type Client interface {
 }
 
 type Message interface {
-	ID() string
+	generator.Message
 
 	// preProcess the message:
 	// - sound to text
@@ -25,9 +25,6 @@ type Message interface {
 
 	// Ready returns true if the message has been pre-processed
 	Ready() bool
-
-	// Format message with target formatter
-	Format(fm generator.Formatter) []byte
 }
 
 type generatorFactoryFunc func() (generator.Interface, generator.UserConfig, error)
