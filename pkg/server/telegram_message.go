@@ -93,8 +93,9 @@ func (m *telegramMessage) ChatName() string {
 
 func (m *telegramMessage) ChatURL() string {
 	if m.IsPrivateMessage() {
-
+		return ""
 	}
+
 	if cu := m.msg.Chat.Username; cu != nil {
 		return "https://t.me/" + *cu
 	}
