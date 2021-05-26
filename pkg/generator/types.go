@@ -97,8 +97,6 @@ const (
 	KindUnderline
 	KindPre
 	KindCode
-	KindNewLine
-	KindParagraph
 	KindThematicBreak
 	KindBlockquote
 
@@ -152,7 +150,6 @@ func CreateFuncMap(findMessage MessageFindFunc) FuncMap {
 		"entityIsAudio":    func(entity MessageEntity) bool { return entity.Kind == KindAudio },
 		"entityIsDocument": func(entity MessageEntity) bool { return entity.Kind == KindDocument },
 
-		// to be overridden
 		"findMessage": findMessage,
 	}
 }

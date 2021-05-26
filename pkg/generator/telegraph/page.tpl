@@ -8,7 +8,7 @@
     {{- if not .IsPrivateMessage -}}
       <p>
       {{- /* Message Link */ -}}
-      
+
       {{- if .MessageURL -}}
         <a href="{{- .MessageURL -}}">[Link]</a>
       {{- end -}}
@@ -115,33 +115,47 @@
       {{- end -}}
 
       {{- if entityIsURL . -}}
-        <a href="{{- index .Params "url" -}}">{{- .Text -}}</a>
+        {{- $url := index .Params "url" -}}
+        {{- $archive_url := (index .Params "web_archive_url") -}}
+        {{- $screenshot_url := (index .Params "web_archive_screenshot_url") -}}
+
+        <a href="{{- $url -}}">{{- .Text -}}</a>
+        {{- if $archive_url -}}
+          {{- indent 1 "" -}}
+          <a href="{{- $archive_url -}}">[archive]</a>
+        {{- end -}}
+        {{- if $screenshot_url -}}
+          {{- indent 1 "" -}}
+          <a href="{{- $screenshot_url -}}">[screenshot]</a>
+        {{- end -}}
       {{- end -}}
 
       {{- if entityIsImage . -}}
-        <figure><img src="{{- index .Params "url" -}}"></img><figcaption>{{- index .Params "caption" -}}</figcaption></figure>
+        {{- $url := index .Params "url" -}}
+        {{- $caption := index .Params "caption" -}}
+        <figure><img src="{{- $url -}}"></img><figcaption>{{- $caption -}}</figcaption></figure>
       {{- end -}}
 
       {{- if or (entityIsVideo .) (entityIsAudio .) -}}
-        <figure><video src="{{- index .Params "url" -}}"></video><figcaption>{{- index .Params "caption" -}}</figcaption></figure>
+        {{- $url := index .Params "url" -}}
+        {{- $caption := index .Params "caption" -}}
+        <figure><video src="{{- $url -}}"></video><figcaption>{{- $caption -}}</figcaption></figure>
       {{- end -}}
 
-      {{- if and (entityIsDocument .) (gt (len (index .Params "url")) 0) -}}
-        <a href="{{- index .Params "url" -}}">[File]
-        {{- $filename := index .Params "filename" -}}
-        {{- if $filename -}}
-          {{- $filename | indent 1 -}}
-        {{- end -}}
-
-        {{- if (index .Params "caption") -}}
+      {{- if entityIsDocument . -}}
+        {{- $url := index .Params "url" -}}
+        {{- if $url -}}
+          {{- $filename := index .Params "filename" -}}
+          {{- $caption := index .Params "caption" -}}
+          <a href="{{- $url -}}">[File]
           {{- if $filename -}}
-            {{- indent 1 "-" -}}
-          {{- else -}}
-            {{- indent 1 " " -}}
+            {{- $filename | indent 1 -}}
           {{- end -}}
-          {{- index .Params "caption" -}}
+          </a>
+          {{- if $caption -}}
+            <br class="inline"><blockquote>{{- $caption -}}</blockquote>
+          {{- end -}}
         {{- end -}}
-        </a>
       {{- end -}}
 
     {{- end -}} {{- /* entities */ -}}
