@@ -20,16 +20,16 @@ type templateExecutor interface {
 func loadTemplatesFromFS(base templateExecutor, dirFS fs.FS) (templateExecutor, error) {
 	entries, err := fs.ReadDir(dirFS, ".")
 	if err != nil {
-		return nil, fmt.Errorf("load templates:: %w", err)
+		return nil, fmt.Errorf("load template: %w", err)
 	}
 
 	if len(entries) == 0 {
-		return nil, fmt.Errorf("load templates: no dir in fs")
+		return nil, fmt.Errorf("load template: no dir in fs")
 	}
 
 	first := entries[0]
 	dirName := first.Name()
-	pattern := path.Join(dirName, "*")
+	pattern := path.Join(dirName, "**/*.tpl")
 	if !first.IsDir() {
 		pattern = "*"
 	}

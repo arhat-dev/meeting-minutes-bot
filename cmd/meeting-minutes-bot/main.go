@@ -32,6 +32,8 @@ import (
 	_ "arhat.dev/meeting-minutes-bot/pkg/generator/gotemplate"
 
 	// post publishing drivers
+	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/file"
+	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/interpreter"
 	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/telegraph"
 
 	// web archive drivers
