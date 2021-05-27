@@ -36,6 +36,8 @@ Build your knowledgebase in Chat
   - Continue previous discussion, use corresponding `POST_URL` for your `TOPIC`
 - [x] `/ignore` (During Discussion)
   - Use this command as a reply to the message you want to omit in the final post
+- [x] `/include` (During Discussion)
+  - Use this command as a reply to the message out of the scope of current  you want to include in the final post
 - [x] `/edit` (Private Message Only)
   - Edit your posts with external application
 - [x] `/list` (Private Message Only)
@@ -43,8 +45,6 @@ Build your knowledgebase in Chat
 - [x] `/delete url1{ url2 ... urlN}` (Private Message Only)
   - Delete post(s) using their `POST_URL`s, you can provide multiple space separated URLs
 - [x] `/end` - end current discussion or cancel current operation
-- [ ] `/include` (During Discussion)
-  - Use this command as a reply to the message out of the scope of current  you want to include in the final post
 
 __NOTE:__ You have to manage `POST_URL`s for your `TOPIC`s
 
@@ -100,11 +100,12 @@ app:
     # currently only supports `gotemplate`
     driver: gotemplate
     config:
+      # available templates are [telegraph]
       builtinTemplate: telegraph
       # custom template directory, all files in this directory will be treated as template
-      templatesDir: ""
+      #templatesDir: /path/to/templates/dir
       # `html` or `text`
-      outputFormat: html
+      #outputFormat: html
 
   # post publisher
   publisher:
@@ -128,6 +129,8 @@ bots:
       # tlsPublicKey:
       # tlsPublicKeyData:
 ```
+
+__NOTE:__ You can refernce environment variables in config file (e.g. `${FOO}`, `$BAR`)
 
 ## Run
 
