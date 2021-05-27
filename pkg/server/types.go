@@ -2,6 +2,7 @@ package server
 
 import (
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
@@ -10,7 +11,7 @@ type Client interface {
 }
 
 type Message interface {
-	generator.Message
+	message.Interface
 
 	// preProcess the message:
 	// - sound to text
