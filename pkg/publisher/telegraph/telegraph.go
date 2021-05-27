@@ -52,9 +52,8 @@ type Driver struct {
 	mu *sync.RWMutex
 }
 
-func (t *Driver) Name() string {
-	return Name
-}
+func (t *Driver) Name() string       { return Name }
+func (t *Driver) RequireLogin() bool { return true }
 
 func (t *Driver) Login(config publisher.UserConfig) (string, error) {
 	baseAccount := &telegraph.Account{

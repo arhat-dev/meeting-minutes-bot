@@ -13,6 +13,7 @@ var _ Interface = (*nop)(nil)
 type nop struct{}
 
 func (a *nop) Name() string                                            { return "nop" }
+func (a *nop) RequireLogin() bool                                      { return false }
 func (a *nop) Login(config UserConfig) (token string, _ error)         { return "", nil }
 func (a *nop) AuthURL() (string, error)                                { return "", nil }
 func (a *nop) Retrieve(url string) (title string, _ error)             { return "", nil }

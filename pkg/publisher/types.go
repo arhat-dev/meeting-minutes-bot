@@ -3,6 +3,8 @@ package publisher
 type Interface interface {
 	Name() string
 
+	RequireLogin() bool
+
 	// Login to platform
 	Login(config UserConfig) (token string, _ error)
 
