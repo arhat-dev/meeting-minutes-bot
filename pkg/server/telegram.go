@@ -508,7 +508,7 @@ func (c *telegramBot) appendSessionMessage(
 	}
 
 	logger.V("appending session meesage")
-	m := newTelegramMessage(msg, c.botUsername)
+	m := newTelegramMessage(msg, c.botUsername, &currentSession.Messages)
 
 	errCh, err := m.PreProcess(c, c.webArchiver, c.storage, currentSession.peekLastMessage())
 	if err != nil {
@@ -805,7 +805,7 @@ func (c *telegramBot) handleCmd(
 
 		n, content, err := currentSession.generateContent()
 		if err != nil {
-			println("sending error message")
+			logger.I("failed to generate post content", log.Error(err))
 			_, _ = c.sendTextMessage(
 				chatID, false, true, msg.MessageId,
 				fmt.Sprintf("Internal bot error: failed to generate post content: %v", err),
@@ -817,6 +817,7 @@ func (c *telegramBot) handleCmd(
 
 		postURL, err := currentSession.generator.Append(currentSession.Topic, content)
 		if err != nil {
+			logger.I("failed to append content to post", log.Error(err))
 			_, _ = c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
 				fmt.Sprintf("%s post update error: %v", currentSession.generator.Name(), err),
@@ -1287,7 +1288,7 @@ func (c *telegramBot) handleStartCommand(
 			return err2
 		}
 
-		content, err2 := gen.FormatPagePrefix()
+		content, err2 := gen.FormatPageHeader()
 		if err2 != nil {
 			return fmt.Errorf("failed to generate initial page: %w", err2)
 		}

@@ -2,17 +2,20 @@ package telegraph
 
 import (
 	"bytes"
+	"embed"
 	"fmt"
 	"html/template"
-	"strings"
+	"io/fs"
+	"os"
+	"path"
+	"path/filepath"
 	"sync"
 
-	"github.com/Masterminds/sprig"
+	"github.com/Masterminds/sprig/v3"
 	"gitlab.com/toby3d/telegraph"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
-
-	_ "embed"
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
 // nolint:revive
@@ -21,63 +24,65 @@ const (
 )
 
 var (
-	//go:embed page.tpl
-	defaultPageTemplate string
+	//go:embed templates/*
+	defaultTemplates embed.FS
+)
 
-	//go:embed page-prefix.tpl
-	defaultPagePrefixTemplate string
+const (
+	defaultTemplatesPattern = "templates/*.tpl"
 )
 
 func init() {
+	_, err := template.New("").
+		Funcs(sprig.HtmlFuncMap()).
+		Funcs(template.FuncMap(generator.CreateFuncMap())).
+		ParseFS(defaultTemplates, defaultTemplatesPattern)
+	if err != nil {
+		panic(fmt.Errorf("%s: default templates not valid: %w", Name, err))
+	}
+
 	generator.Register(
 		Name,
 		func(config interface{}) (generator.Interface, generator.UserConfig, error) {
 			c, ok := config.(*Config)
 			if !ok {
-				return nil, nil, fmt.Errorf("unexpected non telegraph config: %T", config)
+				return nil, nil, fmt.Errorf("unexpected non %s config: %T", Name, config)
 			}
 
 			// TODO: move message template and page template to user config
 			// 		 need to find a better UX for template editing
 
-			pageTpl := c.PageTemplate
-			if len(strings.TrimSpace(pageTpl)) == 0 {
-				pageTpl = defaultPageTemplate
+			templatesFS := fs.FS(defaultTemplates)
+			pattern := defaultTemplatesPattern
+			if len(c.TemplatesDir) != 0 {
+				templatesFS = os.DirFS(c.TemplatesDir)
+				if len(c.TemplatesPattern) != 0 {
+					pattern = c.TemplatesPattern
+				} else {
+					pattern = path.Join(filepath.Base(c.TemplatesDir), "*")
+				}
 			}
 
-			_, err := template.New("").
-				Funcs(sprig.HermeticHtmlFuncMap()).
-				Funcs(template.FuncMap(generator.CreateFuncMap(nil))).
-				Parse(pageTpl)
-			if err != nil {
-				return nil, nil, fmt.Errorf("invalid page template: %w", err)
-			}
-
-			pagePrefixTpl := c.PagePrefixTemplate
-			if len(strings.TrimSpace(pagePrefixTpl)) == 0 {
-				pagePrefixTpl = defaultPagePrefixTemplate
-			}
-
-			_, err = template.New("").
-				Funcs(sprig.HermeticHtmlFuncMap()).
-				Funcs(template.FuncMap(generator.CreateFuncMap(nil))).
-				Parse(pagePrefixTpl)
-			if err != nil {
-				return nil, nil, fmt.Errorf("invalid page prefix template: %w", err)
-			}
-
-			return &Telegraph{
-				pageTpl:       pageTpl,
-				pagePrefixTpl: pagePrefixTpl,
-
+			ret := &Telegraph{
 				defaultAccountShortName: c.DefaultAccountShortName,
 
 				mu: &sync.RWMutex{},
-			}, &userConfig{}, nil
+			}
+
+			var err error
+			ret.templates, err = template.New("").
+				Funcs(sprig.HtmlFuncMap()).
+				Funcs(template.FuncMap(generator.CreateFuncMap())).
+				ParseFS(templatesFS, pattern)
+			if err != nil {
+				return nil, nil, fmt.Errorf("invalid templates: %w", err)
+			}
+
+			return ret, &userConfig{}, nil
 		},
 		func() interface{} {
 			return &Config{
-				PageTemplate: defaultPageTemplate,
+				TemplatesDir: "",
 
 				DefaultAccountShortName: "meeting-minutes-bot",
 			}
@@ -86,8 +91,8 @@ func init() {
 }
 
 type Config struct {
-	PageTemplate       string `json:"pageTemplate" yaml:"pageTemplate"`
-	PagePrefixTemplate string `json:"pagePrefixTemplate" yaml:"pagePrefixTemplate"`
+	TemplatesDir     string `json:"templatesDir" yaml:"templatesDir"`
+	TemplatesPattern string `json:"templatesPattern" yaml:"templatesPattern"`
 
 	DefaultAccountShortName string `json:"defaultAccountShortName" yaml:"defaultAccountShortName"`
 }
@@ -95,7 +100,7 @@ type Config struct {
 var _ generator.Interface = (*Telegraph)(nil)
 
 type Telegraph struct {
-	pageTpl, pagePrefixTpl string
+	templates *template.Template
 
 	defaultAccountShortName string
 
@@ -103,26 +108,6 @@ type Telegraph struct {
 	page    *telegraph.Page
 
 	mu *sync.RWMutex
-}
-
-var _ generator.UserConfig = (*userConfig)(nil)
-
-type userConfig struct {
-	shortName  string
-	authorName string
-	authorURL  string
-
-	authToken string
-}
-
-func (c *userConfig) SetAuthToken(token string) {
-	c.authToken = token
-}
-
-func NewTelegraph() (*Telegraph, error) {
-	return &Telegraph{
-		mu: &sync.RWMutex{},
-	}, nil
 }
 
 func (t *Telegraph) Name() string {
@@ -367,42 +352,34 @@ func (t *Telegraph) Append(title string, body []byte) (url string, _ error) {
 	return updatedPage.URL, nil
 }
 
-func (t *Telegraph) FormatPagePrefix() ([]byte, error) {
-	pagePrefixTpl, err := template.New("").
-		Funcs(template.FuncMap(generator.CreateFuncMap(nil))).Parse(t.pagePrefixTpl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse page prefix template: %w", err)
-	}
-
+func (t *Telegraph) FormatPageHeader() ([]byte, error) {
 	buf := &bytes.Buffer{}
-	err = pagePrefixTpl.Execute(buf, nil)
+	err := t.templates.ExecuteTemplate(buf, "page.header", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute page prefix template: %w", err)
+		return nil, fmt.Errorf("failed to execute page header template: %w", err)
 	}
 
 	return buf.Bytes(), nil
 }
 
-func (t *Telegraph) FormatPageContent(
-	messages []generator.Message, fm generator.FuncMap,
+func (t *Telegraph) FormatPageBody(
+	messages []message.Interface,
 ) ([]byte, error) {
 	var (
 		buf = &bytes.Buffer{}
 		err error
 	)
 
-	pageTpl, err := template.New("").
-		Funcs(sprig.HermeticHtmlFuncMap()).
-		Funcs(template.FuncMap(fm)).
-		Parse(t.pageTpl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse page template: %w", err)
-	}
+	t.mu.Lock()
+	err = t.templates.ExecuteTemplate(
+		buf,
+		"page.body",
+		&generator.TemplateData{
+			Messages: messages,
+		},
+	)
+	t.mu.Unlock()
 
-	buf.Reset()
-	err = pageTpl.Execute(buf, &generator.TemplateData{
-		Messages: messages,
-	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute page template: %w", err)
 	}

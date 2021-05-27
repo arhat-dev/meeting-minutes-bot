@@ -11,12 +11,13 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
 func newSession(topic, defaultChatUsername string, gen generator.Interface) *session {
 	return &session{
 		Topic:    topic,
-		Messages: make([]Message, 0, 16),
+		Messages: make([]message.Interface, 0, 16),
 
 		defaultChatUsername: defaultChatUsername,
 		generator:           gen,
@@ -27,7 +28,7 @@ func newSession(topic, defaultChatUsername string, gen generator.Interface) *ses
 
 type session struct {
 	Topic    string
-	Messages []Message
+	Messages []message.Interface
 
 	defaultChatUsername string
 	generator           generator.Interface
@@ -44,7 +45,7 @@ func (s *session) peekLastMessage() Message {
 		return nil
 	}
 
-	return s.Messages[size-1]
+	return s.Messages[size-1].(Message)
 }
 
 func (s *session) appendMessage(msg Message) {
@@ -81,7 +82,7 @@ func (s *session) deleteFirstNMessage(n int) {
 
 		s.Messages = s.Messages[n:]
 	} else {
-		s.Messages = make([]Message, 0, 16)
+		s.Messages = make([]message.Interface, 0, 16)
 		s.msgIdx = make(map[string]int)
 	}
 }
@@ -90,12 +91,8 @@ func (s *session) generateContent() (msgOutCount int, _ []byte, _ error) {
 	s.mu.RLock()
 	msgOutCount = len(s.Messages)
 
-	index := make(map[string]generator.Message)
-	msgCopy := make([]generator.Message, 0, msgOutCount)
-	for i := range s.Messages[:msgOutCount] {
-		msgCopy = append(msgCopy, s.Messages[i])
-		index[s.Messages[i].ID()] = s.Messages[i]
-	}
+	msgCopy := make([]message.Interface, msgOutCount)
+	_ = copy(msgCopy, s.Messages)
 
 	s.mu.RUnlock()
 
@@ -107,12 +104,7 @@ func (s *session) generateContent() (msgOutCount int, _ []byte, _ error) {
 		}
 	}
 
-	result, err := s.generator.FormatPageContent(
-		msgCopy,
-		generator.CreateFuncMap(func(id string) generator.Message {
-			return index[id]
-		}),
-	)
+	result, err := s.generator.FormatPageBody(msgCopy)
 
 	return msgOutCount, result, err
 }

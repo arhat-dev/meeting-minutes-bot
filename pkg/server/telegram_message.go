@@ -7,14 +7,12 @@ import (
 	"net/http"
 	"path"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
-	"unicode/utf16"
 
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 
@@ -25,15 +23,16 @@ import (
 
 var _ Message = (*telegramMessage)(nil)
 
-func newTelegramMessage(msg *telegram.Message, botUsername string) *telegramMessage {
+func newTelegramMessage(msg *telegram.Message, botUsername string, msgs *[]message.Interface) *telegramMessage {
 	return &telegramMessage{
 		id: formatTelegramMessageID(msg.MessageId),
 
 		botUsername: botUsername,
 
-		msg: msg,
+		msg:  msg,
+		msgs: msgs,
 
-		entities: make([]generator.MessageEntity, 0, 1),
+		entities: nil,
 
 		ready: 0,
 
@@ -46,13 +45,11 @@ func formatTelegramMessageID(msgID int) string {
 }
 
 type telegramMessage struct {
-	id string
-
+	id          string
 	botUsername string
-
-	msg *telegram.Message
-
-	entities []generator.MessageEntity
+	msg         *telegram.Message
+	entities    []message.Entity
+	msgs        *[]message.Interface
 
 	ready uint32
 
@@ -210,8 +207,16 @@ func (m *telegramMessage) ReplyToMessageID() string {
 	return ""
 }
 
-func (m *telegramMessage) Entities() []generator.MessageEntity {
+func (m *telegramMessage) Entities() []message.Entity {
 	return m.entities
+}
+
+func (m *telegramMessage) Messages() []message.Interface {
+	if m.msgs != nil {
+		return *m.msgs
+	}
+
+	return nil
 }
 
 // ready for content generation
@@ -252,107 +257,14 @@ func (m *telegramMessage) PreProcess(
 
 	switch {
 	case m.msg.Text != nil:
-		entities := m.msg.Entities
+		me := message.ParseTelegramEntities(*m.msg.Text, m.msg.Entities)
 
-		if entities == nil {
-			m.entities = []generator.MessageEntity{{
-				Kind: generator.KindText,
-				Text: *m.msg.Text,
-			}}
-			m.markReady()
-			return
-		}
+		if !me.NeedPreProcess() {
+			m.entities = me.Get()
 
-		// url -> index of the related entry in `m.entities`
-		urlsToArchive := make(map[string][]int)
-
-		text := utf16.Encode([]rune(*m.msg.Text))
-
-		textIndex := 0
-		for _, e := range *entities {
-			if e.Offset > textIndex {
-				// append previous unhandled plain text
-				m.entities = append(m.entities, generator.MessageEntity{
-					Kind:   generator.KindText,
-					Text:   string(utf16.Decode(text[textIndex:e.Offset])),
-					Params: nil,
-				})
-			}
-
-			data := string(utf16.Decode(text[e.Offset : e.Offset+e.Length]))
-			textIndex = e.Offset + e.Length
-
-			kind, ok := map[telegram.MessageEntityType]generator.FormatKind{
-				telegram.MessageEntityTypeBotCommand: generator.KindText,
-				telegram.MessageEntityTypeHashtag:    generator.KindText,
-				telegram.MessageEntityTypeCashtag:    generator.KindText,
-				telegram.MessageEntityTypeTextLink:   generator.KindText,
-
-				telegram.MessageEntityTypeBold:          generator.KindBold,
-				telegram.MessageEntityTypeItalic:        generator.KindItalic,
-				telegram.MessageEntityTypeStrikethrough: generator.KindStrikethrough,
-				telegram.MessageEntityTypeUnderline:     generator.KindUnderline,
-				telegram.MessageEntityTypeCode:          generator.KindCode,
-				telegram.MessageEntityTypePre:           generator.KindPre,
-
-				telegram.MessageEntityTypeEmail:       generator.KindEmail,
-				telegram.MessageEntityTypePhoneNumber: generator.KindPhoneNumber,
-			}[e.Type]
-
-			if ok {
-				m.entities = append(m.entities, generator.MessageEntity{
-					Kind:   kind,
-					Text:   data,
-					Params: nil,
-				})
-
-				continue
-			}
-
-			switch e.Type {
-			case telegram.MessageEntityTypeUrl:
-				m.entities = append(m.entities, generator.MessageEntity{
-					Kind: generator.KindURL,
-					Text: data,
-					Params: map[generator.EntityParamKind]string{
-						generator.EntityParamURL:                     data,
-						generator.EntityParamWebArchiveURL:           "",
-						generator.EntityParamWebArchiveScreenshotURL: "",
-					},
-				})
-
-				urlsToArchive[data] = append(urlsToArchive[data], len(m.entities)-1)
-			case telegram.MessageEntityTypeMention, telegram.MessageEntityTypeTextMention:
-				url := "https://t.me/" + strings.TrimPrefix(data, "@")
-				m.entities = append(m.entities, generator.MessageEntity{
-					Kind: generator.KindURL,
-					Text: data,
-					Params: map[generator.EntityParamKind]string{
-						generator.EntityParamURL:                     url,
-						generator.EntityParamWebArchiveURL:           "",
-						generator.EntityParamWebArchiveScreenshotURL: "",
-					},
-				})
-
-				// TODO: do we really need to archive user page? (while reasonable to me)
-				urlsToArchive[data] = append(urlsToArchive[data], len(m.entities)-1)
-			default:
-				client.logger.E("message entity unhandled", log.String("type", string(e.Type)))
-			}
-		}
-
-		if textIndex < len(text)-1 {
-			m.entities = append(m.entities, generator.MessageEntity{
-				Kind:   generator.KindText,
-				Text:   string(utf16.Decode(text[textIndex:])),
-				Params: nil,
-			})
-		}
-
-		if len(urlsToArchive) == 0 {
 			m.markReady()
 
-			return
+			return nil, nil
 		}
 
 		errCh = make(chan error, 1)
@@ -363,53 +275,16 @@ func (m *telegramMessage) PreProcess(
 				m.markReady()
 			}()
 
-			// url -> archive url
-			archiveURLs := make(map[string]string)
-			// url -> screen shot url
-			screenshotURLs := make(map[string]string)
-			for url, indexes := range urlsToArchive {
-				if indexes == nil {
-					urlsToArchive[url] = make([]int, 0, 1)
+			err2 := me.PreProcess(client.ctx, w, u)
+			if err2 != nil {
+				select {
+				case errCh <- fmt.Errorf("Message pre-process error: %w", err2):
+				case <-client.ctx.Done():
 				}
-
-				archiveURL, screenshot, ext, err := w.Archive(url)
-				if err != nil {
-					select {
-					case errCh <- fmt.Errorf("Internal bot error: unable to archive web page %s: %w", url, err):
-					case <-client.ctx.Done():
-					}
-
-					continue
-				}
-
-				archiveURLs[url] = archiveURL
-
-				if len(screenshot) == 0 {
-					// no screenshot
-					continue
-				}
-
-				filename := hex.EncodeToString(hashhelper.Sha256Sum(screenshot)) + ext
-				screenshotURL, err := u.Upload(client.ctx, filename, screenshot)
-				if err != nil {
-					select {
-					case errCh <- fmt.Errorf("unable to upload web page screenshot: %w", err):
-					case <-client.ctx.Done():
-					}
-
-					continue
-				}
-
-				screenshotURLs[url] = screenshotURL
 			}
 
 			m.update(func() {
-				for url, idxes := range urlsToArchive {
-					for _, idx := range idxes {
-						m.entities[idx].Params[generator.EntityParamWebArchiveURL] = archiveURLs[url]
-						m.entities[idx].Params[generator.EntityParamWebArchiveScreenshotURL] = screenshotURLs[url]
-					}
-				}
+				m.entities = me.Get()
 			})
 		}()
 
@@ -422,12 +297,12 @@ func (m *telegramMessage) PreProcess(
 			requestFileName = *audio.FileName
 		}
 
-		m.entities = append(m.entities, generator.MessageEntity{
-			Kind: generator.KindAudio,
+		m.entities = append(m.entities, message.Entity{
+			Kind: message.KindAudio,
 			Text: "",
-			Params: map[generator.EntityParamKind]string{
-				generator.EntityParamURL:     "",
-				generator.EntityParamCaption: "",
+			Params: map[message.EntityParamKey]interface{}{
+				message.EntityParamURL:     "",
+				message.EntityParamCaption: nil,
 			},
 		})
 	case m.msg.Document != nil:
@@ -438,12 +313,12 @@ func (m *telegramMessage) PreProcess(
 			requestFileName = *doc.FileName
 		}
 
-		m.entities = append(m.entities, generator.MessageEntity{
-			Kind: generator.KindDocument,
+		m.entities = append(m.entities, message.Entity{
+			Kind: message.KindDocument,
 			Text: "",
-			Params: map[generator.EntityParamKind]string{
-				generator.EntityParamURL:     "",
-				generator.EntityParamCaption: "",
+			Params: map[message.EntityParamKey]interface{}{
+				message.EntityParamURL:     "",
+				message.EntityParamCaption: nil,
 			},
 		})
 	case m.msg.Photo != nil:
@@ -462,12 +337,12 @@ func (m *telegramMessage) PreProcess(
 
 		requestFileID = id
 
-		m.entities = append(m.entities, generator.MessageEntity{
-			Kind: generator.KindImage,
+		m.entities = append(m.entities, message.Entity{
+			Kind: message.KindImage,
 			Text: "",
-			Params: map[generator.EntityParamKind]string{
-				generator.EntityParamURL:     "",
-				generator.EntityParamCaption: "",
+			Params: map[message.EntityParamKey]interface{}{
+				message.EntityParamURL:     "",
+				message.EntityParamCaption: nil,
 			},
 		})
 	case m.msg.Video != nil:
@@ -478,12 +353,12 @@ func (m *telegramMessage) PreProcess(
 			requestFileName = *video.FileName
 		}
 
-		m.entities = append(m.entities, generator.MessageEntity{
-			Kind: generator.KindVideo,
+		m.entities = append(m.entities, message.Entity{
+			Kind: message.KindVideo,
 			Text: "",
-			Params: map[generator.EntityParamKind]string{
-				generator.EntityParamURL:     "",
-				generator.EntityParamCaption: "",
+			Params: map[message.EntityParamKey]interface{}{
+				message.EntityParamURL:     "",
+				message.EntityParamCaption: nil,
 			},
 		})
 	case m.msg.Voice != nil:
@@ -491,12 +366,12 @@ func (m *telegramMessage) PreProcess(
 		voice := m.msg.Voice
 		requestFileID = voice.FileId
 
-		m.entities = append(m.entities, generator.MessageEntity{
-			Kind: generator.KindVideo,
+		m.entities = append(m.entities, message.Entity{
+			Kind: message.KindVideo,
 			Text: "",
-			Params: map[generator.EntityParamKind]string{
-				generator.EntityParamURL:     "",
-				generator.EntityParamCaption: "",
+			Params: map[message.EntityParamKey]interface{}{
+				message.EntityParamURL:     "",
+				message.EntityParamCaption: nil,
 			},
 		})
 	case m.msg.VideoNote != nil:
@@ -531,12 +406,43 @@ func (m *telegramMessage) PreProcess(
 	}
 
 	errCh = make(chan error, 1)
-	go func() {
-		defer func() {
-			close(errCh)
+	wg := &sync.WaitGroup{}
 
-			m.markReady()
-		}()
+	if m.msg.Caption != nil {
+		cme := message.ParseTelegramEntities(*m.msg.Caption, m.msg.CaptionEntities)
+
+		wg.Add(1)
+		if cme.NeedPreProcess() {
+			go func() {
+				defer wg.Done()
+
+				err2 := cme.PreProcess(client.ctx, w, u)
+				if err2 != nil {
+					select {
+					case errCh <- fmt.Errorf("Caption pre-process error: %w", err2):
+					case <-client.ctx.Done():
+					}
+				}
+
+				m.update(func() {
+					m.entities[0].Params[message.EntityParamCaption] = cme.Get()
+				})
+			}()
+		}
+	}
+
+	wg.Add(1)
+
+	go func() {
+		wg.Wait()
+
+		close(errCh)
+
+		m.markReady()
+	}()
+
+	go func() {
+		defer wg.Done()
 
 		logger := client.logger.WithFields(
 			log.String("filename", requestFileName),
@@ -667,8 +573,8 @@ func (m *telegramMessage) PreProcess(
 		logger.V("file uploaded", log.String("url", fileURL))
 
 		m.update(func() {
-			m.entities[0].Params[generator.EntityParamURL] = fileURL
-			m.entities[0].Params[generator.EntityParamFilename] = requestFileName
+			m.entities[0].Params[message.EntityParamURL] = fileURL
+			m.entities[0].Params[message.EntityParamFilename] = requestFileName
 		})
 	}()
 

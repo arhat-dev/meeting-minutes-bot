@@ -70,7 +70,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		// is /discuss, create a new post
 		title = standbySession.Topic
 
-		content, err2 := gen.FormatPagePrefix()
+		content, err2 := gen.FormatPageHeader()
 		if err2 != nil {
 			return true, fmt.Errorf("failed to generate initial page: %w", err2)
 		}
