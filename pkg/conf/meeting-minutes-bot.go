@@ -38,6 +38,7 @@ type AppConfig struct {
 	Storage     StorageConfig     `json:"storage" yaml:"storage"`
 	WebArchiver WebArchiverConfig `json:"webarchiver" yaml:"webarchiver"`
 	Generator   GeneratorConfig   `json:"generator" yaml:"generator"`
+	Publisher   PublisherConfig   `json:"publisher" yaml:"publisher"`
 }
 
 type BotsConfig struct {
@@ -60,7 +61,11 @@ func FlagsForAppConfig(prefix string, config *AppConfig) *pflag.FlagSet {
 		prefix+"webarchiver.driver", "", "set web archive service provider, one of [chromedp], leave empty to disable")
 	fs.StringVar(&config.Generator.Driver,
 		prefix+"generator.driver", "",
-		"set site generator service provider, one of [telegraph], leave empty to disable",
+		"set post generation engine, one of [gotemplate], leave empty to disable",
+	)
+	fs.StringVar(&config.Publisher.Driver,
+		prefix+"publisher.driver", "",
+		"set post publisher service provider, one of [telegraph], leave empty to disable",
 	)
 
 	return fs

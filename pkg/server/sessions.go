@@ -12,15 +12,16 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
-func newSession(topic, defaultChatUsername string, gen generator.Interface) *session {
+func newSession(topic, defaultChatUsername string, p publisher.Interface) *session {
 	return &session{
 		Topic:    topic,
 		Messages: make([]message.Interface, 0, 16),
 
 		defaultChatUsername: defaultChatUsername,
-		generator:           gen,
+		publisher:           p,
 		msgIdx:              make(map[string]int),
 		mu:                  &sync.RWMutex{},
 	}
@@ -31,7 +32,7 @@ type session struct {
 	Messages []message.Interface
 
 	defaultChatUsername string
-	generator           generator.Interface
+	publisher           publisher.Interface
 	msgIdx              map[string]int
 	mu                  *sync.RWMutex
 }
@@ -87,7 +88,7 @@ func (s *session) deleteFirstNMessage(n int) {
 	}
 }
 
-func (s *session) generateContent() (msgOutCount int, _ []byte, _ error) {
+func (s *session) generateContent(gen generator.Interface) (msgOutCount int, _ []byte, _ error) {
 	s.mu.RLock()
 	msgOutCount = len(s.Messages)
 
@@ -104,7 +105,7 @@ func (s *session) generateContent() (msgOutCount int, _ []byte, _ error) {
 		}
 	}
 
-	result, err := s.generator.FormatPageBody(msgCopy)
+	result, err := gen.FormatPageBody(msgCopy)
 
 	return msgOutCount, result, err
 }
@@ -315,7 +316,7 @@ func (c *SessionManager) getActiveSession(chatID uint64) (*session, bool) {
 func (c *SessionManager) activateSession(
 	chatID, userID uint64,
 	topic, defaultChatUsername string,
-	gen generator.Interface,
+	p publisher.Interface,
 ) (*session, error) {
 
 	c.mu.Lock()
@@ -335,7 +336,7 @@ func (c *SessionManager) activateSession(
 		return nil, fmt.Errorf("chat not match")
 	}
 
-	newS := newSession(topic, defaultChatUsername, gen)
+	newS := newSession(topic, defaultChatUsername, p)
 	sVal, loaded := c.activeSessions.LoadOrStore(chatID, newS)
 	if !loaded {
 		return newS, nil

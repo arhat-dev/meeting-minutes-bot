@@ -28,8 +28,11 @@ import (
 	// storage drivers
 	_ "arhat.dev/meeting-minutes-bot/pkg/storage/s3"
 
-	// site generator drivers
-	_ "arhat.dev/meeting-minutes-bot/pkg/generator/telegraph"
+	// post generation drivers
+	_ "arhat.dev/meeting-minutes-bot/pkg/generator/gotemplate"
+
+	// post publishing drivers
+	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/telegraph"
 
 	// web archive drivers
 	_ "arhat.dev/meeting-minutes-bot/pkg/webarchiver/cdp"

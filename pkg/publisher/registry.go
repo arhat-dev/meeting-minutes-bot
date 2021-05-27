@@ -1,10 +1,10 @@
-package generator
+package publisher
 
 import "fmt"
 
 type (
 	ConfigFactoryFunc func() interface{}
-	FactoryFunc       func(config interface{}) (Interface, error)
+	FactoryFunc       func(config interface{}) (Interface, UserConfig, error)
 )
 
 type bundle struct {
@@ -15,8 +15,8 @@ type bundle struct {
 var (
 	supportedDrivers = map[string]*bundle{
 		"": {
-			f: func(interface{}) (Interface, error) {
-				return &nop{}, nil
+			f: func(interface{}) (Interface, UserConfig, error) {
+				return &nop{}, &nopUserConfig{}, nil
 			},
 			cf: func() interface{} {
 				return &nopConfig{}
@@ -50,10 +50,10 @@ func NewConfig(name string) (interface{}, error) {
 	return b.cf(), nil
 }
 
-func NewDriver(name string, config interface{}) (Interface, error) {
+func NewDriver(name string, config interface{}) (Interface, UserConfig, error) {
 	b, ok := supportedDrivers[name]
 	if !ok {
-		return nil, fmt.Errorf("driver %q not found", name)
+		return nil, nil, fmt.Errorf("driver %q not found", name)
 	}
 
 	return b.f(config)

@@ -22,6 +22,7 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/conf"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
+	"arhat.dev/meeting-minutes-bot/pkg/generator"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
@@ -44,10 +45,12 @@ type telegramBot struct {
 	// chart_id -> session
 	*SessionManager
 
-	storage         storage.Interface
-	webArchiver     webarchiver.Interface
-	generatorName   string
-	createGenerator generatorFactoryFunc
+	storage     storage.Interface
+	webArchiver webarchiver.Interface
+	generator   generator.Interface
+
+	publisherName   string
+	createPublisher publisherFactoryFunc
 
 	msgDelQ *queue.TimeoutQueue
 }
@@ -60,8 +63,9 @@ func createTelegramBot(
 	mux *http.ServeMux,
 	st storage.Interface,
 	wa webarchiver.Interface,
-	generatorName string,
-	createGenerator generatorFactoryFunc,
+	gen generator.Interface,
+	publisherName string,
+	createPublisher publisherFactoryFunc,
 	opts *conf.TelegramConfig,
 ) (*telegramBot, error) {
 	tgClient, err := telegram.NewClient(
@@ -114,10 +118,12 @@ func createTelegramBot(
 
 		SessionManager: newSessionManager(ctx),
 
-		webArchiver:     wa,
-		storage:         st,
-		generatorName:   generatorName,
-		createGenerator: createGenerator,
+		webArchiver: wa,
+		storage:     st,
+		generator:   gen,
+
+		publisherName:   publisherName,
+		createPublisher: createPublisher,
 
 		msgDelQ: queue.NewTimeoutQueue(),
 	}
@@ -757,7 +763,7 @@ func (c *telegramBot) handleCmd(
 
 			_, err = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf(textPrompt, c.generatorName),
+				fmt.Sprintf(textPrompt, c.publisherName),
 				telegram.InlineKeyboardMarkup{
 					InlineKeyboard: inlineKeyboard[:],
 				},
@@ -803,7 +809,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		n, content, err := currentSession.generateContent()
+		n, content, err := currentSession.generateContent(c.generator)
 		if err != nil {
 			logger.I("failed to generate post content", log.Error(err))
 			_, _ = c.sendTextMessage(
@@ -815,12 +821,13 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		postURL, err := currentSession.generator.Append(currentSession.Topic, content)
+		pub := currentSession.publisher
+		postURL, err := pub.Append(currentSession.Topic, content)
 		if err != nil {
 			logger.I("failed to append content to post", log.Error(err))
 			_, _ = c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				fmt.Sprintf("%s post update error: %v", currentSession.generator.Name(), err),
+				fmt.Sprintf("%s post update error: %v", pub.Name(), err),
 			)
 
 			// do not execute again on telegram redelivery
@@ -961,7 +968,7 @@ func (c *telegramBot) handleCmd(
 
 		_, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("Enter your %s token to edit", c.generatorName),
+			fmt.Sprintf("Enter your %s token to edit", c.publisherName),
 			telegram.InlineKeyboardMarkup{
 				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
 					Text: "Enter",
@@ -986,7 +993,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "missing param"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				fmt.Sprintf("Please specify the url(s) of the %s post(s) to be deleted", c.generatorName),
+				fmt.Sprintf("Please specify the url(s) of the %s post(s) to be deleted", c.publisherName),
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
@@ -1016,7 +1023,7 @@ func (c *telegramBot) handleCmd(
 
 		_, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("Enter your %s token to delete the post", c.generatorName),
+			fmt.Sprintf("Enter your %s token to delete the post", c.publisherName),
 			telegram.InlineKeyboardMarkup{
 				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
 					Text: "Enter",
@@ -1060,7 +1067,7 @@ func (c *telegramBot) handleCmd(
 
 		_, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("Enter your %s token to list your posts", c.generatorName),
+			fmt.Sprintf("Enter your %s token to list your posts", c.publisherName),
 			telegram.InlineKeyboardMarkup{
 				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
 					Text: "Enter",
@@ -1236,7 +1243,7 @@ func (c *telegramBot) handleStartCommand(
 
 	switch action {
 	case "create":
-		gen, userConfig, err2 := c.createGenerator()
+		pub, userConfig, err2 := c.createPublisher()
 		defer func() {
 			if err2 != nil {
 				_, _ = c.resolvePendingRequest(userID)
@@ -1264,11 +1271,11 @@ func (c *telegramBot) handleStartCommand(
 			return err2
 		}
 
-		token, err2 := gen.Login(userConfig)
+		token, err2 := pub.Login(userConfig)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("%s login failed: %v", gen.Name(), err2),
+				fmt.Sprintf("%s login failed: %v", pub.Name(), err2),
 			)
 			return err2
 		}
@@ -1277,27 +1284,27 @@ func (c *telegramBot) handleStartCommand(
 			chatID, false, true, 0,
 			fmt.Sprintf(
 				"Here is your %s token, keep it on your own for later use:\n\n<pre>%s</pre>",
-				gen.Name(), token,
+				pub.Name(), token,
 			),
 		)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				chatID, false, true, msg.MessageId,
-				fmt.Sprintf("Internal bot error: unable to send %s token: %v", gen.Name(), err2),
+				fmt.Sprintf("Internal bot error: unable to send %s token: %v", pub.Name(), err2),
 			)
 			return err2
 		}
 
-		content, err2 := gen.FormatPageHeader()
+		content, err2 := c.generator.FormatPageHeader()
 		if err2 != nil {
 			return fmt.Errorf("failed to generate initial page: %w", err2)
 		}
 
-		postURL, err2 := gen.Publish(standbySession.Topic, content)
+		postURL, err2 := pub.Publish(standbySession.Topic, content)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("%s pre-publish failed: %v", gen.Name(), err2),
+				fmt.Sprintf("%s pre-publish failed: %v", pub.Name(), err2),
 			)
 			return err2
 		}
@@ -1307,7 +1314,7 @@ func (c *telegramBot) handleStartCommand(
 			userID,
 			standbySession.Topic,
 			standbySession.ChatUsername,
-			gen,
+			pub,
 		)
 		if err2 != nil {
 			logger.D("invalid usage of discuss", log.String("reason", err2.Error()))
@@ -1336,7 +1343,7 @@ func (c *telegramBot) handleStartCommand(
 		return nil
 	case "enter":
 		msgID, err2 := c.sendTextMessage(chatID, false, true, 0,
-			fmt.Sprintf("Enter your %s token as a reply to this message", c.generatorName),
+			fmt.Sprintf("Enter your %s token as a reply to this message", c.publisherName),
 			telegram.ForceReply{
 				ForceReply: true,
 				Selective:  constant.True(),
@@ -1362,7 +1369,7 @@ func (c *telegramBot) handleStartCommand(
 	case "edit", "delete", "list":
 		msgID, err2 := c.sendTextMessage(
 			chatID, true, true, 0,
-			fmt.Sprintf("Enter your %s token as a reply to this message", c.generatorName),
+			fmt.Sprintf("Enter your %s token as a reply to this message", c.publisherName),
 			telegram.ForceReply{
 				ForceReply: true,
 				Selective:  constant.True(),

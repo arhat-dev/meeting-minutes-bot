@@ -48,7 +48,7 @@
   {{- /* Message Link */ -}}
 
   {{- if .MessageURL -}}
-    <a href="{{- .MessageURL -}}">[Link]</a>
+    <a href="{{- .MessageURL -}}">[Message]</a>
   {{- end -}}
 
   {{- /* Message Author Info */ -}}

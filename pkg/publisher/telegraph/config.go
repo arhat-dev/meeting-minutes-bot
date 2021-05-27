@@ -1,8 +1,10 @@
 package telegraph
 
-import "arhat.dev/meeting-minutes-bot/pkg/generator"
+import (
+	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+)
 
-var _ generator.UserConfig = (*userConfig)(nil)
+var _ publisher.UserConfig = (*userConfig)(nil)
 
 type userConfig struct {
 	shortName  string

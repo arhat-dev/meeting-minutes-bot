@@ -1,21 +1,12 @@
 package telegraph
 
 import (
-	"bytes"
-	"embed"
 	"fmt"
-	"html/template"
-	"io/fs"
-	"os"
-	"path"
-	"path/filepath"
 	"sync"
 
-	"github.com/Masterminds/sprig/v3"
 	"gitlab.com/toby3d/telegraph"
 
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
 // nolint:revive
@@ -23,67 +14,23 @@ const (
 	Name = "telegraph"
 )
 
-var (
-	//go:embed templates/*
-	defaultTemplates embed.FS
-)
-
-const (
-	defaultTemplatesPattern = "templates/*.tpl"
-)
-
 func init() {
-	_, err := template.New("").
-		Funcs(sprig.HtmlFuncMap()).
-		Funcs(template.FuncMap(generator.CreateFuncMap())).
-		ParseFS(defaultTemplates, defaultTemplatesPattern)
-	if err != nil {
-		panic(fmt.Errorf("%s: default templates not valid: %w", Name, err))
-	}
-
-	generator.Register(
+	publisher.Register(
 		Name,
-		func(config interface{}) (generator.Interface, generator.UserConfig, error) {
+		func(config interface{}) (publisher.Interface, publisher.UserConfig, error) {
 			c, ok := config.(*Config)
 			if !ok {
 				return nil, nil, fmt.Errorf("unexpected non %s config: %T", Name, config)
 			}
 
-			// TODO: move message template and page template to user config
-			// 		 need to find a better UX for template editing
-
-			templatesFS := fs.FS(defaultTemplates)
-			pattern := defaultTemplatesPattern
-			if len(c.TemplatesDir) != 0 {
-				templatesFS = os.DirFS(c.TemplatesDir)
-				if len(c.TemplatesPattern) != 0 {
-					pattern = c.TemplatesPattern
-				} else {
-					pattern = path.Join(filepath.Base(c.TemplatesDir), "*")
-				}
-			}
-
-			ret := &Telegraph{
+			return &Telegraph{
 				defaultAccountShortName: c.DefaultAccountShortName,
 
 				mu: &sync.RWMutex{},
-			}
-
-			var err error
-			ret.templates, err = template.New("").
-				Funcs(sprig.HtmlFuncMap()).
-				Funcs(template.FuncMap(generator.CreateFuncMap())).
-				ParseFS(templatesFS, pattern)
-			if err != nil {
-				return nil, nil, fmt.Errorf("invalid templates: %w", err)
-			}
-
-			return ret, &userConfig{}, nil
+			}, &userConfig{}, nil
 		},
 		func() interface{} {
 			return &Config{
-				TemplatesDir: "",
-
 				DefaultAccountShortName: "meeting-minutes-bot",
 			}
 		},
@@ -91,17 +38,12 @@ func init() {
 }
 
 type Config struct {
-	TemplatesDir     string `json:"templatesDir" yaml:"templatesDir"`
-	TemplatesPattern string `json:"templatesPattern" yaml:"templatesPattern"`
-
 	DefaultAccountShortName string `json:"defaultAccountShortName" yaml:"defaultAccountShortName"`
 }
 
-var _ generator.Interface = (*Telegraph)(nil)
+var _ publisher.Interface = (*Telegraph)(nil)
 
 type Telegraph struct {
-	templates *template.Template
-
 	defaultAccountShortName string
 
 	account *telegraph.Account
@@ -114,7 +56,7 @@ func (t *Telegraph) Name() string {
 	return Name
 }
 
-func (t *Telegraph) Login(config generator.UserConfig) (string, error) {
+func (t *Telegraph) Login(config publisher.UserConfig) (string, error) {
 	baseAccount := &telegraph.Account{
 		ShortName: t.defaultAccountShortName,
 	}
@@ -233,7 +175,7 @@ func (t *Telegraph) Publish(title string, body []byte) (url string, _ error) {
 }
 
 // List all posts for this user
-func (t *Telegraph) List() ([]generator.PostInfo, error) {
+func (t *Telegraph) List() ([]publisher.PostInfo, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -243,7 +185,7 @@ func (t *Telegraph) List() ([]generator.PostInfo, error) {
 
 	const limit = 20
 	max := limit
-	var result []generator.PostInfo
+	var result []publisher.PostInfo
 	for i := 0; i < max; i += limit {
 		list, err := t.account.GetPageList(i, limit)
 		if err != nil {
@@ -253,7 +195,7 @@ func (t *Telegraph) List() ([]generator.PostInfo, error) {
 		max = list.TotalCount
 
 		for _, p := range list.Pages {
-			result = append(result, generator.PostInfo{
+			result = append(result, publisher.PostInfo{
 				Title: p.Title,
 				URL:   p.URL,
 			})
@@ -350,39 +292,4 @@ func (t *Telegraph) Append(title string, body []byte) (url string, _ error) {
 
 	t.page = updatedPage
 	return updatedPage.URL, nil
-}
-
-func (t *Telegraph) FormatPageHeader() ([]byte, error) {
-	buf := &bytes.Buffer{}
-	err := t.templates.ExecuteTemplate(buf, "page.header", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute page header template: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-func (t *Telegraph) FormatPageBody(
-	messages []message.Interface,
-) ([]byte, error) {
-	var (
-		buf = &bytes.Buffer{}
-		err error
-	)
-
-	t.mu.Lock()
-	err = t.templates.ExecuteTemplate(
-		buf,
-		"page.body",
-		&generator.TemplateData{
-			Messages: messages,
-		},
-	)
-	t.mu.Unlock()
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to execute page template: %w", err)
-	}
-
-	return buf.Bytes(), nil
 }
