@@ -1,8 +1,8 @@
 package server
 
 import (
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
@@ -28,4 +28,4 @@ type Message interface {
 	Ready() bool
 }
 
-type generatorFactoryFunc func() (generator.Interface, generator.UserConfig, error)
+type publisherFactoryFunc func() (publisher.Interface, publisher.UserConfig, error)

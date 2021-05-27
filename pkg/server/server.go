@@ -10,6 +10,7 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/conf"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
@@ -32,6 +33,11 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 		return fmt.Errorf("failed to create web archiver: %w", err)
 	}
 
+	gen, err := generator.NewDriver(opts.Generator.Driver, opts.Generator.Config)
+	if err != nil {
+		return fmt.Errorf("failed to create post generator: %w", err)
+	}
+
 	tgBot, err := createTelegramBot(
 		ctx,
 		log.Log.WithFields(log.String("bot", "telegram")),
@@ -39,9 +45,10 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 		mux,
 		fu,
 		wa,
-		opts.Generator.Driver,
-		func() (generator.Interface, generator.UserConfig, error) {
-			return generator.NewDriver(opts.Generator.Driver, opts.Generator.Config)
+		gen,
+		opts.Publisher.Driver,
+		func() (publisher.Interface, publisher.UserConfig, error) {
+			return publisher.NewDriver(opts.Publisher.Driver, opts.Publisher.Config)
 		},
 		&bots.Telegram,
 	)

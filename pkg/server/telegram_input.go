@@ -24,7 +24,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		return false, nil
 	}
 
-	gen, userConfig, err := c.createGenerator()
+	pub, userConfig, err := c.createPublisher()
 	defer func() {
 		if err != nil {
 			_, _ = c.resolvePendingRequest(userID)
@@ -53,11 +53,11 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 	}
 
 	userConfig.SetAuthToken(strings.TrimSpace(*msg.Text))
-	_, err = gen.Login(userConfig)
+	_, err = pub.Login(userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("%s: auth error: %v", gen.Name(), err),
+			fmt.Sprintf("%s: auth error: %v", pub.Name(), err),
 		)
 		// usually not our fault, let user try again
 		err = nil
@@ -70,16 +70,16 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		// is /discuss, create a new post
 		title = standbySession.Topic
 
-		content, err2 := gen.FormatPageHeader()
+		content, err2 := c.generator.FormatPageHeader()
 		if err2 != nil {
 			return true, fmt.Errorf("failed to generate initial page: %w", err2)
 		}
 
-		postURL, err2 := gen.Publish(title, content)
+		postURL, err2 := pub.Publish(title, content)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, 0,
-				fmt.Sprintf("%s pre-publish failed: %v", gen.Name(), err2),
+				fmt.Sprintf("%s pre-publish failed: %v", pub.Name(), err2),
 			)
 			return true, err2
 		}
@@ -100,11 +100,11 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 
 		// we may not find the post if user provided a wrong url, don't count this error
 		// as session error
-		title, err2 = gen.Retrieve(standbySession.URL)
+		title, err2 = pub.Retrieve(standbySession.URL)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("Retrieve %s post error: %v", gen.Name(), err2),
+				fmt.Sprintf("Retrieve %s post error: %v", pub.Name(), err2),
 			)
 			return true, nil
 		}
@@ -112,7 +112,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 
 	_, err = c.activateSession(
 		standbySession.ChatID, userID, title,
-		standbySession.ChatUsername, gen,
+		standbySession.ChatUsername, pub,
 	)
 	if err != nil {
 		_, _ = c.sendTextMessage(
@@ -165,7 +165,7 @@ func (c *telegramBot) tryToHandleInputForEditing(
 		return false, nil
 	}
 
-	gen, userConfig, err := c.createGenerator()
+	pub, userConfig, err := c.createPublisher()
 	defer func() {
 		if err != nil {
 			c.resolvePendingRequest(userID)
@@ -187,22 +187,22 @@ func (c *telegramBot) tryToHandleInputForEditing(
 	}
 
 	userConfig.SetAuthToken(strings.TrimSpace(*msg.Text))
-	_, err = gen.Login(userConfig)
+	_, err = pub.Login(userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("%s: auth error: %v", gen.Name(), err),
+			fmt.Sprintf("%s: auth error: %v", pub.Name(), err),
 		)
 		// usually not our fault, let user try again
 		err = nil
 		return true, nil
 	}
 
-	authURL, err := gen.AuthURL()
+	authURL, err := pub.AuthURL()
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("%s: unable to get auth url: %v", gen.Name(), err),
+			fmt.Sprintf("%s: unable to get auth url: %v", pub.Name(), err),
 		)
 		return true, err
 	}
@@ -249,7 +249,7 @@ func (c *telegramBot) tryToHandleInputForListing(
 		return false, nil
 	}
 
-	gen, userConfig, err := c.createGenerator()
+	pub, userConfig, err := c.createPublisher()
 	defer func() {
 		if err != nil {
 			c.resolvePendingRequest(userID)
@@ -271,22 +271,22 @@ func (c *telegramBot) tryToHandleInputForListing(
 	}
 
 	userConfig.SetAuthToken(strings.TrimSpace(*msg.Text))
-	_, err = gen.Login(userConfig)
+	_, err = pub.Login(userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("%s: auth error: %v", gen.Name(), err),
+			fmt.Sprintf("%s: auth error: %v", pub.Name(), err),
 		)
 		// usually not our fault, let user try again
 		err = nil
 		return true, nil
 	}
 
-	posts, err := gen.List()
+	posts, err := pub.List()
 	if err != nil && len(posts) == 0 {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("%s: unable to list posts: %v", gen.Name(), err),
+			fmt.Sprintf("%s: unable to list posts: %v", pub.Name(), err),
 		)
 		return true, err
 	}
@@ -338,7 +338,7 @@ func (c *telegramBot) tryToHandleInputForDeleting(
 		return false, nil
 	}
 
-	gen, userConfig, err := c.createGenerator()
+	pub, userConfig, err := c.createPublisher()
 	defer func() {
 		if err != nil {
 			c.resolvePendingRequest(userID)
@@ -360,22 +360,22 @@ func (c *telegramBot) tryToHandleInputForDeleting(
 	}
 
 	userConfig.SetAuthToken(strings.TrimSpace(*msg.Text))
-	_, err = gen.Login(userConfig)
+	_, err = pub.Login(userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("%s: auth error: %v", gen.Name(), err),
+			fmt.Sprintf("%s: auth error: %v", pub.Name(), err),
 		)
 		// usually not our fault, let user try again
 		err = nil
 		return true, nil
 	}
 
-	err = gen.Delete(req.urls...)
+	err = pub.Delete(req.urls...)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("%s: unable to delete: %v", gen.Name(), err),
+			fmt.Sprintf("%s: unable to delete: %v", pub.Name(), err),
 		)
 		return true, err
 	}
