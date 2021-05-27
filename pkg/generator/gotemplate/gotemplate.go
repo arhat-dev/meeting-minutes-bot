@@ -46,7 +46,7 @@ func init() {
 					return nil, fmt.Errorf("failed to load custom templates: %w", err)
 				}
 			case len(c.BuiltinTemplate) != 0:
-				spec, ok := defaultTemplates[c.BuiltinTemplate]
+				spec, ok := builtinTemplates[c.BuiltinTemplate]
 				if !ok {
 					return nil, fmt.Errorf("no such builtin template with name %q", c.BuiltinTemplate)
 				}
