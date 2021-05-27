@@ -74,9 +74,9 @@ func (d *Driver) Append(title string, body []byte) (url string, _ error) {
 	if err != nil {
 		if len(output) != 0 {
 			return fmt.Sprintf("%s\n%v", output, err), nil
-		} else {
-			return err.Error(), nil
 		}
+
+		return err.Error(), nil
 	}
 
 	return string(output), nil
