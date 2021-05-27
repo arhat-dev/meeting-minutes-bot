@@ -70,8 +70,7 @@ func (m *telegramMessage) MessageURL() string {
 }
 
 func (m *telegramMessage) Timestamp() time.Time {
-	// TODO
-	return time.Time{}
+	return time.Unix(int64(m.msg.Date), 0).Local()
 }
 
 func (m *telegramMessage) ChatName() string {
