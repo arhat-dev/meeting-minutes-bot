@@ -21,8 +21,6 @@
   {{- if $msg_replied -}}
     {{- nindent 0 "" -}}
     {{- /* I will delete spaces :) */ -}}
-    <blockquote>
-    {{- /* I will delete spaces :) */ -}}
     (in reply to
       {{- indent 1 "" -}}
       {{- template "message.author.link" $msg_replied -}}
@@ -31,6 +29,8 @@
         <a href="{{- $msg_replied.MessageURL -}}">[Message]</a>
       {{- end -}}
     )
+    {{- /* I will delete spaces :) */ -}}
+    <blockquote>
       {{- nindent 0 "" -}}
       {{- template "message.replied.body" $msg_replied -}}
     {{- /* I will delete spaces :) */ -}}
