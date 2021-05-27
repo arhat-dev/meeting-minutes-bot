@@ -25,7 +25,7 @@ import (
 	"github.com/minio/minio-go/v7/pkg/s3utils"
 )
 
-func (s *S3) formatPublicURL(ctx context.Context, objectKey string) string {
+func (s *Driver) formatPublicURL(ctx context.Context, objectKey string) string {
 	location := s.region
 	if location == "" {
 		if len(s.bucket) != 0 {
@@ -67,7 +67,7 @@ func getDefaultLocation(u url.URL, regionOverride string) (location string) {
 
 // getBucketLocation - Get location for the bucketName from location map cache, if not
 // fetch freshly by making a new request.
-func (s *S3) getBucketLocation(ctx context.Context) (string, error) {
+func (s *Driver) getBucketLocation(ctx context.Context) (string, error) {
 	// Region set then no need to fetch bucket location.
 	if len(s.region) != 0 {
 		return s.region, nil
@@ -77,7 +77,7 @@ func (s *S3) getBucketLocation(ctx context.Context) (string, error) {
 }
 
 // returns true if virtual hosted style requests are to be used.
-func (s *S3) isVirtualHostStyleRequest(url url.URL, bucketName string) bool {
+func (s *Driver) isVirtualHostStyleRequest(url url.URL, bucketName string) bool {
 	if len(bucketName) == 0 {
 		return false
 	}
@@ -88,7 +88,7 @@ func (s *S3) isVirtualHostStyleRequest(url url.URL, bucketName string) bool {
 }
 
 // makeTargetURL make a new target url.
-func (s *S3) makeTargetURL(bucketName, objectName, bucketLocation string, isVirtualHostStyle bool) string {
+func (s *Driver) makeTargetURL(bucketName, objectName, bucketLocation string, isVirtualHostStyle bool) string {
 	host := s.client.EndpointURL().Host
 	// For Amazon S3 endpoint, try to fetch location based endpoint.
 	if s3utils.IsAmazonEndpoint(*s.client.EndpointURL()) {

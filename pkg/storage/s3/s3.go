@@ -21,7 +21,34 @@ const (
 func init() {
 	storage.Register(
 		Name,
-		New,
+		func(config interface{}) (storage.Interface, error) {
+			c, ok := config.(*Config)
+			if !ok {
+				return nil, fmt.Errorf("unexpected non s3 config: %T", config)
+			}
+
+			eURL, err := url.Parse(c.EndpointURL)
+			if err != nil {
+				return nil, fmt.Errorf("invalid endpoint url: %w", err)
+			}
+
+			client, err := minio.New(eURL.Host, &minio.Options{
+				Creds:  credentials.NewStaticV4(c.AccessKeyID, c.AccessKeySecret, ""),
+				Secure: eURL.Scheme == "https",
+				Region: c.Region,
+			})
+			if err != nil {
+				return nil, fmt.Errorf("failed to create s3 client: %w", err)
+			}
+
+			return &Driver{
+				client: client,
+
+				bucket:   c.Bucket,
+				region:   c.Region,
+				basePath: c.BasePath,
+			}, nil
+		},
 		func() interface{} {
 			return &Config{}
 		},
@@ -40,38 +67,9 @@ type Config struct {
 	AccessKeySecret string `json:"accessKeySecret" yaml:"accessKeySecret"`
 }
 
-var _ storage.Interface = (*S3)(nil)
+var _ storage.Interface = (*Driver)(nil)
 
-func New(config interface{}) (storage.Interface, error) {
-	c, ok := config.(*Config)
-	if !ok {
-		return nil, fmt.Errorf("unexpected non s3 config: %T", config)
-	}
-
-	eURL, err := url.Parse(c.EndpointURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid endpoint url: %w", err)
-	}
-
-	client, err := minio.New(eURL.Host, &minio.Options{
-		Creds:  credentials.NewStaticV4(c.AccessKeyID, c.AccessKeySecret, ""),
-		Secure: eURL.Scheme == "https",
-		Region: c.Region,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create s3 client: %w", err)
-	}
-
-	return &S3{
-		client: client,
-
-		bucket:   c.Bucket,
-		region:   c.Region,
-		basePath: c.BasePath,
-	}, nil
-}
-
-type S3 struct {
+type Driver struct {
 	client *minio.Client
 
 	bucket   string
@@ -79,11 +77,11 @@ type S3 struct {
 	basePath string
 }
 
-func (s *S3) Name() string {
+func (s *Driver) Name() string {
 	return Name
 }
 
-func (s *S3) Upload(ctx context.Context, filename string, data []byte) (url string, err error) {
+func (s *Driver) Upload(ctx context.Context, filename string, data []byte) (url string, err error) {
 	if len(s.bucket) != 0 {
 		hasBucket, err2 := s.client.BucketExists(ctx, s.bucket)
 		if err2 != nil {
