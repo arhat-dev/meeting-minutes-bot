@@ -4,9 +4,7 @@ go 1.16
 
 require (
 	arhat.dev/pkg v0.5.5
-	github.com/Masterminds/goutils v1.1.1 // indirect
-	github.com/Masterminds/semver v1.5.0 // indirect
-	github.com/Masterminds/sprig v2.22.0+incompatible
+	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/andybalholm/brotli v1.0.2 // indirect
 	github.com/chromedp/chromedp v0.7.2
 	github.com/google/uuid v1.2.0 // indirect
@@ -25,6 +23,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/valyala/fasthttp v1.24.0 // indirect
 	gitlab.com/toby3d/telegraph v1.2.1
+	go.uber.org/multierr v1.5.0
 	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a // indirect
 	golang.org/x/net v0.0.0-20210521195947-fe42d452be8f // indirect
 	golang.org/x/sys v0.0.0-20210521203332-0cec03c779c1 // indirect
