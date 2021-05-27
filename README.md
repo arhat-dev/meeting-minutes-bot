@@ -23,7 +23,11 @@ Build your knowledgebase in Chat
 - Storage
   - [x] `s3` (with public read access, no presign support)
 - Post Generator
-  - [x] `telegraph`
+  - [x] [`gotemplate`](./docs/generator/gotemplate.md)
+- Post Publisher
+  - [x] [`telegraph`](./docs/publisher/telegraph.md)
+  - [x] [`file`](./docs/publisher/file.md)
+  - [x] [`interpreter`](./docs/publisher/interpreter.md)
 - Web Archiver
   - [ ] `cdp` (chrome dev tools protocol with headless chromium)
 
@@ -109,8 +113,10 @@ app:
 
   # post publisher
   publisher:
-    # currently only supports `telegraph`
+    # one of [telegraph, file, interpreter]
     driver: telegraph
+    # read ./docs/publisher/{DRIVER}.md to find out config options
+    #config: {}
 
 bots:
   telegram:
