@@ -59,7 +59,7 @@ func init() {
 				return nil, fmt.Errorf("no template specified")
 			}
 
-			return &Generator{
+			return &Driver{
 				templates: tpl,
 			}, nil
 		},
@@ -83,17 +83,17 @@ type Config struct {
 	TemplatesDir string `json:"templatesDir" yaml:"templatesDir"`
 }
 
-var _ generator.Interface = (*Generator)(nil)
+var _ generator.Interface = (*Driver)(nil)
 
-type Generator struct {
+type Driver struct {
 	templates templateExecutor
 }
 
-func (g *Generator) Name() string {
+func (g *Driver) Name() string {
 	return Name
 }
 
-func (g *Generator) FormatPageHeader() ([]byte, error) {
+func (g *Driver) FormatPageHeader() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := g.templates.ExecuteTemplate(buf, "page.header", nil)
 	if err != nil {
@@ -103,7 +103,7 @@ func (g *Generator) FormatPageHeader() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (g *Generator) FormatPageBody(
+func (g *Driver) FormatPageBody(
 	messages []message.Interface,
 ) ([]byte, error) {
 	var (

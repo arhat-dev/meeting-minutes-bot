@@ -1,5 +1,7 @@
 package webarchiver
 
+import "context"
+
 var _ Interface = (*Nop)(nil)
 
 type NopConfig struct{}
@@ -11,6 +13,7 @@ func (a *Nop) Login(config interface{}) error {
 }
 
 func (a *Nop) Archive(
+	ctx context.Context,
 	url string,
 ) (
 	archiveURL string,

@@ -8,12 +8,13 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
 
-var _ webarchiver.Interface = (*ChromeDevToolsProtocol)(nil)
+var _ webarchiver.Interface = (*Driver)(nil)
 
-type ChromeDevToolsProtocol struct {
+type Driver struct {
 }
 
-func (a *ChromeDevToolsProtocol) Archive(
+func (d *Driver) Archive(
+	ctx context.Context,
 	url string,
 ) (
 	archiveURL string,
@@ -21,9 +22,7 @@ func (a *ChromeDevToolsProtocol) Archive(
 	screenshotFileExt string,
 	err error,
 ) {
-	chromedp.NewContext(
-		context.TODO(),
-	)
+	chromedp.NewContext(ctx)
 
 	return "", nil, "", nil
 }

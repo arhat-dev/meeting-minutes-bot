@@ -23,7 +23,7 @@ func init() {
 				return nil, nil, fmt.Errorf("unexpected non %s config: %T", Name, config)
 			}
 
-			return &Telegraph{
+			return &Driver{
 				defaultAccountShortName: c.DefaultAccountShortName,
 
 				mu: &sync.RWMutex{},
@@ -41,9 +41,9 @@ type Config struct {
 	DefaultAccountShortName string `json:"defaultAccountShortName" yaml:"defaultAccountShortName"`
 }
 
-var _ publisher.Interface = (*Telegraph)(nil)
+var _ publisher.Interface = (*Driver)(nil)
 
-type Telegraph struct {
+type Driver struct {
 	defaultAccountShortName string
 
 	account *telegraph.Account
@@ -52,11 +52,11 @@ type Telegraph struct {
 	mu *sync.RWMutex
 }
 
-func (t *Telegraph) Name() string {
+func (t *Driver) Name() string {
 	return Name
 }
 
-func (t *Telegraph) Login(config publisher.UserConfig) (string, error) {
+func (t *Driver) Login(config publisher.UserConfig) (string, error) {
 	baseAccount := &telegraph.Account{
 		ShortName: t.defaultAccountShortName,
 	}
@@ -104,7 +104,7 @@ func (t *Telegraph) Login(config publisher.UserConfig) (string, error) {
 	return account.AccessToken, nil
 }
 
-func (t *Telegraph) AuthURL() (string, error) {
+func (t *Driver) AuthURL() (string, error) {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
@@ -115,7 +115,7 @@ func (t *Telegraph) AuthURL() (string, error) {
 	return t.account.AuthURL, nil
 }
 
-func (t *Telegraph) Retrieve(url string) (title string, _ error) {
+func (t *Driver) Retrieve(url string) (title string, _ error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -149,7 +149,7 @@ func (t *Telegraph) Retrieve(url string) (title string, _ error) {
 	return "", fmt.Errorf("not found")
 }
 
-func (t *Telegraph) Publish(title string, body []byte) (url string, _ error) {
+func (t *Driver) Publish(title string, body []byte) (url string, _ error) {
 	content, err := telegraph.ContentFormat(body)
 	if err != nil {
 		return "", err
@@ -175,7 +175,7 @@ func (t *Telegraph) Publish(title string, body []byte) (url string, _ error) {
 }
 
 // List all posts for this user
-func (t *Telegraph) List() ([]publisher.PostInfo, error) {
+func (t *Driver) List() ([]publisher.PostInfo, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -207,7 +207,7 @@ func (t *Telegraph) List() ([]publisher.PostInfo, error) {
 
 // Delete one post according to the url, however we cannot delete telegraph posts
 // we just make it empty
-func (t *Telegraph) Delete(urls ...string) error {
+func (t *Driver) Delete(urls ...string) error {
 	if len(urls) == 0 {
 		return nil
 	}
@@ -262,7 +262,7 @@ func (t *Telegraph) Delete(urls ...string) error {
 	return nil
 }
 
-func (t *Telegraph) Append(title string, body []byte) (url string, _ error) {
+func (t *Driver) Append(title string, body []byte) (url string, _ error) {
 	content, err := telegraph.ContentFormat(body)
 	if err != nil {
 		return "", err

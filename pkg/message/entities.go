@@ -63,7 +63,7 @@ func (me *Entities) PreProcess(ctx context.Context, w webarchiver.Interface, u s
 			me.urlsToArchive[url] = make([]int, 0, 1)
 		}
 
-		archiveURL, screenshot, ext, err2 := w.Archive(url)
+		archiveURL, screenshot, ext, err2 := w.Archive(ctx, url)
 		if err2 != nil {
 			err = multierr.Append(err, fmt.Errorf("unable to archive web page %s: %w", url, err2))
 			continue
