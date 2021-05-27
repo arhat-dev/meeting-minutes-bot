@@ -79,7 +79,7 @@ app:
     driver: s3
     config:
       # s3 service endpoint, a URL, scheme MUST be `http` or `https`
-      endpoint: https://s3.example.com
+      endpointURL: https://s3.example.com
       # bucket region
       region: us-east-1
       # bucket name
@@ -95,7 +95,19 @@ app:
   webarchiver:
     driver: ""
 
+  # post generator
   generator:
+    # currently only supports `gotemplate`
+    driver: gotemplate
+    config:
+      builtinTemplate: telegraph
+      # custom template directory, all files in this directory will be treated as template
+      templatesDir: ""
+      # `html` or `text`
+      outputFormat: html
+
+  # post publisher
+  publisher:
     # currently only supports `telegraph`
     driver: telegraph
 
