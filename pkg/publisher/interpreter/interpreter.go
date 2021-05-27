@@ -58,15 +58,28 @@ func (d *Driver) AuthURL() (string, error)                                  { re
 func (d *Driver) Retrieve(url string) (title string, _ error)               { return "", nil }
 func (d *Driver) List() ([]publisher.PostInfo, error)                       { return nil, nil }
 func (d *Driver) Delete(urls ...string) error                               { return nil }
-func (d *Driver) Append(title string, body []byte) (url string, _ error)    { return "", nil }
 
-func (d *Driver) Publish(title string, body []byte) (url string, _ error) {
+func (d *Driver) Append(title string, body []byte) (url string, _ error) {
+	var args []string
+	args = append(args, d.baseArgs...)
+	args = append(args, string(body))
+
 	cmd := exec.CommandContext(
 		context.TODO(),
 		d.bin,
-		append(append([]string{}, d.baseArgs...), string(body))...,
+		args...,
 	)
 
 	output, err := cmd.CombinedOutput()
-	return string(output), err
+	if err != nil {
+		if len(output) != 0 {
+			return fmt.Sprintf("%s\n%v", output, err), nil
+		} else {
+			return err.Error(), nil
+		}
+	}
+
+	return string(output), nil
 }
+
+func (d *Driver) Publish(title string, body []byte) (url string, _ error) { return "", nil }

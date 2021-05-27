@@ -9,5 +9,6 @@
     {{-  range .Entities -}}
       {{- .Text -}}
     {{- end -}}
+    {{- nindent 0 "" -}}
   {{- end -}}
 {{- end -}}
