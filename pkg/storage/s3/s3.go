@@ -30,8 +30,8 @@ func init() {
 
 // Config for s3 file uploader
 type Config struct {
-	Endpoint string `json:"endpoint" yaml:"endpoint"`
-	Region   string `json:"region" yaml:"region"`
+	EndpointURL string `json:"endpointURL" yaml:"endpointURL"`
+	Region      string `json:"region" yaml:"region"`
 
 	Bucket   string `json:"bucket" yaml:"bucket"`
 	BasePath string `json:"basePath" yaml:"basePath"`
@@ -48,7 +48,7 @@ func New(config interface{}) (storage.Interface, error) {
 		return nil, fmt.Errorf("unexpected non s3 config: %T", config)
 	}
 
-	eURL, err := url.Parse(c.Endpoint)
+	eURL, err := url.Parse(c.EndpointURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid endpoint url: %w", err)
 	}
