@@ -276,6 +276,8 @@ func (c *telegramBot) handleCmd(
 		defaultChatUsername = c.botUsername
 		isPrivateMessage = true
 	case telegram.ChatTypeGroup, telegram.ChatTypeSupergroup:
+		// find chat username
+
 		if msg.Chat.Username != nil {
 			defaultChatUsername = *msg.Chat.Username
 		} else {
@@ -285,28 +287,31 @@ func (c *telegramBot) handleCmd(
 				},
 			)
 			if err != nil {
-				_, _ = c.sendTextMessage(
+				msgID, _ := c.sendTextMessage(
 					chatID, true, true, msg.MessageId,
 					fmt.Sprintf("Unable to check group chat info: %v", err),
 				)
+				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 				return err
 			}
 
 			chat, err := telegram.ParsePostGetChatResponse(resp)
 			_ = resp.Body.Close()
 			if err != nil {
-				_, _ = c.sendTextMessage(
+				msgID, _ := c.sendTextMessage(
 					chatID, true, true, msg.MessageId,
 					fmt.Sprintf("Unable to parse group chat info: %v", err),
 				)
+				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 				return err
 			}
 
 			if chat.JSON200 == nil || !chat.JSON200.Ok {
-				_, _ = c.sendTextMessage(
+				msgID, _ := c.sendTextMessage(
 					chatID, true, true, msg.MessageId,
 					fmt.Sprintf("Telegram: unable to check group administrators: %s", chat.JSONDefault.Description),
 				)
+				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 				return err
 			}
 
@@ -315,32 +320,36 @@ func (c *telegramBot) handleCmd(
 			}
 		}
 
+		// ensure only admin can use this bot
 		resp, err := c.client.PostGetChatAdministrators(c.ctx, telegram.PostGetChatAdministratorsJSONRequestBody{
 			ChatId: chatID,
 		})
 		if err != nil {
-			_, _ = c.sendTextMessage(
+			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("Unable to check group administrators: %v", err),
+				fmt.Sprintf("Failed to check group administrators: %v", err),
 			)
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 			return err
 		}
 
 		admins, err := telegram.ParsePostGetChatAdministratorsResponse(resp)
 		_ = resp.Body.Close()
 		if err != nil {
-			_, _ = c.sendTextMessage(
+			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("Unable to parse group administrators: %v", err),
+				fmt.Sprintf("Failed to parse group administrators: %v", err),
 			)
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 			return err
 		}
 
 		if admins.JSON200 == nil || !admins.JSON200.Ok {
-			_, _ = c.sendTextMessage(
+			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("Telegram: unable to check group administrators: %s", admins.JSONDefault.Description),
+				fmt.Sprintf("telegram: unable to check group administrators: %s", admins.JSONDefault.Description),
 			)
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 			return err
 		}
 
@@ -353,10 +362,12 @@ func (c *telegramBot) handleCmd(
 		}
 
 		if !isAdmin {
-			_, _ = c.sendTextMessage(
+			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
 				"Sorry, only administrators can use this bot in group chat",
 			)
+
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 			return err
 		}
 	}
@@ -396,10 +407,6 @@ func (c *telegramBot) handleCmd(
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
 			return nil
-		}
-
-		if !c.publisherRequireLogin {
-			// TODO
 		}
 
 		if !c.MarkSessionStandby(userID, chatID, defaultChatUsername, topic, url, 5*time.Minute) {
@@ -788,313 +795,5 @@ func (c *telegramBot) handleCmd(
 		)
 
 		return err
-	}
-}
-
-func (c telegramBot) scheduleMessageDelete(chatID uint64, after time.Duration, msgIDs ...uint64) {
-	for _, msgID := range msgIDs {
-		if msgID == 0 {
-			// ignore invalid message id
-			continue
-		}
-
-		_ = c.msgDelQ.OfferWithDelay(msgDeleteKey{
-			chatID:    chatID,
-			messageID: msgID,
-		}, struct{}{}, after)
-	}
-}
-
-func (c *telegramBot) sendTextMessage(
-	chatID uint64,
-	disableNotification,
-	disableWebPreview bool,
-	replyTo int,
-	text string,
-	replyMarkup ...interface{},
-) (int, error) {
-	var replyToMsgIDPtr *int
-	if replyTo > 0 {
-		replyToMsgIDPtr = &replyTo
-	}
-
-	var replyMarkupPtr *interface{}
-	if len(replyMarkup) > 0 {
-		replyMarkupPtr = &replyMarkup[0]
-	}
-
-	var htmlStyle = "HTML"
-	resp, err := c.client.PostSendMessage(
-		c.ctx,
-		telegram.PostSendMessageJSONRequestBody{
-			AllowSendingWithoutReply: constant.True(),
-			ChatId:                   chatID,
-			DisableNotification:      &disableNotification,
-			DisableWebPagePreview:    &disableWebPreview,
-			ReplyToMessageId:         replyToMsgIDPtr,
-			ParseMode:                &htmlStyle,
-			Text:                     text,
-			ReplyMarkup:              replyMarkupPtr,
-		},
-	)
-	if err != nil {
-		return 0, fmt.Errorf("failed to send message: %w", err)
-	}
-
-	result, err := telegram.ParsePostSendMessageResponse(resp)
-	_ = resp.Body.Close()
-	if err != nil {
-		return 0, fmt.Errorf("failed to parse response of message send: %w", err)
-	}
-
-	if result.JSON200 == nil || !result.JSON200.Ok {
-		return 0, fmt.Errorf("telegram: failed to send message: %s", result.JSONDefault.Description)
-	}
-
-	return result.JSON200.Result.MessageId, nil
-}
-
-func (c *telegramBot) handleStartCommand(
-	logger log.Interface,
-	chatID uint64,
-	userID uint64,
-	isPrivateMessage bool,
-	params string,
-	msg *telegram.Message,
-) error {
-	if !isPrivateMessage {
-		msgID, _ := c.sendTextMessage(
-			chatID, true, true, msg.MessageId,
-			"You cannot <code>/start</code> this bot in groups",
-		)
-
-		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
-		return nil
-	}
-
-	if len(params) == 0 {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Welcome, need some <code>/help</code> ?")
-		return nil
-	}
-
-	createOrEnter, err := base64.URLEncoding.DecodeString(params)
-	if err != nil {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "I am alive.")
-		return nil
-	}
-
-	parts := strings.SplitN(string(createOrEnter), ":", 3)
-	if len(parts) != 3 {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Told you, I'm alive.")
-		return nil
-	}
-
-	action := parts[0]
-
-	originalUserID, err := decodeUint64Hex(parts[1])
-	if err != nil {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, fmt.Sprintf("Internal bot error: %s", err))
-		return nil
-	}
-
-	// ensure same user
-	if originalUserID != userID {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "The link is not for you :(")
-		return nil
-	}
-
-	originalChatID, err := decodeUint64Hex(parts[2])
-	if err != nil {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, fmt.Sprintf("Internal bot error: %s", err))
-		return nil
-	}
-
-	var (
-		standbySession         *manager.SessionRequest
-		expectedOriginalChatID uint64
-	)
-
-	switch action {
-	case "create", "enter":
-		var ok bool
-		standbySession, ok = c.GetStandbySession(userID)
-		if !ok {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "No discussion requested")
-			return nil
-		}
-
-		expectedOriginalChatID = standbySession.ChatID
-	case "edit", "delete", "list":
-		expectedOriginalChatID = chatID
-	default:
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Unknown action")
-		return nil
-	}
-
-	// delete `/start` message
-	c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msg.MessageId))
-
-	if expectedOriginalChatID != originalChatID {
-		// should not happen, defensive check
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Unexpected chat id not match")
-		return nil
-	}
-
-	switch action {
-	case "create":
-		pub, userConfig, err2 := c.createPublisher()
-		defer func() {
-			if err2 != nil {
-				_, _ = c.ResolvePendingRequest(userID)
-
-				// best effort
-				_, _ = c.sendTextMessage(
-					chatID, true, true, 0,
-					fmt.Sprintf("The discussion was canceled due to error, please retry later: %v", err2),
-				)
-
-				if standbySession.ChatID != chatID {
-					_, _ = c.sendTextMessage(
-						standbySession.ChatID, true, true, 0,
-						"The discussion was canceled due to error, please retry later",
-					)
-				}
-			}
-		}()
-
-		if err2 != nil {
-			_, _ = c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("Internal bot error: %v", err2),
-			)
-			return err2
-		}
-
-		token, err2 := pub.Login(userConfig)
-		if err2 != nil {
-			_, _ = c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("%s login failed: %v", pub.Name(), err2),
-			)
-			return err2
-		}
-
-		_, err2 = c.sendTextMessage(
-			chatID, false, true, 0,
-			fmt.Sprintf(
-				"Here is your %s token, keep it on your own for later use:\n\n<pre>%s</pre>",
-				pub.Name(), token,
-			),
-		)
-		if err2 != nil {
-			_, _ = c.sendTextMessage(
-				chatID, false, true, msg.MessageId,
-				fmt.Sprintf("Internal bot error: unable to send %s token: %v", pub.Name(), err2),
-			)
-			return err2
-		}
-
-		content, err2 := c.generator.FormatPageHeader()
-		if err2 != nil {
-			return fmt.Errorf("failed to generate initial page: %w", err2)
-		}
-
-		postURL, err2 := pub.Publish(standbySession.Topic, content)
-		if err2 != nil {
-			_, _ = c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("%s pre-publish failed: %v", pub.Name(), err2),
-			)
-			return err2
-		}
-
-		currentSession, err2 := c.ActivateSession(
-			standbySession.ChatID,
-			userID,
-			standbySession.Topic,
-			standbySession.ChatUsername,
-			pub,
-		)
-		if err2 != nil {
-			logger.D("invalid usage of discuss", log.String("reason", err2.Error()))
-			_, _ = c.sendTextMessage(
-				standbySession.ChatID, true, true, 0,
-				fmt.Sprintf("Could not activate discussion: %v", err2),
-			)
-			return err2
-		}
-
-		defer func() {
-			if err2 != nil {
-				// bset effort
-				_, _ = c.DeactivateSession(standbySession.ChatID)
-			}
-		}()
-
-		_, err2 = c.sendTextMessage(
-			standbySession.ChatID, true, true, 0,
-			fmt.Sprintf(
-				"The post for your discussion around %q has been created: %s",
-				currentSession.GetTopic(), postURL,
-			),
-		)
-
-		return nil
-	case "enter":
-		msgID, err2 := c.sendTextMessage(chatID, false, true, 0,
-			fmt.Sprintf("Enter your %s token as a reply to this message", c.publisherName),
-			telegram.ForceReply{
-				ForceReply: true,
-				Selective:  constant.True(),
-			},
-		)
-		if err2 != nil {
-			// this message must be sent to user, this error will trigger message redelivery
-			return err2
-		}
-
-		if !c.MarkRequestExpectingInput(userID, uint64(msgID)) {
-			msgID2, _ := c.sendTextMessage(
-				chatID, false, true, msg.MessageId,
-				"The discussion is not expecting any input",
-			)
-
-			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msgID2))
-
-			return nil
-		}
-
-		return nil
-	case "edit", "delete", "list":
-		msgID, err2 := c.sendTextMessage(
-			chatID, true, true, 0,
-			fmt.Sprintf("Enter your %s token as a reply to this message", c.publisherName),
-			telegram.ForceReply{
-				ForceReply: true,
-				Selective:  constant.True(),
-			},
-		)
-
-		if !c.MarkRequestExpectingInput(userID, uint64(msgID)) {
-			_, _ = c.sendTextMessage(
-				chatID, true, true, 0,
-				"Internal bot error: could not find your pending request",
-			)
-
-			c.scheduleMessageDelete(chatID, 100*time.Millisecond, uint64(msgID))
-
-			return nil
-		}
-
-		// this message must be sent to user, when the error is not nil
-		// telegram will redeliver message
-		return err2
-	default:
-		_, _ = c.sendTextMessage(
-			chatID, true, true, msg.MessageId,
-			"Nice try!",
-		)
-
-		return nil
 	}
 }
