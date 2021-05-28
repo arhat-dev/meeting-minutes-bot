@@ -28,6 +28,7 @@ Build your knowledgebase in Chat
   - [x] [`telegraph`](./docs/publisher/telegraph.md)
   - [x] [`file`](./docs/publisher/file.md)
   - [x] [`interpreter`](./docs/publisher/interpreter.md)
+  - [ ] [`http`](./docs/publisher/http.md)
 - Web Archiver
   - [ ] `cdp` (chrome dev tools protocol with headless chromium)
 
