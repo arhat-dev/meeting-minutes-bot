@@ -23,11 +23,9 @@ import (
 
 var _ Message = (*telegramMessage)(nil)
 
-func newTelegramMessage(msg *telegram.Message, botUsername string, msgs *[]message.Interface) *telegramMessage {
+func newTelegramMessage(msg *telegram.Message, msgs *[]message.Interface) *telegramMessage {
 	return &telegramMessage{
 		id: formatTelegramMessageID(msg.MessageId),
-
-		botUsername: botUsername,
 
 		msg:  msg,
 		msgs: msgs,
@@ -45,11 +43,11 @@ func formatTelegramMessageID(msgID int) string {
 }
 
 type telegramMessage struct {
-	id          string
-	botUsername string
-	msg         *telegram.Message
-	entities    []message.Entity
-	msgs        *[]message.Interface
+	id string
+
+	msg      *telegram.Message
+	entities []message.Entity
+	msgs     *[]message.Interface
 
 	ready uint32
 
@@ -246,7 +244,7 @@ func (m *telegramMessage) PreProcess(
 
 	client, ok := c.(*telegramBot)
 	if !ok {
-		return nil, fmt.Errorf("Unexpected client type: need telegram bot")
+		return nil, fmt.Errorf("unexpected client type: need telegram bot")
 	}
 
 	var (

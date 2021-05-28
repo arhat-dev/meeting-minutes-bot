@@ -514,7 +514,7 @@ func (c *telegramBot) appendSessionMessage(
 	}
 
 	logger.V("appending session meesage")
-	m := newTelegramMessage(msg, c.botUsername, &currentSession.Messages)
+	m := newTelegramMessage(msg, &currentSession.Messages)
 
 	errCh, err := m.PreProcess(c, c.webArchiver, c.storage, currentSession.peekLastMessage())
 	if err != nil {
