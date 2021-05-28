@@ -31,5 +31,8 @@ type Interface interface {
 
 	Entities() []Entity
 
+	// Ready returns true if the message has been pre-processed
+	Ready() bool
+
 	Messages() []Interface
 }

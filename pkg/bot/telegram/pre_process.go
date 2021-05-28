@@ -1,4 +1,4 @@
-package server
+package telegram
 
 import (
 	"encoding/hex"
@@ -6,246 +6,27 @@ import (
 	"io/ioutil"
 	"net/http"
 	"path"
-	"strconv"
 	"sync"
-	"sync/atomic"
-	"time"
+
+	"arhat.dev/pkg/hashhelper"
+	"arhat.dev/pkg/log"
+	"github.com/h2non/filetype"
 
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
-
-	"arhat.dev/pkg/hashhelper"
-	"arhat.dev/pkg/log"
-	"github.com/h2non/filetype"
 )
 
-var _ Message = (*telegramMessage)(nil)
-
-func newTelegramMessage(msg *telegram.Message, msgs *[]message.Interface) *telegramMessage {
-	return &telegramMessage{
-		id: formatTelegramMessageID(msg.MessageId),
-
-		msg:  msg,
-		msgs: msgs,
-
-		entities: nil,
-
-		ready: 0,
-
-		mu: &sync.Mutex{},
-	}
-}
-
-func formatTelegramMessageID(msgID int) string {
-	return strconv.FormatInt(int64(msgID), 10)
-}
-
-type telegramMessage struct {
-	id string
-
-	msg      *telegram.Message
-	entities []message.Entity
-	msgs     *[]message.Interface
-
-	ready uint32
-
-	mu *sync.Mutex
-}
-
-func (m *telegramMessage) ID() string {
-	return m.id
-}
-
-func (m *telegramMessage) MessageURL() string {
-	url := m.ChatURL()
-	if len(url) == 0 {
-		return ""
-	}
-
-	return url + "/" + formatTelegramMessageID(m.msg.MessageId)
-}
-
-func (m *telegramMessage) Timestamp() time.Time {
-	return time.Unix(int64(m.msg.Date), 0).Local()
-}
-
-func (m *telegramMessage) ChatName() string {
-	var name string
-
-	if cfn := m.msg.Chat.FirstName; cfn != nil {
-		name = *cfn
-	}
-
-	if cln := m.msg.Chat.LastName; cln != nil {
-		name += " " + *cln
-	}
-
-	return name
-}
-
-func (m *telegramMessage) ChatURL() string {
-	if m.IsPrivateMessage() {
-		return ""
-	}
-
-	if cu := m.msg.Chat.Username; cu != nil {
-		return "https://t.me/" + *cu
-	}
-
-	return ""
-}
-
-func (m *telegramMessage) Author() string {
-	if m.msg.From == nil {
-		return ""
-	}
-
-	name := m.msg.From.FirstName
-	if fln := m.msg.From.LastName; fln != nil {
-		name += " " + *fln
-	}
-
-	return name
-}
-
-func (m *telegramMessage) AuthorURL() string {
-	if m.msg.From == nil {
-		return ""
-	}
-
-	if fu := m.msg.From.Username; fu != nil {
-		return "https://t.me/" + *fu
-	}
-
-	return ""
-}
-
-func (m *telegramMessage) IsForwarded() bool {
-	return m.msg.ForwardFrom != nil ||
-		m.msg.ForwardFromChat != nil ||
-		m.msg.ForwardSenderName != nil ||
-		m.msg.ForwardFromMessageId != nil
-}
-
-func (m *telegramMessage) OriginalMessageURL() string {
-	chatURL := m.OriginalChatURL()
-	if len(chatURL) == 0 {
-		return ""
-	}
-
-	if ffmi := m.msg.ForwardFromMessageId; ffmi != nil {
-		return chatURL + "/" + strconv.FormatInt(int64(*ffmi), 10)
-	}
-
-	return ""
-}
-
-func (m *telegramMessage) OriginalChatName() string {
-	if fc := m.msg.ForwardFromChat; fc != nil {
-		var name string
-		if fc.FirstName != nil {
-			name += *fc.FirstName
-		}
-
-		if fc.LastName != nil {
-			name += " " + *fc.LastName
-		}
-
-		return name
-	}
-
-	return ""
-}
-
-func (m *telegramMessage) OriginalChatURL() string {
-	if fc := m.msg.ForwardFromChat; fc != nil && fc.Username != nil {
-		return "https://t.me/" + *fc.Username
-	}
-
-	return ""
-}
-
-func (m *telegramMessage) OriginalAuthor() string {
-	if ff := m.msg.ForwardFrom; ff != nil {
-		name := ff.FirstName
-		if ff.LastName != nil {
-			name += " " + *ff.LastName
-		}
-
-		return name
-	}
-
-	return ""
-}
-
-func (m *telegramMessage) OriginalAuthorURL() string {
-	if ff := m.msg.ForwardFrom; ff != nil && ff.Username != nil {
-		return "https://t.me/" + *m.msg.ForwardFrom.Username
-	}
-
-	return ""
-}
-
-func (m *telegramMessage) IsPrivateMessage() bool {
-	return m.msg.Chat.Type == telegram.ChatTypePrivate
-}
-
-func (m *telegramMessage) IsReply() bool {
-	return m.msg.ReplyToMessage != nil
-}
-
-func (m *telegramMessage) ReplyToMessageID() string {
-	if m.msg.ReplyToMessage != nil {
-		return formatTelegramMessageID(m.msg.ReplyToMessage.MessageId)
-	}
-
-	return ""
-}
-
-func (m *telegramMessage) Entities() []message.Entity {
-	return m.entities
-}
-
-func (m *telegramMessage) Messages() []message.Interface {
-	if m.msgs != nil {
-		return *m.msgs
-	}
-
-	return nil
-}
-
-// ready for content generation
-func (m *telegramMessage) Ready() bool {
-	return atomic.LoadUint32(&m.ready) == 1
-}
-
-func (m *telegramMessage) markReady() {
-	atomic.StoreUint32(&m.ready, 1)
-}
-
-func (m *telegramMessage) update(do func()) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	do()
-}
-
+// errCh can be nil when there is no background pre-process worker
 // nolint:gocyclo
-func (m *telegramMessage) PreProcess(
-	c Client,
+func (c *telegramBot) preProcess(
+	m *telegramMessage,
 	w webarchiver.Interface,
 	u storage.Interface,
-	previousMessage Message,
 ) (errCh chan error, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-
-	client, ok := c.(*telegramBot)
-	if !ok {
-		return nil, fmt.Errorf("unexpected client type: need telegram bot")
-	}
 
 	var (
 		requestFileID   string
@@ -272,11 +53,11 @@ func (m *telegramMessage) PreProcess(
 				m.markReady()
 			}()
 
-			err2 := me.PreProcess(client.ctx, w, u)
+			err2 := me.PreProcess(c.ctx, w, u)
 			if err2 != nil {
 				select {
 				case errCh <- fmt.Errorf("Message pre-process error: %w", err2):
-				case <-client.ctx.Done():
+				case <-c.ctx.Done():
 				}
 			}
 
@@ -397,7 +178,7 @@ func (m *telegramMessage) PreProcess(
 		m.markReady()
 		return nil, nil
 	default:
-		client.logger.E("unhandled telegram message", log.Any("msg", m.msg))
+		c.logger.E("unhandled telegram message", log.Any("msg", m.msg))
 		m.markReady()
 		return nil, nil
 	}
@@ -413,11 +194,11 @@ func (m *telegramMessage) PreProcess(
 			go func() {
 				defer wg.Done()
 
-				err2 := cme.PreProcess(client.ctx, w, u)
+				err2 := cme.PreProcess(c.ctx, w, u)
 				if err2 != nil {
 					select {
 					case errCh <- fmt.Errorf("Caption pre-process error: %w", err2):
-					case <-client.ctx.Done():
+					case <-c.ctx.Done():
 					}
 				}
 
@@ -441,13 +222,13 @@ func (m *telegramMessage) PreProcess(
 	go func() {
 		defer wg.Done()
 
-		logger := client.logger.WithFields(
+		logger := c.logger.WithFields(
 			log.String("filename", requestFileName),
 			log.String("id", requestFileID),
 		)
 
 		logger.V("requesting file info")
-		resp, err := client.client.PostGetFile(client.ctx, telegram.PostGetFileJSONRequestBody{
+		resp, err := c.client.PostGetFile(c.ctx, telegram.PostGetFileJSONRequestBody{
 			FileId: requestFileID,
 		})
 		if err != nil {
@@ -455,7 +236,7 @@ func (m *telegramMessage) PreProcess(
 
 			select {
 			case errCh <- fmt.Errorf("failed to request file: %w", err):
-			case <-client.ctx.Done():
+			case <-c.ctx.Done():
 			}
 
 			return
@@ -468,7 +249,7 @@ func (m *telegramMessage) PreProcess(
 
 			select {
 			case errCh <- fmt.Errorf("failed to parse file response: %w", err):
-			case <-client.ctx.Done():
+			case <-c.ctx.Done():
 			}
 
 			return
@@ -479,7 +260,7 @@ func (m *telegramMessage) PreProcess(
 
 			select {
 			case errCh <- fmt.Errorf("failed to request file: telegram: %s", f.JSONDefault.Description):
-			case <-client.ctx.Done():
+			case <-c.ctx.Done():
 			}
 
 			return
@@ -491,7 +272,7 @@ func (m *telegramMessage) PreProcess(
 
 			select {
 			case errCh <- fmt.Errorf("Invalid empty path for telegram file downloading"):
-			case <-client.ctx.Done():
+			case <-c.ctx.Done():
 			}
 
 			return
@@ -499,7 +280,7 @@ func (m *telegramMessage) PreProcess(
 
 		downloadURL := fmt.Sprintf(
 			"https://api.telegram.org/file/bot%s/%s",
-			client.botToken, *pathPtr,
+			c.opts.BotToken, *pathPtr,
 		)
 
 		req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
@@ -508,19 +289,19 @@ func (m *telegramMessage) PreProcess(
 
 			select {
 			case errCh <- fmt.Errorf("Internal bot error: %w", err):
-			case <-client.ctx.Done():
+			case <-c.ctx.Done():
 			}
 
 			return
 		}
 
-		resp, err = client.client.Client.Do(req)
+		resp, err = c.client.Client.Do(req)
 		if err != nil {
 			logger.I("failed to request file download", log.Error(err))
 
 			select {
 			case errCh <- fmt.Errorf("Internal bot error: %w", err):
-			case <-client.ctx.Done():
+			case <-c.ctx.Done():
 			}
 
 			return
@@ -533,7 +314,7 @@ func (m *telegramMessage) PreProcess(
 
 			select {
 			case errCh <- fmt.Errorf("Internal bot error: failed to read file body: %w", err):
-			case <-client.ctx.Done():
+			case <-c.ctx.Done():
 			}
 
 			return
@@ -557,11 +338,11 @@ func (m *telegramMessage) PreProcess(
 			log.String("upload_name", filename),
 			log.Int("size", len(fileContent)),
 		)
-		fileURL, err := u.Upload(client.ctx, filename, fileContent)
+		fileURL, err := u.Upload(c.ctx, filename, fileContent)
 		if err != nil {
 			select {
 			case errCh <- fmt.Errorf("failed to upload file: %w", err):
-			case <-client.ctx.Done():
+			case <-c.ctx.Done():
 			}
 
 			return
