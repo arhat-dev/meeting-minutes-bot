@@ -1,17 +1,10 @@
-package server
+package telegram
 
 import (
-	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"mime/multipart"
 	"net/http"
-	"net/url"
-	"path"
-	"strconv"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -19,55 +12,54 @@ import (
 	"arhat.dev/pkg/log"
 	"arhat.dev/pkg/queue"
 
+	"arhat.dev/meeting-minutes-bot/pkg/bot"
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/conf"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/manager"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
 
 type msgDeleteKey struct {
-	ChatID    uint64
-	MessageID uint64
+	chatID    uint64
+	messageID uint64
 }
 
-var _ Client = (*telegramBot)(nil)
+var _ bot.Interface = (*telegramBot)(nil)
 
 type telegramBot struct {
 	ctx    context.Context
 	logger log.Interface
 	client *telegram.Client
 
-	botToken    string
 	botUsername string
 
-	// chart_id -> session
-	*SessionManager
+	*manager.SessionManager
 
 	storage     storage.Interface
 	webArchiver webarchiver.Interface
 	generator   generator.Interface
 
-	publisherName   string
-	createPublisher publisherFactoryFunc
+	publisherName         string
+	publisherRequireLogin bool
+	createPublisher       bot.PublisherFactoryFunc
+
+	opts *conf.TelegramConfig
 
 	msgDelQ *queue.TimeoutQueue
 }
 
-// nolint:gocyclo
-func createTelegramBot(
+func Create(
 	ctx context.Context,
 	logger log.Interface,
-	baseURL string,
-	mux *http.ServeMux,
-	st storage.Interface,
-	wa webarchiver.Interface,
-	gen generator.Interface,
-	publisherName string,
-	createPublisher publisherFactoryFunc,
+	storage storage.Interface,
+	webArchiver webarchiver.Interface,
+	generator generator.Interface,
+	createPublisher bot.PublisherFactoryFunc,
 	opts *conf.TelegramConfig,
-) (*telegramBot, error) {
+) (bot.Interface, error) {
 	tgClient, err := telegram.NewClient(
 		fmt.Sprintf("https://%s/bot%s/", opts.Endpoint, opts.BotToken),
 		telegram.WithHTTPClient(&http.Client{}),
@@ -76,36 +68,12 @@ func createTelegramBot(
 		}),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create telegram bot client: %w", err)
+		return nil, fmt.Errorf("failed to create bot client: %w", err)
 	}
 
-	// get bot username
-	resp, err2 := tgClient.PostGetMe(ctx)
-	if err2 != nil {
-		return nil, fmt.Errorf("failed to get my own info: %w", err2)
-	}
-
-	mr, err2 := telegram.ParsePostGetMeResponse(resp)
-	_ = resp.Body.Close()
-	if err2 != nil {
-		return nil, fmt.Errorf("failed to parse bot get info response: %w", err2)
-	}
-
-	if mr.JSON200 == nil || !mr.JSON200.Ok {
-		return nil, fmt.Errorf("failed to get telegram bot info: %s", mr.JSONDefault.Description)
-	}
-
-	if mr.JSON200.Result.Username == nil {
-		return nil, fmt.Errorf("bot username not returned by telegram server")
-	}
-
-	botUsername := *mr.JSON200.Result.Username
-	logger.D("got bot username", log.String("username", botUsername))
-
-	allowedUpdates := []string{
-		"message",
-		// TODO: support message edit, how will we show edited messages?
-		// "edited_message",
+	pub, _, err := createPublisher()
+	if err != nil {
+		return nil, fmt.Errorf("failed to test publisher creation: %w", err)
 	}
 
 	client := &telegramBot{
@@ -113,301 +81,24 @@ func createTelegramBot(
 		logger: logger,
 		client: tgClient,
 
-		botToken:    opts.BotToken,
-		botUsername: botUsername,
+		opts: opts,
 
-		SessionManager: newSessionManager(ctx),
+		botUsername: "", // set in Configure()
 
-		webArchiver: wa,
-		storage:     st,
-		generator:   gen,
+		SessionManager: manager.NewSessionManager(ctx),
 
-		publisherName:   publisherName,
-		createPublisher: createPublisher,
+		webArchiver: webArchiver,
+		storage:     storage,
+		generator:   generator,
+
+		publisherName:         pub.Name(),
+		publisherRequireLogin: pub.RequireLogin(),
+		createPublisher:       createPublisher,
 
 		msgDelQ: queue.NewTimeoutQueue(),
 	}
 
-	if opts.Webhook.Enabled && len(baseURL) != 0 {
-		// set webhook
-		base, err2 := url.Parse(baseURL)
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to parse base url for telegram bot webhook: %w", err2)
-		}
-
-		port := ""
-		p := base.Port()
-
-		switch {
-		case len(p) != 0:
-			switch p {
-			case "443":
-				// omit 443 since we are uisng https
-			case "80", "88", "8443":
-				port = ":" + p
-			default:
-				return nil, fmt.Errorf("invalid port for telegram bot: port %s not allowed", port)
-			}
-		case len(p) == 0 && base.Scheme != "https":
-			// not using https and no port set, lets guess!
-			switch base.Scheme {
-			case "http":
-				port = ":80" // https over 80 is allowed by telegram
-			default:
-				return nil, fmt.Errorf("invalid base url for telegram bot: unable to find port")
-			}
-		}
-
-		body := &bytes.Buffer{}
-		mw := multipart.NewWriter(body)
-		err2 = mw.WriteField(
-			"url",
-			fmt.Sprintf(
-				"https://%s%s%s",
-				base.Host,
-				port,
-				path.Join(base.RawPath, opts.Webhook.Path),
-			),
-		)
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to set url: %w", err2)
-		}
-
-		var certBytes []byte
-		switch {
-		case len(opts.Webhook.TLSPublicKeyData) != 0:
-			// use embedded data
-			certBytes, err2 = base64.StdEncoding.DecodeString(opts.Webhook.TLSPublicKeyData)
-			if err2 != nil {
-				return nil, fmt.Errorf("failed to decode base64 encoded cert: %w", err2)
-			}
-		case len(opts.Webhook.TLSPublicKey) != 0 && len(opts.Webhook.TLSPublicKeyData) == 0:
-			// read from file
-			certBytes, err2 = ioutil.ReadFile(opts.Webhook.TLSPublicKey)
-			if err2 != nil {
-				return nil, fmt.Errorf("failed to load public key: %w", err2)
-			}
-		}
-
-		if len(certBytes) != 0 {
-			filePart, err3 := mw.CreateFormFile("certificate", "cert.pem")
-			if err3 != nil {
-				return nil, fmt.Errorf("failed to create form file: %w", err3)
-			}
-
-			_, err3 = filePart.Write(certBytes)
-			if err3 != nil {
-				return nil, fmt.Errorf("failed to write cert bytes: %w", err3)
-			}
-		}
-
-		_ = mw.WriteField("max_connections", strconv.FormatInt(int64(opts.Webhook.MaxConnections), 10))
-		allowedUpdatesBytes, err2 := json.Marshal(allowedUpdates)
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to marshal allowed update types to json array: %w", err2)
-		}
-
-		_ = mw.WriteField("allowed_updates", string(allowedUpdatesBytes))
-		_ = mw.WriteField("drop_pending_updates", "False")
-
-		mw.Close()
-
-		resp, err2 := tgClient.PostSetWebhookWithBody(ctx, mw.FormDataContentType(), body)
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to request set webhook: %w", err2)
-		}
-
-		swr, err2 := telegram.ParsePostSetWebhookResponse(resp)
-		_ = resp.Body.Close()
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to parse response of set webhook: %w", err2)
-		}
-
-		if swr.JSON200 == nil || !swr.JSON200.Ok {
-			return nil, fmt.Errorf("failed to set telegram webhook: %s", swr.JSONDefault.Description)
-		}
-
-		mux.HandleFunc(opts.Webhook.Path, func(w http.ResponseWriter, r *http.Request) {
-			dec := json.NewDecoder(r.Body)
-			defer func() { _ = r.Body.Close() }()
-
-			var dest struct {
-				Ok     bool              `json:"ok"`
-				Result []telegram.Update `json:"result"`
-			}
-
-			if err3 := dec.Decode(&dest); err != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				logger.E("failed to decode webhook payload", log.Error(err3))
-				return
-			}
-
-			_, err3 := client.onTelegramUpdate(dest.Result...)
-			if err3 != nil {
-				w.WriteHeader(http.StatusInternalServerError)
-				logger.E("failed to process telegram update", log.Error(err3))
-				return
-			}
-		})
-	} else {
-		// delete webhook if exists
-		resp, err2 := tgClient.PostGetWebhookInfo(ctx)
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to check bot webhook status: %w", err2)
-		}
-
-		info, err2 := telegram.ParsePostGetWebhookInfoResponse(resp)
-		_ = resp.Body.Close()
-		if err2 != nil {
-			return nil, fmt.Errorf("failed to parse bot webhook info: %w", err2)
-		}
-
-		// telegram will return a result with non-empty url if webhook is set
-		// https://core.telegram.org/bots/api/#getwebhookinfo
-		if info.JSON200 == nil || !info.JSON200.Ok {
-			return nil, fmt.Errorf("telegram: get webhook info failed: %s", info.JSONDefault.Description)
-		}
-
-		if len(info.JSON200.Result.Url) != 0 {
-			// TODO: handle error
-			resp, err2 = tgClient.PostDeleteWebhook(ctx, telegram.PostDeleteWebhookJSONRequestBody{
-				DropPendingUpdates: constant.False(),
-			})
-			if err2 != nil {
-				return nil, fmt.Errorf("failed to delete webhook: %w", err2)
-			}
-
-			wd, err3 := telegram.ParsePostDeleteWebhookResponse(resp)
-			_ = resp.Body.Close()
-			if err3 != nil {
-				return nil, fmt.Errorf("failed to parse webhook deletion response: %w", err3)
-			}
-
-			if wd.JSON200 == nil || !wd.JSON200.Ok {
-				return nil, fmt.Errorf("telegram: delete webhook failed: %s", wd.JSONDefault.Description)
-			}
-		}
-
-		// discuss long polling
-		go func() {
-			tk := time.NewTicker(2 * time.Second)
-			defer tk.Stop()
-
-			offset := 0
-			for {
-				select {
-				case <-tk.C:
-					// poll and ignore error
-					offsetPtr := &offset
-					if offset == 0 {
-						offsetPtr = nil
-					}
-
-					func() {
-
-					}()
-					resp, err3 := tgClient.PostGetUpdates(
-						ctx,
-						telegram.PostGetUpdatesJSONRequestBody{
-							AllowedUpdates: &allowedUpdates,
-							Offset:         offsetPtr,
-						},
-					)
-					if err3 != nil {
-						logger.I("failed to poll updates", log.Error(err3))
-						continue
-					}
-
-					updates, err3 := telegram.ParsePostGetUpdatesResponse(resp)
-					_ = resp.Body.Close()
-
-					if err3 != nil {
-						logger.I("failed to parse updates", log.Error(err3))
-						continue
-					}
-
-					if updates.JSON200 == nil || !updates.JSON200.Ok {
-						logger.I("telegram: get updates failed", log.String("reason", updates.JSONDefault.Description))
-						continue
-					}
-
-					if len(updates.JSON200.Result) == 0 {
-						logger.V("no message update got")
-						continue
-					}
-
-					// see https://core.telegram.org/bots/api/#getupdates
-					// 		An update is considered confirmed as soon as getUpdates is called
-					// 		with an offset higher than its update_id.
-					maxID, err3 := client.onTelegramUpdate(updates.JSON200.Result...)
-					if err3 != nil {
-						logger.I("failed to process telegram update", log.Error(err3))
-						continue
-					}
-					offset = maxID + 1
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-	}
-
-	client.msgDelQ.Start(ctx.Done())
-	msgDelCh := client.msgDelQ.TakeCh()
-	go func() {
-		for td := range msgDelCh {
-			// delete message with best effort
-			k := td.Key.(msgDeleteKey)
-			for i := 0; i < 5; i++ {
-				resp, err2 := tgClient.PostDeleteMessage(
-					ctx,
-					telegram.PostDeleteMessageJSONRequestBody{
-						ChatId:    k.ChatID,
-						MessageId: int(k.MessageID),
-					},
-				)
-				if err2 != nil {
-					continue
-				}
-				_ = resp.Body.Close()
-			}
-		}
-	}()
-
-	// everything working, set commands to keep them up to date (best effort)
-
-	var commands []telegram.BotCommand
-
-	for _, cmd := range constant.VisibleBotCommands {
-		commands = append(commands, telegram.BotCommand{
-			Command:     strings.TrimPrefix(cmd, "/"),
-			Description: constant.BotCommandShortDescriptions[cmd],
-		})
-	}
-
-	// set bot commands
-	{
-		resp, err := tgClient.PostSetMyCommands(ctx, telegram.PostSetMyCommandsJSONRequestBody{
-			Commands: commands,
-		})
-		if err != nil {
-			logger.E("failed to request set telegram bot commands", log.Error(err))
-		} else {
-			sr, err := telegram.ParsePostSetMyCommandsResponse(resp)
-			_ = resp.Body.Close()
-			if err != nil {
-				logger.E("failed to parse bot command set response", log.Error(err))
-			} else {
-				if sr.JSON200 == nil || !sr.JSON200.Ok {
-					logger.E("failed to set telegram bot commands", log.String("reason", sr.JSONDefault.Description))
-				} else {
-					logger.D("telegram bot command set", log.Any("commands", commands))
-				}
-			}
-		}
-	}
-
-	return &telegramBot{client: tgClient}, nil
+	return client, nil
 }
 
 // nolint:unparam
@@ -469,7 +160,13 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 		}
 
 		if isCmd {
-			return c.handleCmd(logger, uint64(msg.Chat.Id), cmd, strings.TrimSpace(string(utf16.Decode(content))), msg)
+			return c.handleCmd(
+				logger,
+				uint64(msg.Chat.Id),
+				cmd,
+				strings.TrimSpace(string(utf16.Decode(content))),
+				msg,
+			)
 		}
 
 		// filter private message for special replies to this bot
@@ -496,14 +193,12 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 	}
 }
 
-type tokenInputHandleFunc func(chatID uint64, userID uint64, msg *telegram.Message) (bool, error)
-
 func (c *telegramBot) appendSessionMessage(
 	logger log.Interface,
 	chatID uint64,
 	msg *telegram.Message,
 ) error {
-	currentSession, ok := c.getActiveSession(chatID)
+	currentSession, ok := c.GetActiveSession(chatID)
 	if !ok {
 		return nil
 	}
@@ -514,9 +209,9 @@ func (c *telegramBot) appendSessionMessage(
 	}
 
 	logger.V("appending session meesage")
-	m := newTelegramMessage(msg, &currentSession.Messages)
+	m := newTelegramMessage(msg, currentSession.RefMessages())
 
-	errCh, err := m.PreProcess(c, c.webArchiver, c.storage, currentSession.peekLastMessage())
+	errCh, err := c.preProcess(m, c.webArchiver, c.storage)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
@@ -540,7 +235,7 @@ func (c *telegramBot) appendSessionMessage(
 		}()
 	}
 
-	currentSession.appendMessage(m)
+	currentSession.AppendMessage(m)
 
 	return nil
 }
@@ -691,7 +386,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		_, ok := c.getActiveSession(chatID)
+		_, ok := c.GetActiveSession(chatID)
 		if ok {
 			logger.D("invalid command usage", log.String("reason", "already in a session"))
 			msgID, _ := c.sendTextMessage(
@@ -703,7 +398,11 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		if !c.markSessionStandby(userID, chatID, defaultChatUsername, topic, url, 5*time.Minute) {
+		if !c.publisherRequireLogin {
+			// TODO
+		}
+
+		if !c.MarkSessionStandby(userID, chatID, defaultChatUsername, topic, url, 5*time.Minute) {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
 				"You have already started a discussion with no auth token specified, please end that first",
@@ -716,7 +415,7 @@ func (c *telegramBot) handleCmd(
 		return func() (err error) {
 			defer func() {
 				if err != nil {
-					c.resolvePendingRequest(userID)
+					c.ResolvePendingRequest(userID)
 				}
 			}()
 
@@ -773,17 +472,17 @@ func (c *telegramBot) handleCmd(
 	case constant.CommandStart:
 		return c.handleStartCommand(logger, chatID, userID, isPrivateMessage, params, msg)
 	case constant.CommandEnd:
-		prevReq, ok := c.resolvePendingRequest(userID)
+		prevReq, ok := c.ResolvePendingRequest(userID)
 		if ok {
 			// a pending request, no generator involved
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("You have canceled the pending <code>%s</code>", getCommandFromRequest(prevReq)),
+				fmt.Sprintf("You have canceled the pending <code>%s</code>", manager.GetCommandFromRequest(prevReq)),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
-			if sr, isSR := prevReq.(*sessionRequest); isSR {
+			if sr, isSR := prevReq.(*manager.SessionRequest); isSR {
 				if sr.ChatID != chatID {
 					_, _ = c.sendTextMessage(
 						sr.ChatID, true, true, 0,
@@ -795,7 +494,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		currentSession, ok := c.getActiveSession(chatID)
+		currentSession, ok := c.GetActiveSession(chatID)
 		if !ok {
 			// TODO
 			logger.D("invalid usage of end", log.String("reason", "no active session"))
@@ -809,7 +508,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		n, content, err := currentSession.generateContent(c.generator)
+		n, content, err := currentSession.GenerateContent(c.generator)
 		if err != nil {
 			logger.I("failed to generate post content", log.Error(err))
 			_, _ = c.sendTextMessage(
@@ -821,8 +520,8 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		pub := currentSession.publisher
-		postURL, err := pub.Append(currentSession.Topic, content)
+		pub := currentSession.GetPublisher()
+		postURL, err := pub.Append(currentSession.GetTopic(), content)
 		if err != nil {
 			logger.I("failed to append content to post", log.Error(err))
 			_, _ = c.sendTextMessage(
@@ -834,9 +533,9 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		currentSession.deleteFirstNMessage(n)
+		currentSession.DeleteFirstNMessage(n)
 
-		currentSession, ok = c.deactivateSession(chatID)
+		currentSession, ok = c.DeactivateSession(chatID)
 		if !ok {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -850,7 +549,7 @@ func (c *telegramBot) handleCmd(
 			chatID, false, false, 0,
 			fmt.Sprintf(
 				"Your discussion around %q has been ended, view and edit your post: %s",
-				currentSession.Topic, postURL,
+				currentSession.GetTopic(), postURL,
 			),
 		)
 
@@ -868,7 +567,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		_, ok := c.getActiveSession(chatID)
+		_, ok := c.GetActiveSession(chatID)
 		if !ok {
 			logger.D("invalid command usage", log.String("reason", "not in a session"))
 			msgID, _ := c.sendTextMessage(
@@ -911,7 +610,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		currentSession, ok := c.getActiveSession(chatID)
+		currentSession, ok := c.GetActiveSession(chatID)
 		if !ok {
 			logger.D("invalid command usage", log.String("reason", "not in a session"))
 			msgID, _ := c.sendTextMessage(
@@ -923,7 +622,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		_ = currentSession.deleteMessage(formatTelegramMessageID(replyTo.MessageId))
+		_ = currentSession.DeleteMessage(formatMessageID(replyTo.MessageId))
 
 		logger.V("ignored message")
 		msgID, _ := c.sendTextMessage(
@@ -945,7 +644,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		prevCmd, ok := c.markPendingEditing(userID, 5*time.Minute)
+		prevCmd, ok := c.MarkPendingEditing(userID, 5*time.Minute)
 		if !ok {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -1000,7 +699,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		prevCmd, ok := c.markPendingDeleting(userID, strings.Split(params, " "), 5*time.Minute)
+		prevCmd, ok := c.MarkPendingDeleting(userID, strings.Split(params, " "), 5*time.Minute)
 		if !ok {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -1044,7 +743,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		prevCmd, ok := c.markPendingListing(userID, 5*time.Minute)
+		prevCmd, ok := c.MarkPendingListing(userID, 5*time.Minute)
 		if !ok {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -1100,8 +799,8 @@ func (c telegramBot) scheduleMessageDelete(chatID uint64, after time.Duration, m
 		}
 
 		_ = c.msgDelQ.OfferWithDelay(msgDeleteKey{
-			ChatID:    chatID,
-			MessageID: msgID,
+			chatID:    chatID,
+			messageID: msgID,
 		}, struct{}{}, after)
 	}
 }
@@ -1211,14 +910,14 @@ func (c *telegramBot) handleStartCommand(
 	}
 
 	var (
-		standbySession         *sessionRequest
+		standbySession         *manager.SessionRequest
 		expectedOriginalChatID uint64
 	)
 
 	switch action {
 	case "create", "enter":
 		var ok bool
-		standbySession, ok = c.getStandbySession(userID)
+		standbySession, ok = c.GetStandbySession(userID)
 		if !ok {
 			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "No discussion requested")
 			return nil
@@ -1246,7 +945,7 @@ func (c *telegramBot) handleStartCommand(
 		pub, userConfig, err2 := c.createPublisher()
 		defer func() {
 			if err2 != nil {
-				_, _ = c.resolvePendingRequest(userID)
+				_, _ = c.ResolvePendingRequest(userID)
 
 				// best effort
 				_, _ = c.sendTextMessage(
@@ -1309,7 +1008,7 @@ func (c *telegramBot) handleStartCommand(
 			return err2
 		}
 
-		currentSession, err2 := c.activateSession(
+		currentSession, err2 := c.ActivateSession(
 			standbySession.ChatID,
 			userID,
 			standbySession.Topic,
@@ -1328,7 +1027,7 @@ func (c *telegramBot) handleStartCommand(
 		defer func() {
 			if err2 != nil {
 				// bset effort
-				_, _ = c.deactivateSession(standbySession.ChatID)
+				_, _ = c.DeactivateSession(standbySession.ChatID)
 			}
 		}()
 
@@ -1336,7 +1035,7 @@ func (c *telegramBot) handleStartCommand(
 			standbySession.ChatID, true, true, 0,
 			fmt.Sprintf(
 				"The post for your discussion around %q has been created: %s",
-				currentSession.Topic, postURL,
+				currentSession.GetTopic(), postURL,
 			),
 		)
 
@@ -1354,7 +1053,7 @@ func (c *telegramBot) handleStartCommand(
 			return err2
 		}
 
-		if !c.markRequestExpectingInput(userID, uint64(msgID)) {
+		if !c.MarkRequestExpectingInput(userID, uint64(msgID)) {
 			msgID2, _ := c.sendTextMessage(
 				chatID, false, true, msg.MessageId,
 				"The discussion is not expecting any input",
@@ -1376,7 +1075,7 @@ func (c *telegramBot) handleStartCommand(
 			},
 		)
 
-		if !c.markRequestExpectingInput(userID, uint64(msgID)) {
+		if !c.MarkRequestExpectingInput(userID, uint64(msgID)) {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, 0,
 				"Internal bot error: could not find your pending request",

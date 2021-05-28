@@ -1,4 +1,4 @@
-package server
+package telegram
 
 import (
 	"fmt"
@@ -8,12 +8,14 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 )
 
+type tokenInputHandleFunc func(chatID uint64, userID uint64, msg *telegram.Message) (bool, error)
+
 func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 	chatID uint64,
 	userID uint64,
 	msg *telegram.Message,
 ) (bool, error) {
-	standbySession, hasStandbySession := c.getStandbySession(userID)
+	standbySession, hasStandbySession := c.GetStandbySession(userID)
 	if !hasStandbySession {
 		return false, nil
 	}
@@ -27,7 +29,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 	pub, userConfig, err := c.createPublisher()
 	defer func() {
 		if err != nil {
-			_, _ = c.resolvePendingRequest(userID)
+			_, _ = c.ResolvePendingRequest(userID)
 
 			// best effort
 			_, _ = c.sendTextMessage(
@@ -110,7 +112,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		}
 	}
 
-	_, err = c.activateSession(
+	_, err = c.ActivateSession(
 		standbySession.ChatID, userID, title,
 		standbySession.ChatUsername, pub,
 	)
@@ -122,11 +124,11 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		return true, err
 	}
 
-	c.resolvePendingRequest(userID)
+	c.ResolvePendingRequest(userID)
 	defer func() {
 		if err != nil {
 			// bset effort
-			_, _ = c.deactivateSession(standbySession.ChatID)
+			_, _ = c.DeactivateSession(standbySession.ChatID)
 		}
 	}()
 
@@ -154,7 +156,7 @@ func (c *telegramBot) tryToHandleInputForEditing(
 	msg *telegram.Message,
 ) (bool, error) {
 	// check if it's a reply for conversion started by links to /edit, /delete, /list
-	req, isPendingEditing := c.getPendingEditing(userID)
+	req, isPendingEditing := c.GetPendingEditing(userID)
 	if !isPendingEditing {
 		return false, nil
 	}
@@ -168,7 +170,7 @@ func (c *telegramBot) tryToHandleInputForEditing(
 	pub, userConfig, err := c.createPublisher()
 	defer func() {
 		if err != nil {
-			c.resolvePendingRequest(userID)
+			c.ResolvePendingRequest(userID)
 
 			// best effort
 			_, _ = c.sendTextMessage(
@@ -207,7 +209,7 @@ func (c *telegramBot) tryToHandleInputForEditing(
 		return true, err
 	}
 
-	c.resolvePendingRequest(userID)
+	c.ResolvePendingRequest(userID)
 
 	msgID, _ := c.sendTextMessage(
 		chatID, true, true, 0, "Login Success!",
@@ -238,7 +240,7 @@ func (c *telegramBot) tryToHandleInputForListing(
 	msg *telegram.Message,
 ) (bool, error) {
 	// check if it's a reply for conversion started by links to /list
-	req, isPendingListing := c.getPendingListing(userID)
+	req, isPendingListing := c.GetPendingListing(userID)
 	if !isPendingListing {
 		return false, nil
 	}
@@ -252,7 +254,7 @@ func (c *telegramBot) tryToHandleInputForListing(
 	pub, userConfig, err := c.createPublisher()
 	defer func() {
 		if err != nil {
-			c.resolvePendingRequest(userID)
+			c.ResolvePendingRequest(userID)
 
 			// best effort
 			_, _ = c.sendTextMessage(
@@ -291,7 +293,7 @@ func (c *telegramBot) tryToHandleInputForListing(
 		return true, err
 	}
 
-	c.resolvePendingRequest(userID)
+	c.ResolvePendingRequest(userID)
 
 	messages := make([]string, 1)
 	i := 0
@@ -327,7 +329,7 @@ func (c *telegramBot) tryToHandleInputForDeleting(
 	msg *telegram.Message,
 ) (bool, error) {
 	// check if it's a reply for conversion started by links to /delete
-	req, isPendingDeleting := c.getPendingDeleting(userID)
+	req, isPendingDeleting := c.GetPendingDeleting(userID)
 	if !isPendingDeleting {
 		return false, nil
 	}
@@ -341,7 +343,7 @@ func (c *telegramBot) tryToHandleInputForDeleting(
 	pub, userConfig, err := c.createPublisher()
 	defer func() {
 		if err != nil {
-			c.resolvePendingRequest(userID)
+			c.ResolvePendingRequest(userID)
 
 			// best effort
 			_, _ = c.sendTextMessage(
@@ -371,7 +373,7 @@ func (c *telegramBot) tryToHandleInputForDeleting(
 		return true, nil
 	}
 
-	err = pub.Delete(req.urls...)
+	err = pub.Delete(req.URLs...)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
@@ -380,7 +382,7 @@ func (c *telegramBot) tryToHandleInputForDeleting(
 		return true, err
 	}
 
-	c.resolvePendingRequest(userID)
+	c.ResolvePendingRequest(userID)
 
 	_, _ = c.sendTextMessage(
 		chatID, true, true, 0, "The post(s) has been deleted",

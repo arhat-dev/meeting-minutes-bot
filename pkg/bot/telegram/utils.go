@@ -1,8 +1,9 @@
-package server
+package telegram
 
 import (
 	"encoding/binary"
 	"encoding/hex"
+	"strconv"
 )
 
 func encodeUint64Hex(n uint64) string {
@@ -17,4 +18,8 @@ func decodeUint64Hex(s string) (uint64, error) {
 		return 0, err
 	}
 	return binary.BigEndian.Uint64(data), nil
+}
+
+func formatMessageID(msgID int) string {
+	return strconv.FormatInt(int64(msgID), 10)
 }

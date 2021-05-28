@@ -1,4 +1,4 @@
-package server
+package telegram
 
 import (
 	"encoding/base64"

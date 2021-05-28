@@ -4,6 +4,8 @@ import "github.com/spf13/pflag"
 
 // TelegramConfig for telegram bot
 type TelegramConfig struct {
+	Enabled bool `json:"enabled" yaml:"enabled"`
+
 	Endpoint string `json:"endpoint" yaml:"endpoint"`
 	BotToken string `json:"botToken" yaml:"botToken"`
 
@@ -21,6 +23,7 @@ type TelegramConfig struct {
 func flagsForTelegramConfig(prefix string, config *TelegramConfig) *pflag.FlagSet {
 	fs := pflag.NewFlagSet("app", pflag.ExitOnError)
 
+	fs.BoolVar(&config.Enabled, prefix+"enabled", true, "run telegram bot")
 	fs.StringVar(&config.Endpoint, prefix+"endpoint", "api.telegram.org", "set telegram bot api server address")
 	fs.StringVar(&config.BotToken, prefix+"botToken", "", "set bot token, e.g. 123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11")
 
