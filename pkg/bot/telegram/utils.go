@@ -1,15 +1,36 @@
 package telegram
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
+	"html/template"
 	"strconv"
 	"time"
 
+	"arhat.dev/pkg/log"
+
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
+	"arhat.dev/meeting-minutes-bot/pkg/message"
+
+	_ "embed"
 )
+
+var (
+	// message template to render entities
+	//go:embed message.tpl
+	messageTemplate string
+)
+
+func init() {
+	// check template error
+	_, err := template.New("").Parse(messageTemplate)
+	if err != nil {
+		panic(err)
+	}
+}
 
 func encodeUint64Hex(n uint64) string {
 	buf := make([]byte, 8)
@@ -29,7 +50,17 @@ func formatMessageID(msgID int) string {
 	return strconv.FormatInt(int64(msgID), 10)
 }
 
-func (c telegramBot) scheduleMessageDelete(chatID uint64, after time.Duration, msgIDs ...uint64) {
+func (c *telegramBot) renderEntities(entities []message.Entity) string {
+	buf := &bytes.Buffer{}
+	err := c.msgTpl.ExecuteTemplate(buf, "message", entities)
+	if err != nil {
+		c.logger.E("failed to execute message template", log.Error(err))
+	}
+
+	return buf.String()
+}
+
+func (c *telegramBot) scheduleMessageDelete(chatID uint64, after time.Duration, msgIDs ...uint64) {
 	for _, msgID := range msgIDs {
 		if msgID == 0 {
 			// ignore invalid message id

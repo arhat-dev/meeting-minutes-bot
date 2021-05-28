@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os/exec"
 
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
@@ -55,11 +56,11 @@ func (d *Driver) Name() string                                              { re
 func (d *Driver) RequireLogin() bool                                        { return false }
 func (d *Driver) Login(config publisher.UserConfig) (token string, _ error) { return "", nil }
 func (d *Driver) AuthURL() (string, error)                                  { return "", nil }
-func (d *Driver) Retrieve(url string) (title string, _ error)               { return "", nil }
+func (d *Driver) Retrieve(key string) error                                 { return nil }
 func (d *Driver) List() ([]publisher.PostInfo, error)                       { return nil, nil }
 func (d *Driver) Delete(urls ...string) error                               { return nil }
 
-func (d *Driver) Append(title string, body []byte) (url string, _ error) {
+func (d *Driver) Append(body []byte) ([]message.Entity, error) {
 	var args []string
 	args = append(args, d.baseArgs...)
 	args = append(args, string(body))
@@ -73,13 +74,35 @@ func (d *Driver) Append(title string, body []byte) (url string, _ error) {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if len(output) != 0 {
-			return fmt.Sprintf("%s\n%v", output, err), nil
+			return []message.Entity{
+				{
+					Kind: message.KindPre,
+					Text: fmt.Sprintf("%s\n%v", output, err),
+				},
+			}, nil
 		}
 
-		return err.Error(), nil
+		return []message.Entity{
+			{
+				Kind: message.KindPre,
+				Text: err.Error(),
+			},
+		}, nil
 	}
 
-	return string(output), nil
+	return []message.Entity{
+		{
+			Kind: message.KindPre,
+			Text: string(output),
+		},
+	}, nil
 }
 
-func (d *Driver) Publish(title string, body []byte) (url string, _ error) { return "", nil }
+func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
+	return []message.Entity{
+		{
+			Kind: message.KindText,
+			Text: fmt.Sprintf("You are using %s interpreter.", d.bin),
+		},
+	}, nil
+}

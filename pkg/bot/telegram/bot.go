@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
+	"html/template"
 	"net/http"
 	"strings"
 	"time"
@@ -46,6 +47,8 @@ type telegramBot struct {
 	publisherRequireLogin bool
 	createPublisher       bot.PublisherFactoryFunc
 
+	msgTpl *template.Template
+
 	opts *conf.TelegramConfig
 
 	msgDelQ *queue.TimeoutQueue
@@ -76,6 +79,11 @@ func Create(
 		return nil, fmt.Errorf("failed to test publisher creation: %w", err)
 	}
 
+	msgTpl, err := template.New("").Parse(messageTemplate)
+	if err != nil {
+		return nil, fmt.Errorf("invalid message template: %w", err)
+	}
+
 	client := &telegramBot{
 		ctx:    ctx,
 		logger: logger,
@@ -94,6 +102,8 @@ func Create(
 		publisherName:         pub.Name(),
 		publisherRequireLogin: pub.RequireLogin(),
 		createPublisher:       createPublisher,
+
+		msgTpl: msgTpl,
 
 		msgDelQ: queue.NewTimeoutQueue(),
 	}
@@ -262,7 +272,7 @@ func (c *telegramBot) handleCmd(
 	userID := uint64(msg.From.Id)
 	isPrivateMessage := false
 
-	// ensure only group admin can start discussion
+	// ensure only group admin can start session
 	switch msg.Chat.Type {
 	case telegram.ChatTypeChannel:
 		_, err := c.sendTextMessage(
@@ -333,11 +343,11 @@ func (c *telegramBot) handleCmd(
 		switch cmd {
 		case constant.CommandDiscuss:
 			topic = params
-			onInvalidCmdMsg = "Please specify a discussion topic, e.g. <code>%s foo</code>"
+			onInvalidCmdMsg = "Please specify a session topic, e.g. <code>%s foo</code>"
 		case constant.CommandContinue:
 			url = params
 			// nolint:lll
-			onInvalidCmdMsg = "Please specify the url of the discussion post, e.g. <code>%s https://telegra.ph/foo-01-21-100</code>"
+			onInvalidCmdMsg = "Please specify the url of the session post, e.g. <code>%s https://telegra.ph/foo-01-21-100</code>"
 		}
 
 		if len(params) == 0 {
@@ -356,7 +366,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "already in a session"))
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"Please <code>/end</code> current discussion before starting a new one",
+				"Please <code>/end</code> current session before starting a new one",
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
@@ -366,7 +376,7 @@ func (c *telegramBot) handleCmd(
 		if !c.MarkSessionStandby(userID, chatID, topic, url, 5*time.Minute) {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"You have already started a discussion with no auth token specified, please end that first",
+				"You have already started a session with no auth token specified, please end that first",
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
@@ -376,11 +386,11 @@ func (c *telegramBot) handleCmd(
 		if !c.publisherRequireLogin {
 			pub, _, _ := c.createPublisher()
 
-			_, err := c.ActivateSession(chatID, userID, topic, pub)
+			_, err := c.ActivateSession(chatID, userID, pub)
 			if err != nil {
 				msgID, _ := c.sendTextMessage(
 					chatID, true, true, msg.MessageId,
-					"You have already started a discussion before, please end that first",
+					"You have already started a session before, please end that first",
 				)
 				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
@@ -393,18 +403,18 @@ func (c *telegramBot) handleCmd(
 				}
 			}()
 
-			pageHeader, err := c.generator.FormatPageHeader()
+			pageHeader, err := c.generator.RenderPageHeader()
 			if err != nil {
 				return fmt.Errorf("failed to render page header: %w", err)
 			}
 
-			url, err := pub.Publish(topic, pageHeader)
+			note, err := pub.Publish(topic, pageHeader)
 			if err != nil {
 				return fmt.Errorf("failed to pre-publish page: %w", err)
 			}
 
-			if len(url) != 0 {
-				_, _ = c.sendTextMessage(chatID, true, true, 0, url)
+			if len(note) != 0 {
+				_, _ = c.sendTextMessage(chatID, true, true, 0, c.renderEntities(note))
 			}
 
 			return nil
@@ -444,13 +454,13 @@ func (c *telegramBot) handleCmd(
 
 			switch cmd {
 			case constant.CommandDiscuss:
-				textPrompt = "Create or enter your %s token for this discussion"
+				textPrompt = "Create or enter your %s token for this session"
 				inlineKeyboard[0] = append(inlineKeyboard[0], telegram.InlineKeyboardButton{
 					Text: "Create",
 					Url:  &urlForCreate,
 				})
 			case constant.CommandContinue:
-				textPrompt = "Enter your %s token to continue this discussion"
+				textPrompt = "Enter your %s token to continue this session"
 			}
 
 			inlineKeyboard[0] = append(inlineKeyboard[0], telegram.InlineKeyboardButton{
@@ -498,7 +508,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid usage of end", log.String("reason", "no active session"))
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"There is no active discussion",
+				"There is no active session",
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
@@ -519,7 +529,7 @@ func (c *telegramBot) handleCmd(
 		}
 
 		pub := currentSession.GetPublisher()
-		postURL, err := pub.Append(currentSession.GetTopic(), content)
+		note, err := pub.Append(content)
 		if err != nil {
 			logger.I("failed to append content to post", log.Error(err))
 			_, _ = c.sendTextMessage(
@@ -533,23 +543,17 @@ func (c *telegramBot) handleCmd(
 
 		currentSession.DeleteFirstNMessage(n)
 
-		currentSession, ok = c.DeactivateSession(chatID)
+		_, ok = c.DeactivateSession(chatID)
 		if !ok {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"Internal bot error: active discussion already been ended out of no reason",
+				"Internal bot error: active session already been ended out of no reason",
 			)
 
 			return nil
 		}
 
-		_, _ = c.sendTextMessage(
-			chatID, false, false, 0,
-			fmt.Sprintf(
-				"Your discussion around %q has been ended, view and edit your post: %s",
-				currentSession.GetTopic(), postURL,
-			),
-		)
+		_, _ = c.sendTextMessage(chatID, false, false, 0, c.renderEntities(note))
 
 		return nil
 	case constant.CommandInclude:
@@ -570,7 +574,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "not in a session"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				"There is not active discussion, <code>/include</code> will do nothing in this case",
+				"There is not active session, <code>/include</code> will do nothing in this case",
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 			return nil
@@ -613,7 +617,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "not in a session"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				"There is not active discussion, <code>/ignore</code> will do nothing in this case",
+				"There is not active session, <code>/ignore</code> will do nothing in this case",
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 

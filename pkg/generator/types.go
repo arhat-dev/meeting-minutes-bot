@@ -7,11 +7,11 @@ import (
 type Interface interface {
 	Name() string
 
-	// FormatPageHeader render page.header
-	FormatPageHeader() ([]byte, error)
+	// RenderPageHeader render page.header
+	RenderPageHeader() ([]byte, error)
 
-	// FormatPageBody render page.body
-	FormatPageBody(messages []message.Interface) ([]byte, error)
+	// RenderPageBody render page.body
+	RenderPageBody(messages []message.Interface) ([]byte, error)
 }
 
 type TemplateData struct {

@@ -93,7 +93,7 @@ func (g *Driver) Name() string {
 	return Name
 }
 
-func (g *Driver) FormatPageHeader() ([]byte, error) {
+func (g *Driver) RenderPageHeader() ([]byte, error) {
 	buf := &bytes.Buffer{}
 	err := g.templates.ExecuteTemplate(buf, "page.header", nil)
 	if err != nil {
@@ -103,7 +103,7 @@ func (g *Driver) FormatPageHeader() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func (g *Driver) FormatPageBody(
+func (g *Driver) RenderPageBody(
 	messages []message.Interface,
 ) ([]byte, error) {
 	var (
