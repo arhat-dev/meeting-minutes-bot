@@ -28,8 +28,7 @@ type (
 	SessionRequest struct {
 		BaseRequest
 
-		ChatID       uint64
-		ChatUsername string
+		ChatID uint64
 
 		// only one of topic and url shall be specified
 		Topic string

@@ -262,7 +262,6 @@ func (c *telegramBot) handleCmd(
 	userID := uint64(msg.From.Id)
 	isPrivateMessage := false
 
-	defaultChatUsername := ""
 	// ensure only group admin can start discussion
 	switch msg.Chat.Type {
 	case telegram.ChatTypeChannel:
@@ -273,53 +272,8 @@ func (c *telegramBot) handleCmd(
 		return err
 	case telegram.ChatTypePrivate:
 		// direct message to bot, no permission check
-		defaultChatUsername = c.botUsername
 		isPrivateMessage = true
 	case telegram.ChatTypeGroup, telegram.ChatTypeSupergroup:
-		// find chat username
-
-		if msg.Chat.Username != nil {
-			defaultChatUsername = *msg.Chat.Username
-		} else {
-			resp, err := c.client.PostGetChat(
-				c.ctx, telegram.PostGetChatJSONRequestBody{
-					ChatId: chatID,
-				},
-			)
-			if err != nil {
-				msgID, _ := c.sendTextMessage(
-					chatID, true, true, msg.MessageId,
-					fmt.Sprintf("Unable to check group chat info: %v", err),
-				)
-				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
-				return err
-			}
-
-			chat, err := telegram.ParsePostGetChatResponse(resp)
-			_ = resp.Body.Close()
-			if err != nil {
-				msgID, _ := c.sendTextMessage(
-					chatID, true, true, msg.MessageId,
-					fmt.Sprintf("Unable to parse group chat info: %v", err),
-				)
-				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
-				return err
-			}
-
-			if chat.JSON200 == nil || !chat.JSON200.Ok {
-				msgID, _ := c.sendTextMessage(
-					chatID, true, true, msg.MessageId,
-					fmt.Sprintf("Telegram: unable to check group administrators: %s", chat.JSONDefault.Description),
-				)
-				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
-				return err
-			}
-
-			if usernamePtr := chat.JSON200.Result.Username; usernamePtr != nil {
-				defaultChatUsername = *usernamePtr
-			}
-		}
-
 		// ensure only admin can use this bot
 		resp, err := c.client.PostGetChatAdministrators(c.ctx, telegram.PostGetChatAdministratorsJSONRequestBody{
 			ChatId: chatID,
@@ -409,7 +363,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		if !c.MarkSessionStandby(userID, chatID, defaultChatUsername, topic, url, 5*time.Minute) {
+		if !c.MarkSessionStandby(userID, chatID, topic, url, 5*time.Minute) {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
 				"You have already started a discussion with no auth token specified, please end that first",

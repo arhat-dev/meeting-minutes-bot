@@ -112,10 +112,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		}
 	}
 
-	_, err = c.ActivateSession(
-		standbySession.ChatID, userID, title,
-		standbySession.ChatUsername, pub,
-	)
+	_, err = c.ActivateSession(standbySession.ChatID, userID, title, pub)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
