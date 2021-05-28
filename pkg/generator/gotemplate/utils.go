@@ -8,6 +8,7 @@ import (
 	"path"
 	texttemplate "text/template"
 
+	"arhat.dev/pkg/textquery"
 	"github.com/Masterminds/sprig/v3"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
@@ -39,13 +40,20 @@ func loadTemplatesFromFS(base templateExecutor, dirFS fs.FS) (templateExecutor, 
 		return t.
 			Funcs(sprig.HtmlFuncMap()).
 			Funcs(htmltemplate.FuncMap(generator.CreateFuncMap())).
+			Funcs(customFuncMap).
 			ParseFS(dirFS, pattern)
 	case *texttemplate.Template:
 		return t.
 			Funcs(sprig.TxtFuncMap()).
 			Funcs(texttemplate.FuncMap(generator.CreateFuncMap())).
+			Funcs(customFuncMap).
 			ParseFS(dirFS, pattern)
 	default:
 		return nil, fmt.Errorf("unexpected no base template: %T", base)
 	}
+}
+
+var customFuncMap = map[string]interface{}{
+	"jq":      textquery.JQ,
+	"jqBytes": textquery.JQBytes,
 }
