@@ -373,6 +373,43 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
+		if !c.publisherRequireLogin {
+			pub, _, _ := c.createPublisher()
+
+			_, err := c.ActivateSession(chatID, userID, topic, pub)
+			if err != nil {
+				msgID, _ := c.sendTextMessage(
+					chatID, true, true, msg.MessageId,
+					"You have already started a discussion before, please end that first",
+				)
+				c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
+
+				return nil
+			}
+
+			defer func() {
+				if err != nil {
+					c.DeactivateSession(chatID)
+				}
+			}()
+
+			pageHeader, err := c.generator.FormatPageHeader()
+			if err != nil {
+				return fmt.Errorf("failed to render page header: %w", err)
+			}
+
+			url, err := pub.Publish(topic, pageHeader)
+			if err != nil {
+				return fmt.Errorf("failed to pre-publish page: %w", err)
+			}
+
+			if len(url) != 0 {
+				_, _ = c.sendTextMessage(chatID, true, true, 0, url)
+			}
+
+			return nil
+		}
+
 		return func() (err error) {
 			defer func() {
 				if err != nil {
