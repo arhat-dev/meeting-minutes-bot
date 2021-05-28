@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
 type tokenInputHandleFunc func(chatID uint64, userID uint64, msg *telegram.Message) (bool, error)
@@ -66,18 +67,18 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		return true, nil
 	}
 
-	var title string
+	var (
+		note []message.Entity
+	)
 	switch {
 	case len(standbySession.Topic) != 0:
 		// is /discuss, create a new post
-		title = standbySession.Topic
-
-		content, err2 := c.generator.FormatPageHeader()
+		content, err2 := c.generator.RenderPageHeader()
 		if err2 != nil {
 			return true, fmt.Errorf("failed to generate initial page: %w", err2)
 		}
 
-		postURL, err2 := pub.Publish(title, content)
+		note, err2 = pub.Publish(standbySession.Topic, content)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, 0,
@@ -85,34 +86,23 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 			)
 			return true, err2
 		}
-
-		_, err2 = c.sendTextMessage(
-			standbySession.ChatID, true, true, 0,
-			fmt.Sprintf(
-				"The post for your discussion around %q has been created: %s",
-				title, postURL,
-			),
-		)
-		if err2 != nil {
-			return true, err2
-		}
 	case len(standbySession.URL) != 0:
 		// is /continue, find existing post to edit
-		var err2 error
 
-		// we may not find the post if user provided a wrong url, don't count this error
-		// as session error
-		title, err2 = pub.Retrieve(standbySession.URL)
+		err2 := pub.Retrieve(standbySession.URL)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
 				fmt.Sprintf("Retrieve %s post error: %v", pub.Name(), err2),
 			)
+
+			// we may not find the post if user provided a wrong url, don't count this error
+			// as session error
 			return true, nil
 		}
 	}
 
-	_, err = c.ActivateSession(standbySession.ChatID, userID, title, pub)
+	_, err = c.ActivateSession(standbySession.ChatID, userID, pub)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
@@ -139,10 +129,10 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		msgIDShouldReplyTo,
 	)
 
-	_, _ = c.sendTextMessage(
-		standbySession.ChatID, true, true, 0,
-		"You can start your discussion now, the post will be updated after the discussion",
-	)
+	_, err = c.sendTextMessage(standbySession.ChatID, true, true, 0, c.renderEntities(note))
+	if err != nil {
+		return true, nil
+	}
 
 	return true, nil
 }

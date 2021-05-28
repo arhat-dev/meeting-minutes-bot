@@ -153,12 +153,12 @@ func (c *telegramBot) handleStartCommand(
 			return err2
 		}
 
-		content, err2 := c.generator.FormatPageHeader()
+		content, err2 := c.generator.RenderPageHeader()
 		if err2 != nil {
 			return fmt.Errorf("failed to generate initial page: %w", err2)
 		}
 
-		postURL, err2 := pub.Publish(standbySession.Topic, content)
+		note, err2 := pub.Publish(standbySession.Topic, content)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -167,12 +167,7 @@ func (c *telegramBot) handleStartCommand(
 			return err2
 		}
 
-		currentSession, err2 := c.ActivateSession(
-			standbySession.ChatID,
-			userID,
-			standbySession.Topic,
-			pub,
-		)
+		_, err2 = c.ActivateSession(standbySession.ChatID, userID, pub)
 		if err2 != nil {
 			logger.D("invalid usage of discuss", log.String("reason", err2.Error()))
 			_, _ = c.sendTextMessage(
@@ -189,13 +184,8 @@ func (c *telegramBot) handleStartCommand(
 			}
 		}()
 
-		_, err2 = c.sendTextMessage(
-			standbySession.ChatID, true, true, 0,
-			fmt.Sprintf(
-				"The post for your discussion around %q has been created: %s",
-				currentSession.GetTopic(), postURL,
-			),
-		)
+		// error checked by `defer` section
+		_, err2 = c.sendTextMessage(standbySession.ChatID, true, true, 0, c.renderEntities(note))
 
 		return nil
 	case "enter":

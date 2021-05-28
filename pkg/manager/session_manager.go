@@ -167,9 +167,7 @@ func (c *SessionManager) GetActiveSession(chatID uint64) (*Session, bool) {
 }
 
 func (c *SessionManager) ActivateSession(
-	chatID, userID uint64,
-	topic string,
-	p publisher.Interface,
+	chatID, userID uint64, p publisher.Interface,
 ) (*Session, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -188,7 +186,7 @@ func (c *SessionManager) ActivateSession(
 		return nil, fmt.Errorf("chat not match")
 	}
 
-	newS := newSession(topic, p)
+	newS := newSession(p)
 	sVal, loaded := c.activeSessions.LoadOrStore(chatID, newS)
 	if loaded {
 		return sVal.(*Session), fmt.Errorf("already exists")

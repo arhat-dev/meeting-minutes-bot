@@ -5,9 +5,11 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 
 	"go.uber.org/multierr"
 
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
@@ -36,7 +38,8 @@ func init() {
 			}
 
 			return &Driver{
-				dir: dir,
+				dir:             dir,
+				currentFilename: &atomic.Value{},
 			}, &UserConfig{}, nil
 		},
 		func() interface{} {
@@ -59,13 +62,15 @@ var _ publisher.Interface = (*Driver)(nil)
 
 type Driver struct {
 	dir string
+
+	currentFilename *atomic.Value
 }
 
 func (d *Driver) Name() string                                              { return Name }
 func (d *Driver) RequireLogin() bool                                        { return false }
 func (d *Driver) Login(config publisher.UserConfig) (token string, _ error) { return "", nil }
 func (d *Driver) AuthURL() (string, error)                                  { return "", nil }
-func (d *Driver) Retrieve(url string) (title string, _ error)               { return "", nil }
+func (d *Driver) Retrieve(key string) error                                 { return nil }
 
 func (d *Driver) List() ([]publisher.PostInfo, error) {
 	entries, err := ioutil.ReadDir(d.dir)
@@ -101,26 +106,46 @@ func (d *Driver) Delete(urls ...string) error {
 	return err
 }
 
-func (d *Driver) Publish(title string, body []byte) (url string, _ error) {
+func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
 	filename := normalizeFilename(title)
-	return filename, os.WriteFile(filepath.Join(d.dir, filename), body, 0640)
+	d.currentFilename.Store(filename)
+
+	return []message.Entity{
+		{
+			Kind: message.KindText,
+			Text: "Your messages will be rendered into ",
+		},
+		{
+			Kind: message.KindPre,
+			Text: filename,
+		},
+	}, os.WriteFile(filepath.Join(d.dir, filename), body, 0640)
 }
 
-func (d *Driver) Append(title string, body []byte) (url string, _ error) {
-	filename := normalizeFilename(title)
+func (d *Driver) Append(body []byte) ([]message.Entity, error) {
+	filename := normalizeFilename(d.currentFilename.Load().(string))
 	f, err := os.OpenFile(filepath.Join(d.dir, filename), os.O_APPEND|os.O_WRONLY, 0640)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
 	defer func() { _ = f.Close() }()
 
 	_, err = f.Write(body)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	return filename, nil
+	return []message.Entity{
+		{
+			Kind: message.KindText,
+			Text: "Your messages have been rendered into ",
+		},
+		{
+			Kind: message.KindPre,
+			Text: filename,
+		},
+	}, nil
 }
 
 func normalizeFilename(title string) string {

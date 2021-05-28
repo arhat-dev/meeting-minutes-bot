@@ -9,10 +9,9 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
-func newSession(topic string, p publisher.Interface) *Session {
+func newSession(p publisher.Interface) *Session {
 	return &Session{
-		topic: topic,
-		msgs:  make([]message.Interface, 0, 16),
+		msgs: make([]message.Interface, 0, 16),
 
 		publisher: p,
 		msgIdx:    make(map[string]int),
@@ -21,8 +20,7 @@ func newSession(topic string, p publisher.Interface) *Session {
 }
 
 type Session struct {
-	topic string
-	msgs  []message.Interface
+	msgs []message.Interface
 
 	publisher publisher.Interface
 	msgIdx    map[string]int
@@ -34,13 +32,6 @@ func (s *Session) GetPublisher() publisher.Interface {
 	defer s.mu.RUnlock()
 
 	return s.publisher
-}
-
-func (s *Session) GetTopic() string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.topic
 }
 
 func (s *Session) RefMessages() *[]message.Interface {
@@ -106,7 +97,7 @@ func (s *Session) GenerateContent(gen generator.Interface) (msgOutCount int, _ [
 		}
 	}
 
-	result, err := gen.FormatPageBody(msgCopy)
+	result, err := gen.RenderPageBody(msgCopy)
 
 	return msgOutCount, result, err
 }
