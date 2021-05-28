@@ -13,7 +13,7 @@ Build your knowledgebase in Chat
 - [x] Automatic post generation from messages
 - [ ] Automatic post update on message update
 - [x] Automatic file uploading for content sharing
-- [ ] Automatic web archive for links in message
+- [ ] Automatic web archiving for links in message
 - [x] Basic post management (list, delete, edit)
 
 ## Support Matrix
@@ -21,7 +21,7 @@ Build your knowledgebase in Chat
 - Chat Platform
   - [x] `telegram`
 - Storage
-  - [x] `s3` (with public read access, no presign support)
+  - [x] `s3` (no presign support, requires public read access)
 - Post Generator
   - [x] [`gotemplate`](./docs/generator/gotemplate.md)
 - Post Publisher
@@ -104,7 +104,7 @@ app:
     # currently only supports `gotemplate`
     driver: gotemplate
     config:
-      # available templates are [telegraph]
+      # available built-in templates are [telegraph, text, beancount]
       builtinTemplate: telegraph
       # custom template directory, all files in this directory will be treated as template
       #templatesDir: /path/to/templates/dir
@@ -136,7 +136,7 @@ bots:
       # tlsPublicKeyData:
 ```
 
-__NOTE:__ You can refernce environment variables in config file (e.g. `${FOO}`, `$BAR`)
+__NOTE:__ You can reference environment variables in config file (e.g. `${FOO}`, `$BAR`)
 
 ## Run
 
