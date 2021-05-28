@@ -34,21 +34,21 @@ Build your knowledgebase in Chat
 ## Bot Commands
 
 - [x] `/discuss TOPIC`
-  - Start a new discussion around `TOPIC`, the `TOPIC` will be the title of the published post
+  - Start a new session around `TOPIC`, the `TOPIC` will be the title of the published post
   - Once you finished the guided operation, you will get a `POST_URL`
 - [x] `/continue POST_URL`
-  - Continue previous discussion, use corresponding `POST_URL` for your `TOPIC`
-- [x] `/ignore` (During Discussion)
-  - Use this command as a reply to the message you want to omit in the final post
-- [x] `/include` (During Discussion)
-  - Use this command as a reply to the message out of the scope of current  you want to include in the final post
+  - Continue previous session, use corresponding `POST_URL` for your `TOPIC`
+- [x] `/ignore` (During Session)
+  - Use this command as a reply to the message you want to omit in the final post.
+- [x] `/include` (During Session)
+  - Use this command as a reply to a message you want to include in the final post but sent before the session start.
 - [x] `/edit` (Private Message Only)
   - Edit your posts with external application
 - [x] `/list` (Private Message Only)
   - List your posts
 - [x] `/delete url1{ url2 ... urlN}` (Private Message Only)
   - Delete post(s) using their `POST_URL`s, you can provide multiple space separated URLs
-- [x] `/end` - end current discussion or cancel current operation
+- [x] `/end` - end current session or cancel current operation
 
 __NOTE:__ You have to manage `POST_URL`s for your `TOPIC`s
 
