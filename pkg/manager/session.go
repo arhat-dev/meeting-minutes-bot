@@ -9,15 +9,14 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
-func newSession(topic, defaultChatUsername string, p publisher.Interface) *Session {
+func newSession(topic string, p publisher.Interface) *Session {
 	return &Session{
 		topic: topic,
 		msgs:  make([]message.Interface, 0, 16),
 
-		defaultChatUsername: defaultChatUsername,
-		publisher:           p,
-		msgIdx:              make(map[string]int),
-		mu:                  &sync.RWMutex{},
+		publisher: p,
+		msgIdx:    make(map[string]int),
+		mu:        &sync.RWMutex{},
 	}
 }
 
@@ -25,10 +24,9 @@ type Session struct {
 	topic string
 	msgs  []message.Interface
 
-	defaultChatUsername string
-	publisher           publisher.Interface
-	msgIdx              map[string]int
-	mu                  *sync.RWMutex
+	publisher publisher.Interface
+	msgIdx    map[string]int
+	mu        *sync.RWMutex
 }
 
 func (s *Session) GetPublisher() publisher.Interface {

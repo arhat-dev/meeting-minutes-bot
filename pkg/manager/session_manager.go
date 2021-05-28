@@ -117,13 +117,12 @@ func (c *SessionManager) ResolvePendingRequest(userID uint64) (interface{}, bool
 
 func (c *SessionManager) MarkSessionStandby(
 	userID, chatID uint64,
-	chatUsername, topic, url string,
+	topic, url string,
 	timeout time.Duration,
 ) bool {
 	_, loaded := c.pendingRequests.LoadOrStore(
 		userID, &SessionRequest{
-			ChatID:       chatID,
-			ChatUsername: chatUsername,
+			ChatID: chatID,
 
 			Topic: topic,
 			URL:   url,
@@ -169,16 +168,15 @@ func (c *SessionManager) GetActiveSession(chatID uint64) (*Session, bool) {
 
 func (c *SessionManager) ActivateSession(
 	chatID, userID uint64,
-	topic, defaultChatUsername string,
+	topic string,
 	p publisher.Interface,
 ) (*Session, error) {
-
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
 	pVal, loaded := c.pendingRequests.LoadAndDelete(userID)
 	if !loaded {
-		return nil, fmt.Errorf("not found")
+		return nil, fmt.Errorf("session request not found")
 	}
 
 	sr, ok := pVal.(*SessionRequest)
@@ -190,13 +188,13 @@ func (c *SessionManager) ActivateSession(
 		return nil, fmt.Errorf("chat not match")
 	}
 
-	newS := newSession(topic, defaultChatUsername, p)
+	newS := newSession(topic, p)
 	sVal, loaded := c.activeSessions.LoadOrStore(chatID, newS)
-	if !loaded {
-		return newS, nil
+	if loaded {
+		return sVal.(*Session), fmt.Errorf("already exists")
 	}
 
-	return sVal.(*Session), fmt.Errorf("already exists")
+	return newS, nil
 }
 
 func (c *SessionManager) DeactivateSession(chatID uint64) (_ *Session, ok bool) {

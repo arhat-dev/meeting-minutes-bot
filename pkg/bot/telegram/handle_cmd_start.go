@@ -171,7 +171,6 @@ func (c *telegramBot) handleStartCommand(
 			standbySession.ChatID,
 			userID,
 			standbySession.Topic,
-			standbySession.ChatUsername,
 			pub,
 		)
 		if err2 != nil {
