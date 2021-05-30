@@ -494,7 +494,7 @@ func (c *telegramBot) handleCmd(
 				if sr.ChatID != chatID {
 					_, _ = c.sendTextMessage(
 						sr.ChatID, true, true, 0,
-						"Discussion was canceled by the initiator.",
+						"Session was canceled by the initiator.",
 					)
 				}
 			}

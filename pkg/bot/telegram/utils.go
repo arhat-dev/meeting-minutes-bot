@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"html/template"
 	"strconv"
+	"strings"
 	"time"
+	"unicode/utf16"
 
 	"arhat.dev/pkg/log"
 
@@ -121,4 +123,99 @@ func (c *telegramBot) sendTextMessage(
 	}
 
 	return result.JSON200.Result.MessageId, nil
+}
+
+func parseTelegramEntities(
+	content string,
+	entities *[]telegram.MessageEntity,
+) *message.Entities {
+	if entities == nil {
+		return message.NewMessageEntities([]message.Entity{{
+			Kind: message.KindText,
+			Text: content,
+		}}, nil)
+	}
+
+	text := utf16.Encode([]rune(content))
+	result := message.NewMessageEntities(nil, nil)
+
+	textIndex := 0
+	for _, e := range *entities {
+		if e.Offset > textIndex {
+			// append previously unhandled plain text
+			result.Append(message.Entity{
+				Kind:   message.KindText,
+				Text:   string(utf16.Decode(text[textIndex:e.Offset])),
+				Params: nil,
+			})
+		}
+
+		data := string(utf16.Decode(text[e.Offset : e.Offset+e.Length]))
+		textIndex = e.Offset + e.Length
+
+		// handle entities without params
+		kind, ok := map[telegram.MessageEntityType]message.EntityKind{
+			telegram.MessageEntityTypeBotCommand: message.KindCode,
+			telegram.MessageEntityTypeHashtag:    message.KindBold,
+			telegram.MessageEntityTypeCashtag:    message.KindBold,
+			telegram.MessageEntityTypeTextLink:   message.KindBold,
+
+			telegram.MessageEntityTypeBold:          message.KindBold,
+			telegram.MessageEntityTypeItalic:        message.KindItalic,
+			telegram.MessageEntityTypeStrikethrough: message.KindStrikethrough,
+			telegram.MessageEntityTypeUnderline:     message.KindUnderline,
+			telegram.MessageEntityTypeCode:          message.KindCode,
+			telegram.MessageEntityTypePre:           message.KindPre,
+
+			telegram.MessageEntityTypeEmail:       message.KindEmail,
+			telegram.MessageEntityTypePhoneNumber: message.KindPhoneNumber,
+		}[e.Type]
+
+		if ok {
+			result.Append(message.Entity{
+				Kind:   kind,
+				Text:   data,
+				Params: nil,
+			})
+
+			continue
+		}
+
+		switch e.Type {
+		case telegram.MessageEntityTypeUrl:
+			result.Append(message.Entity{
+				Kind: message.KindURL,
+				Text: data,
+				Params: map[message.EntityParamKey]interface{}{
+					message.EntityParamURL:                     data,
+					message.EntityParamWebArchiveURL:           "",
+					message.EntityParamWebArchiveScreenshotURL: "",
+				},
+			})
+		case telegram.MessageEntityTypeMention, telegram.MessageEntityTypeTextMention:
+			url := "https://t.me/" + strings.TrimPrefix(data, "@")
+			result.Append(message.Entity{
+				Kind: message.KindURL,
+				Text: data,
+				Params: map[message.EntityParamKey]interface{}{
+					message.EntityParamURL:                     url,
+					message.EntityParamWebArchiveURL:           "",
+					message.EntityParamWebArchiveScreenshotURL: "",
+				},
+			})
+		default:
+			// TODO: log error
+			// client.logger.E("message entity unhandled", log.String("type", string(e.Type)))
+		}
+	}
+
+	if textIndex < len(text)-1 {
+		result.Append(message.Entity{
+			Kind:   message.KindText,
+			Text:   string(utf16.Decode(text[textIndex:])),
+			Params: nil,
+		})
+	}
+
+	return result
 }

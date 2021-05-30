@@ -37,16 +37,16 @@ var (
 	}
 
 	BotCommandShortDescriptions = map[string]string{
-		CommandDiscuss: "start a new discussion around some topic",
-		CommandIgnore:  "ignore some message during discussion",
-		CommandInclude: "include extra message to discussion",
-		CommandEnd:     "end current discussion",
+		CommandDiscuss: "start a new session around some topic",
+		CommandIgnore:  "ignore some message during session",
+		CommandInclude: "include extra message to session",
+		CommandEnd:     "end current session",
 
-		CommandContinue: "continue previously created discussion",
+		CommandContinue: "continue previously created session",
 
-		CommandEdit:   "edit discussion post",
-		CommandList:   "list all discussion posts",
-		CommandDelete: "delete certain discussion post",
+		CommandEdit:   "edit session post",
+		CommandList:   "list all session posts",
+		CommandDelete: "delete certain session post",
 
 		CommandHelp: "show help text",
 
