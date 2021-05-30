@@ -115,12 +115,12 @@ func (t *Driver) AuthURL() (string, error) {
 	return t.account.AuthURL, nil
 }
 
-func (t *Driver) Retrieve(url string) error {
+func (t *Driver) Retrieve(url string) ([]message.Entity, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	if t.account == nil {
-		return fmt.Errorf("account not created")
+		return nil, fmt.Errorf("account not created")
 	}
 
 	const limit = 20
@@ -128,7 +128,7 @@ func (t *Driver) Retrieve(url string) error {
 	for i := 0; i < max; i += limit {
 		list, err := t.account.GetPageList(i, limit)
 		if err != nil {
-			return fmt.Errorf("failed to get page list: %w", err)
+			return nil, fmt.Errorf("failed to get page list: %w", err)
 		}
 
 		max = list.TotalCount
@@ -137,16 +137,21 @@ func (t *Driver) Retrieve(url string) error {
 			if p.URL == url {
 				page, err2 := telegraph.GetPage(p.Path, true)
 				if err2 != nil {
-					return err2
+					return nil, err2
 				}
 
 				t.page = page
-				return nil
+				return []message.Entity{
+					{
+						Kind: message.KindText,
+						Text: "You can continue your session now.",
+					},
+				}, nil
 			}
 		}
 	}
 
-	return fmt.Errorf("not found")
+	return nil, fmt.Errorf("not found")
 }
 
 func (t *Driver) Publish(title string, body []byte) ([]message.Entity, error) {

@@ -14,7 +14,7 @@ type Interface interface {
 	AuthURL() (string, error)
 
 	// Retrieve post and cache it locally according to the url
-	Retrieve(url string) error
+	Retrieve(url string) ([]message.Entity, error)
 
 	// Publish a new post
 	Publish(title string, body []byte) ([]message.Entity, error)

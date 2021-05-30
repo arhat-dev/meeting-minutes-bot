@@ -52,13 +52,33 @@ type Driver struct {
 	baseArgs []string
 }
 
-func (d *Driver) Name() string                                              { return Name }
-func (d *Driver) RequireLogin() bool                                        { return false }
-func (d *Driver) Login(config publisher.UserConfig) (token string, _ error) { return "", nil }
-func (d *Driver) AuthURL() (string, error)                                  { return "", nil }
-func (d *Driver) Retrieve(key string) error                                 { return nil }
-func (d *Driver) List() ([]publisher.PostInfo, error)                       { return nil, nil }
-func (d *Driver) Delete(urls ...string) error                               { return nil }
+func (d *Driver) Name() string {
+	return Name
+}
+
+func (d *Driver) RequireLogin() bool {
+	return false
+}
+
+func (d *Driver) Login(config publisher.UserConfig) (token string, _ error) {
+	return "", fmt.Errorf("unimplemented")
+}
+
+func (d *Driver) AuthURL() (string, error) {
+	return "", fmt.Errorf("unimplemented")
+}
+
+func (d *Driver) Retrieve(key string) ([]message.Entity, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (d *Driver) List() ([]publisher.PostInfo, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
+
+func (d *Driver) Delete(urls ...string) error {
+	return fmt.Errorf("unimplemented")
+}
 
 func (d *Driver) Append(body []byte) ([]message.Entity, error) {
 	var args []string
