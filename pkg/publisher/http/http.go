@@ -240,7 +240,8 @@ func (d *Driver) Append(yamlSpec []byte) ([]message.Entity, error) {
 
 	if d.respTpl != nil {
 		buf := &bytes.Buffer{}
-		err = d.respTpl.Execute(buf, &responseTemplateData{
+
+		tplData := &responseTemplateData{
 			Code:    resp.StatusCode,
 			Headers: resp.Header,
 			Body:    data,
@@ -248,7 +249,9 @@ func (d *Driver) Append(yamlSpec []byte) ([]message.Entity, error) {
 				URL:     req.URL,
 				Headers: req.Header,
 			},
-		})
+		}
+
+		err = d.respTpl.Execute(buf, tplData)
 		if err != nil {
 			return nil, err
 		}
