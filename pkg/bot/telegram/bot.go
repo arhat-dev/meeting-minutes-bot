@@ -493,7 +493,10 @@ func (c *telegramBot) handleCmd(
 			// a pending request, no generator involved
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("You have canceled the pending <code>%s</code> request", manager.GetCommandFromRequest(prevReq)),
+				fmt.Sprintf(
+					"You have canceled the pending <code>%s</code> request",
+					manager.GetCommandFromRequest(prevReq),
+				),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
