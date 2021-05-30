@@ -10,6 +10,7 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/bot/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/conf"
+	"arhat.dev/meeting-minutes-bot/pkg/constant"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
@@ -45,6 +46,7 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 	}
 
 	if bots.Telegram.Enabled {
+		cmds, newToOld := getCommands(bots.GlobalCommandMapping, bots.Telegram.CommandsMapping)
 		tgBot, err := telegram.Create(
 			ctx,
 			log.Log.WithFields(log.String("bot", "telegram")),
@@ -54,6 +56,8 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 			func() (publisher.Interface, publisher.UserConfig, error) {
 				return publisher.NewDriver(opts.Publisher.Driver, opts.Publisher.Config)
 			},
+			cmds,
+			newToOld,
 			&bots.Telegram,
 		)
 		if err != nil {
@@ -79,4 +83,81 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 	}
 
 	return srv.ListenAndServe()
+}
+
+func getCommands(
+	globalMapping, botMapping conf.BotCommandsMappingConfig,
+) (
+	oldToNew map[string]conf.BotCommandMappingConfig,
+	newToOld map[string]string,
+) {
+	oldToNew = make(map[string]conf.BotCommandMappingConfig)
+	newToOld = make(map[string]string)
+	setCmd := func(originalCmd, cmd, description string, disabled bool) {
+		if disabled {
+			return
+		}
+
+		oldToNew[originalCmd] = conf.BotCommandMappingConfig{
+			As:          cmd,
+			Description: description,
+		}
+
+		newToOld[cmd] = originalCmd
+	}
+
+	// use loop to ensure no command skipped
+	for _, cmd := range constant.AllBotCommands {
+		originalDescription := constant.BotCommandShortDescriptions[cmd]
+		switch cmd {
+		case constant.CommandStart:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Start, botMapping.Start))
+		case constant.CommandDiscuss:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Discuss, botMapping.Discuss))
+		case constant.CommandIgnore:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Ignore, botMapping.Ignore))
+		case constant.CommandInclude:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Include, botMapping.Include))
+		case constant.CommandEnd:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.End, botMapping.End))
+		case constant.CommandContinue:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Continue, botMapping.Continue))
+		case constant.CommandEdit:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Edit, botMapping.Edit))
+		case constant.CommandList:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.List, botMapping.List))
+		case constant.CommandDelete:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Delete, botMapping.Delete))
+		case constant.CommandHelp:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Help, botMapping.Help))
+		default:
+			panic(fmt.Errorf("command %s not processed", cmd))
+		}
+	}
+
+	return
+}
+
+func getCommandOverride(
+	originalCmd, originalDescription string,
+	globalOverride, botOverride *conf.BotCommandMappingConfig,
+) (oldCmd, newCmd, description string, disabled bool) {
+	newCmd = originalCmd
+	description = originalDescription
+
+	if globalOverride != nil {
+		newCmd = globalOverride.As
+		if len(description) != 0 {
+			description = globalOverride.Description
+		}
+	}
+
+	if botOverride != nil {
+		newCmd = botOverride.As
+		if len(description) != 0 {
+			description = botOverride.Description
+		}
+	}
+
+	return originalCmd, newCmd, description, len(newCmd) == 0
 }

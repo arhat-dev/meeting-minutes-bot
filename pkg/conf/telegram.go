@@ -9,6 +9,8 @@ type TelegramConfig struct {
 	Endpoint string `json:"endpoint" yaml:"endpoint"`
 	BotToken string `json:"botToken" yaml:"botToken"`
 
+	CommandsMapping BotCommandsMappingConfig `json:"commandsMapping" yaml:"commandsMapping"`
+
 	Webhook struct {
 		Enabled        bool   `json:"enabled" yaml:"enabled"`
 		Path           string `json:"path" yaml:"path"`

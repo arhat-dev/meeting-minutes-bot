@@ -36,6 +36,8 @@ var (
 		CommandHelp,
 	}
 
+	AllBotCommands = append([]string{CommandStart}, VisibleBotCommands...)
+
 	BotCommandShortDescriptions = map[string]string{
 		CommandDiscuss: "start a new session around some topic",
 		CommandIgnore:  "ignore some message during session",
@@ -53,15 +55,3 @@ var (
 		CommandStart: "",
 	}
 )
-
-func CommandHelpText() string {
-	body := ""
-	for _, cmd := range VisibleBotCommands {
-		body += "<pre>" + cmd + "</pre> - " + BotCommandShortDescriptions[cmd] + "\n"
-	}
-
-	return `Usage:
-
-` + body + `
-`
-}
