@@ -6,7 +6,7 @@
 [![GoReportCard](https://goreportcard.com/badge/arhat.dev/meeting-minutes-bot)](https://goreportcard.com/report/arhat.dev/meeting-minutes-bot)
 [![codecov](https://codecov.io/gh/arhat-dev/meeting-minutes-bot/branch/master/graph/badge.svg)](https://codecov.io/gh/arhat-dev/meeting-minutes-bot)
 
-Build your knowledgebase in Chat
+Build your KnowledgeBase in Chat
 
 ## Features
 
@@ -28,7 +28,7 @@ Build your knowledgebase in Chat
   - [x] [`telegraph`](./docs/publisher/telegraph.md)
   - [x] [`file`](./docs/publisher/file.md)
   - [x] [`interpreter`](./docs/publisher/interpreter.md)
-  - [ ] [`http`](./docs/publisher/http.md)
+  - [x] [`http`](./docs/publisher/http.md)
 - Web Archiver
   - [ ] `cdp` (chrome dev tools protocol with headless chromium)
 
@@ -82,19 +82,8 @@ app:
   storage:
     # currently only supports `s3`, leave it empty to disable automatic file uploading
     driver: s3
-    config:
-      # s3 service endpoint, a URL, scheme MUST be `http` or `https`
-      endpointURL: https://s3.example.com
-      # bucket region
-      region: us-east-1
-      # bucket name
-      bucket: example
-      # path in
-      basePath: foo/bar
-      # access key (required)
-      accessKeyID: ${MY_S3_ACCESS_KEY}
-      # access key secret (required)
-      accessKeySecret: ${MY_S3_SECRET_KEY}
+    # read ./docs/storage/{DRIVER}.md to find out config options
+    config: {}
 
   # currently not supported
   webarchiver:
@@ -104,13 +93,8 @@ app:
   generator:
     # currently only supports `gotemplate`
     driver: gotemplate
-    config:
-      # available built-in templates are [telegraph, text, beancount]
-      builtinTemplate: telegraph
-      # custom template directory, all files in this directory will be treated as template
-      #templatesDir: /path/to/templates/dir
-      # `html` or `text`
-      #outputFormat: html
+    # read ./docs/generator/{DRIVER}.md to find out config options
+    config: {}
 
   # post publisher
   publisher:
@@ -118,11 +102,9 @@ app:
     driver: interpreter
     # read ./docs/publisher/{DRIVER}.md to find out config options
     config: {}
-      # bin: sh
-      # baseArgs:
-      # - -c
 
 bots:
+  # rename default commands
   globalCommandsMapping:
     /discuss:
       as: /prepare
