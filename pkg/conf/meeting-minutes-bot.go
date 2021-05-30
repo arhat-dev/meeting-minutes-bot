@@ -41,10 +41,6 @@ type AppConfig struct {
 	Publisher   PublisherConfig   `json:"publisher" yaml:"publisher"`
 }
 
-type BotsConfig struct {
-	Telegram TelegramConfig `json:"telegram" yaml:"telegram"`
-}
-
 func FlagsForAppConfig(prefix string, config *AppConfig) *pflag.FlagSet {
 	fs := pflag.NewFlagSet("app", pflag.ExitOnError)
 
@@ -58,17 +54,43 @@ func FlagsForAppConfig(prefix string, config *AppConfig) *pflag.FlagSet {
 	fs.StringVar(&config.Storage.Driver,
 		prefix+"storage.driver", "", "set storage for files, one of [s3], leave empty to disable")
 	fs.StringVar(&config.WebArchiver.Driver,
-		prefix+"webarchiver.driver", "", "set web archive service provider, one of [chromedp], leave empty to disable")
+		prefix+"webarchiver.driver", "", "set web archive service provider, one of [cdp], leave empty to disable")
 	fs.StringVar(&config.Generator.Driver,
 		prefix+"generator.driver", "",
 		"set post generation engine, one of [gotemplate], leave empty to disable",
 	)
 	fs.StringVar(&config.Publisher.Driver,
 		prefix+"publisher.driver", "",
-		"set post publisher service provider, one of [telegraph], leave empty to disable",
+		"set post publisher service provider, one of [telegraph, file, http, interpreter], leave empty to disable",
 	)
 
 	return fs
+}
+
+type BotsConfig struct {
+	GlobalCommandMapping BotCommandsMappingConfig `json:"globalCommandsMapping" yaml:"globalCommandsMapping"`
+
+	Telegram TelegramConfig `json:"telegram" yaml:"telegram"`
+}
+
+type BotCommandsMappingConfig struct {
+	Discuss  *BotCommandMappingConfig `json:"/discuss" yaml:"/discuss"`
+	Continue *BotCommandMappingConfig `json:"/continue" yaml:"/continue"`
+	Ignore   *BotCommandMappingConfig `json:"/ignore" yaml:"/ignore"`
+	Include  *BotCommandMappingConfig `json:"/include" yaml:"/include"`
+	End      *BotCommandMappingConfig `json:"/end" yaml:"/end"`
+
+	Edit   *BotCommandMappingConfig `json:"/edit" yaml:"/edit"`
+	List   *BotCommandMappingConfig `json:"/list" yaml:"/list"`
+	Delete *BotCommandMappingConfig `json:"/delete" yaml:"/delete"`
+
+	Help  *BotCommandMappingConfig `json:"/help" yaml:"/help"`
+	Start *BotCommandMappingConfig `json:"/start" yaml:"/start"`
+}
+
+type BotCommandMappingConfig struct {
+	As          string `json:"as" yaml:"as"`
+	Description string `json:"description" yaml:"description"`
 }
 
 func FlagsForBotsConfig(prefix string, config *BotsConfig) *pflag.FlagSet {

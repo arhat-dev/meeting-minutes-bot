@@ -50,9 +50,14 @@ func (c *telegramBot) Configure() error {
 	var commands []telegram.BotCommand
 
 	for _, cmd := range constant.VisibleBotCommands {
+		newCmd, ok := c.oldToNew[cmd]
+		if !ok {
+			continue
+		}
+
 		commands = append(commands, telegram.BotCommand{
-			Command:     strings.TrimPrefix(cmd, "/"),
-			Description: constant.BotCommandShortDescriptions[cmd],
+			Command:     strings.TrimPrefix(newCmd.As, "/"),
+			Description: newCmd.Description,
 		})
 	}
 

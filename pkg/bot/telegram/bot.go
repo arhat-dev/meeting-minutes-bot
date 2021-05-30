@@ -39,6 +39,9 @@ type telegramBot struct {
 
 	*manager.SessionManager
 
+	oldToNew map[string]conf.BotCommandMappingConfig
+	newToOld map[string]string
+
 	storage     storage.Interface
 	webArchiver webarchiver.Interface
 	generator   generator.Interface
@@ -61,6 +64,8 @@ func Create(
 	webArchiver webarchiver.Interface,
 	generator generator.Interface,
 	createPublisher bot.PublisherFactoryFunc,
+	oldToNew map[string]conf.BotCommandMappingConfig,
+	newToOld map[string]string,
 	opts *conf.TelegramConfig,
 ) (bot.Interface, error) {
 	tgClient, err := telegram.NewClient(
@@ -94,6 +99,9 @@ func Create(
 		botUsername: "", // set in Configure()
 
 		SessionManager: manager.NewSessionManager(ctx),
+
+		oldToNew: oldToNew,
+		newToOld: newToOld,
 
 		webArchiver: webArchiver,
 		storage:     storage,
@@ -336,25 +344,25 @@ func (c *telegramBot) handleCmd(
 		}
 	}
 
-	switch cmd {
+	switch c.newToOld[cmd] {
 	case constant.CommandDiscuss, constant.CommandContinue:
 		// mark this session as standby, wait for reply from bot private message
 		var topic, url, onInvalidCmdMsg string
-		switch cmd {
+		switch c.newToOld[cmd] {
 		case constant.CommandDiscuss:
 			topic = params
-			onInvalidCmdMsg = "Please specify a session topic, e.g. <code>%s foo</code>"
+			onInvalidCmdMsg = fmt.Sprintf("Please specify a session topic, e.g. <code>%s foo</code>", cmd)
 		case constant.CommandContinue:
 			url = params
 			// nolint:lll
-			onInvalidCmdMsg = "Please specify the url of the session post, e.g. <code>%s https://telegra.ph/foo-01-21-100</code>"
+			onInvalidCmdMsg = fmt.Sprintf("Please specify the key of the session, e.g. <code>%s your-key</code>", cmd)
 		}
 
 		if len(params) == 0 {
 			logger.D("invalid command usage", log.String("reason", "missing param"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				fmt.Sprintf(onInvalidCmdMsg, cmd),
+				onInvalidCmdMsg,
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
@@ -366,7 +374,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "already in a session"))
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"Please <code>/end</code> current session before starting a new one",
+				"Please end current session before starting a new one",
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
@@ -376,7 +384,7 @@ func (c *telegramBot) handleCmd(
 		if !c.MarkSessionStandby(userID, chatID, topic, url, 5*time.Minute) {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"You have already started a session with no auth token specified, please end that first",
+				"You have already started a session with no token replied, please end that first",
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
@@ -452,7 +460,7 @@ func (c *telegramBot) handleCmd(
 				textPrompt     = ""
 			)
 
-			switch cmd {
+			switch c.newToOld[cmd] {
 			case constant.CommandDiscuss:
 				textPrompt = "Create or enter your %s token for this session"
 				inlineKeyboard[0] = append(inlineKeyboard[0], telegram.InlineKeyboardButton{
@@ -562,7 +570,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "not a reply"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				"<code>/include</code> can only be used as a reply",
+				fmt.Sprintf("<code>%s</code> can only be used as a reply", cmd),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID))
@@ -574,7 +582,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "not in a session"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				"There is not active session, <code>/include</code> will do nothing in this case",
+				fmt.Sprintf("There is no active session, <code>%s</code> will do nothing in this case", cmd),
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 			return nil
@@ -605,7 +613,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "not a reply"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				"<code>/ignore</code> can only be used as a reply",
+				fmt.Sprintf("<code>%s</code> can only be used as a reply", cmd),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
@@ -617,7 +625,7 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "not in a session"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				"There is not active session, <code>/ignore</code> will do nothing in this case",
+				fmt.Sprintf("There is not active session, <code>%s</code> will do nothing in this case", cmd),
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
@@ -639,7 +647,7 @@ func (c *telegramBot) handleCmd(
 		if !isPrivateMessage {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"You cannot use <code>/edit</code> command in groups",
+				fmt.Sprintf("You cannot use <code>%s</code> command in groups", cmd),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
@@ -683,7 +691,7 @@ func (c *telegramBot) handleCmd(
 		if !isPrivateMessage {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"You cannot use <code>/delete</code> command in groups",
+				fmt.Sprintf("You cannot use <code>%s</code> command in groups", cmd),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
@@ -738,7 +746,7 @@ func (c *telegramBot) handleCmd(
 		if !isPrivateMessage {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"You cannot use <code>/list</code> command in groups",
+				fmt.Sprintf("You cannot use <code>%s</code> command in groups", cmd),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
@@ -779,7 +787,18 @@ func (c *telegramBot) handleCmd(
 
 		return err
 	case constant.CommandHelp:
-		_, _ = c.sendTextMessage(chatID, true, true, 0, constant.CommandHelpText())
+		body := ""
+
+		for _, cmd := range constant.VisibleBotCommands {
+			spec, ok := c.oldToNew[cmd]
+			if !ok {
+				continue
+			}
+
+			body += "<pre>" + spec.As + "</pre> - " + spec.Description + "\n"
+		}
+
+		_, _ = c.sendTextMessage(chatID, true, true, 0, fmt.Sprintf("Usage:\n\n%s\n", body))
 		return nil
 	default:
 		logger.D("unknown command")

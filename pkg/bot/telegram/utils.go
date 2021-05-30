@@ -83,7 +83,13 @@ func (c *telegramBot) sendTextMessage(
 	replyTo int,
 	text string,
 	replyMarkup ...interface{},
-) (int, error) {
+) (msgID int, err error) {
+	defer func() {
+		if err != nil {
+			c.logger.I("failed to send message", log.Error(err))
+		}
+	}()
+
 	var replyToMsgIDPtr *int
 	if replyTo > 0 {
 		replyToMsgIDPtr = &replyTo
