@@ -487,13 +487,13 @@ func (c *telegramBot) handleCmd(
 		}()
 	case constant.CommandStart:
 		return c.handleStartCommand(logger, chatID, userID, isPrivateMessage, params, msg)
-	case constant.CommandEnd:
+	case constant.CommandCancel:
 		prevReq, ok := c.ResolvePendingRequest(userID)
 		if ok {
 			// a pending request, no generator involved
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("You have canceled the pending <code>%s</code>", manager.GetCommandFromRequest(prevReq)),
+				fmt.Sprintf("You have canceled the pending <code>%s</code> request", manager.GetCommandFromRequest(prevReq)),
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
@@ -506,10 +506,17 @@ func (c *telegramBot) handleCmd(
 					)
 				}
 			}
+		} else {
+			msgID, _ := c.sendTextMessage(
+				chatID, true, true, msg.MessageId,
+				"There is no pending request",
+			)
 
-			return nil
+			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 		}
 
+		return nil
+	case constant.CommandEnd:
 		currentSession, ok := c.GetActiveSession(chatID)
 		if !ok {
 			// TODO

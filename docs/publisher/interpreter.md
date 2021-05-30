@@ -20,6 +20,9 @@ baseArgs: [some, args]
   as: /run
   description: run the prepared script
 
+# keep `/cancel` command as is
+# /cancel: {}
+
 # disable following commands since they are not used
 
 /edit: {}

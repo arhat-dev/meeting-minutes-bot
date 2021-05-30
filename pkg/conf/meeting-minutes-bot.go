@@ -79,6 +79,7 @@ type BotCommandsMappingConfig struct {
 	Ignore   *BotCommandMappingConfig `json:"/ignore" yaml:"/ignore"`
 	Include  *BotCommandMappingConfig `json:"/include" yaml:"/include"`
 	End      *BotCommandMappingConfig `json:"/end" yaml:"/end"`
+	Cancel   *BotCommandMappingConfig `json:"/cancel" yaml:"/cancel"`
 
 	Edit   *BotCommandMappingConfig `json:"/edit" yaml:"/edit"`
 	List   *BotCommandMappingConfig `json:"/list" yaml:"/list"`

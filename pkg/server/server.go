@@ -120,6 +120,8 @@ func getCommands(
 			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Include, botMapping.Include))
 		case constant.CommandEnd:
 			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.End, botMapping.End))
+		case constant.CommandCancel:
+			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Cancel, botMapping.Cancel))
 		case constant.CommandContinue:
 			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Continue, botMapping.Continue))
 		case constant.CommandEdit:

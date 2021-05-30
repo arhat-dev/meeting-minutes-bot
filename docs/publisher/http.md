@@ -59,6 +59,8 @@ responseTemplate: |
 /end:
   as: /request
   description: Issue request with prepared arguments
+# keep `/cancel` command as is
+# /cancel: {}
 
 # disable following commands since they are not used
 

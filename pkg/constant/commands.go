@@ -6,6 +6,7 @@ const (
 	CommandIgnore  = "/ignore"
 	CommandInclude = "/include"
 	CommandEnd     = "/end"
+	CommandCancel  = "/cancel"
 
 	CommandContinue = "/continue"
 
@@ -26,6 +27,7 @@ var (
 		CommandIgnore,
 		CommandInclude,
 		CommandEnd,
+		CommandCancel,
 
 		CommandContinue,
 
@@ -39,16 +41,17 @@ var (
 	AllBotCommands = append([]string{CommandStart}, VisibleBotCommands...)
 
 	BotCommandShortDescriptions = map[string]string{
-		CommandDiscuss: "start a new session around some topic",
+		CommandDiscuss: "request a new session around some topic",
 		CommandIgnore:  "ignore some message during session",
 		CommandInclude: "include extra message to session",
 		CommandEnd:     "end current session",
+		CommandCancel:  "cancel current request",
 
 		CommandContinue: "continue previously created session",
 
-		CommandEdit:   "edit session post",
-		CommandList:   "list all session posts",
-		CommandDelete: "delete certain session post",
+		CommandEdit:   "request edit session post",
+		CommandList:   "request list all session posts",
+		CommandDelete: "request delete certain session post",
 
 		CommandHelp: "show help text",
 

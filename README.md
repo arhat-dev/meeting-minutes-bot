@@ -34,24 +34,27 @@ Build your KnowledgeBase in Chat
 
 ## Bot Commands
 
-- [x] `/discuss TOPIC`
-  - Start a new session around `TOPIC`, the `TOPIC` will be the title of the published post
-  - Once you finished the guided operation, you will get a `POST_URL`
-- [x] `/continue POST_URL`
-  - Continue previous session, use corresponding `POST_URL` for your `TOPIC`
-- [x] `/ignore` (During Session)
+- `/discuss TOPIC`
+  - Request starting a new session around `TOPIC`, the `TOPIC` will be the title of the published post
+    - Once you finished the guided operation, you will get a `POST_KEY`
+- `/continue POST_KEY`
+  - Request continuing previous session, use corresponding `POST_KEY` for your `TOPIC`
+- `/ignore` (During Session)
   - Use this command as a reply to the message you want to omit in the final post.
-- [x] `/include` (During Session)
+- `/include` (During Session)
   - Use this command as a reply to a message you want to include in the final post but sent before the session start.
-- [x] `/edit` (Private Message Only)
+- `/edit` (Private Message Only)
   - Edit your posts with external application
-- [x] `/list` (Private Message Only)
-  - List your posts
-- [x] `/delete url1{ url2 ... urlN}` (Private Message Only)
-  - Delete post(s) using their `POST_URL`s, you can provide multiple space separated URLs
-- [x] `/end` - end current session or cancel current operation
+- `/list` (Private Message Only)
+  - Request listing your posts
+- `/delete url1{ url2 ... urlN}` (Private Message Only)
+  - Request deleting post(s) using their `POST_KEY`s, you can provide multiple space separated URLs
+- `/end`
+  - End current session
+- `/cancel`
+  - Cancel pending request
 
-__NOTE:__ You have to manage `POST_URL`s for your `TOPIC`s
+__NOTE:__ You have to manage `POST_KEY`s for your `TOPIC`s
 
 ## Build
 
@@ -112,6 +115,8 @@ bots:
     /end:
       as: /run
       description: run the prepared script
+    # keep `/cancel` command as is
+    #/cancel: {}
 
     # disable commands with emtpy body (DO NOT use null)
 

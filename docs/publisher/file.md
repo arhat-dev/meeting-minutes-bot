@@ -27,6 +27,9 @@ dir: /path/to/some/directory
   as: /write
   description: write messages to the file
 
+# keep `/cancel` command as is
+# /cancel: {}
+
 # disable following commands since they are not used
 
 /edit: {}
