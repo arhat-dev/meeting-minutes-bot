@@ -114,12 +114,33 @@ app:
 
   # post publisher
   publisher:
-    # one of [telegraph, file, interpreter]
-    driver: telegraph
+    # one of [telegraph, file, interpreter, http]
+    driver: interpreter
     # read ./docs/publisher/{DRIVER}.md to find out config options
-    #config: {}
+    config: {}
+      # bin: sh
+      # baseArgs:
+      # - -c
 
 bots:
+  globalCommandsMapping:
+    /discuss:
+      as: /prepare
+      description: prepare script for interpreter
+    /end:
+      as: /run
+      description: run the prepared script
+
+    # disable commands with emtpy body (DO NOT use null)
+
+    /edit: {}
+    /list: {}
+    /delete: {}
+    /start: {}
+    /continue: {}
+    /ignore: {}
+    /include: {}
+
   telegram:
     # telegram api endpoint, NOT a URL
     endpoint: api.telegram.org

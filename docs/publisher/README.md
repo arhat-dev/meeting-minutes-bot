@@ -1,3 +1,3 @@
 # Publisher
 
-A `publisher` publishes generated content from `generator`
+A `publisher` publishes content generated from messages by `generator`.
