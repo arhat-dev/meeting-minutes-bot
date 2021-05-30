@@ -66,11 +66,25 @@ type Driver struct {
 	currentFilename *atomic.Value
 }
 
-func (d *Driver) Name() string                                              { return Name }
-func (d *Driver) RequireLogin() bool                                        { return false }
-func (d *Driver) Login(config publisher.UserConfig) (token string, _ error) { return "", nil }
-func (d *Driver) AuthURL() (string, error)                                  { return "", nil }
-func (d *Driver) Retrieve(key string) error                                 { return nil }
+func (d *Driver) Name() string {
+	return Name
+}
+
+func (d *Driver) RequireLogin() bool {
+	return false
+}
+
+func (d *Driver) Login(config publisher.UserConfig) (token string, _ error) {
+	return "", fmt.Errorf("unimplemented")
+}
+
+func (d *Driver) AuthURL() (string, error) {
+	return "", fmt.Errorf("unimplemented")
+}
+
+func (d *Driver) Retrieve(key string) ([]message.Entity, error) {
+	return nil, fmt.Errorf("unimplemented")
+}
 
 func (d *Driver) List() ([]publisher.PostInfo, error) {
 	entries, err := ioutil.ReadDir(d.dir)
@@ -91,9 +105,9 @@ func (d *Driver) List() ([]publisher.PostInfo, error) {
 	return result, nil
 }
 
-func (d *Driver) Delete(urls ...string) error {
+func (d *Driver) Delete(keys ...string) error {
 	var err error
-	for _, filename := range urls {
+	for _, filename := range keys {
 		path := filepath.Join(d.dir, filename)
 		if filepath.Dir(path) != d.dir {
 			err = multierr.Append(err, fmt.Errorf("invalid filename with path"))
