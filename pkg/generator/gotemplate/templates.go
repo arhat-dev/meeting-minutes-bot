@@ -31,6 +31,9 @@ var (
 
 	//go:embed templates/telegraph/*
 	builtinTelegraphTemplate embed.FS
+
+	//go:embed templates/http-request-spec/*
+	builtinHTTPRequestSpecTemplate embed.FS
 )
 
 var builtinTemplates = map[string]templateLoadSpec{
@@ -48,6 +51,11 @@ var builtinTemplates = map[string]templateLoadSpec{
 		name:    "telegraph",
 		fs:      &builtinTelegraphTemplate,
 		factory: newHTMLTemplate,
+	},
+	"http-request-spec": {
+		name:    "http-request-spec",
+		fs:      &builtinHTTPRequestSpecTemplate,
+		factory: newTextTemplate,
 	},
 }
 

@@ -6,7 +6,7 @@ import (
 )
 
 type Spec struct {
-	QueryParams []nameValuePair `json:"queryParams" yaml:"queryParams"`
+	Params []nameValuePair `json:"params" yaml:"params"`
 
 	// base64 encoded request body
 	Body string `json:"body" yaml:"body"`
