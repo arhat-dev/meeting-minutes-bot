@@ -35,13 +35,13 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 			// best effort
 			_, _ = c.sendTextMessage(
 				chatID, true, true, 0,
-				fmt.Sprintf("The discussion was canceled due to error, please retry later: %v", err),
+				fmt.Sprintf("The session was canceled due to error, please retry later: %v", err),
 			)
 
 			if standbySession.ChatID != chatID {
 				_, _ = c.sendTextMessage(
 					standbySession.ChatID, true, true, 0,
-					"The discussion was canceled due to error, please retry later",
+					"The session was canceled due to error, please retry later",
 				)
 			}
 		}
@@ -89,11 +89,11 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 	case len(standbySession.URL) != 0:
 		// is /continue, find existing post to edit
 
-		err2 := pub.Retrieve(standbySession.URL)
-		if err2 != nil {
+		note, err = pub.Retrieve(standbySession.URL)
+		if err != nil {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("Retrieve %s post error: %v", pub.Name(), err2),
+				fmt.Sprintf("Retrieve %s post error: %v", pub.Name(), err),
 			)
 
 			// we may not find the post if user provided a wrong url, don't count this error

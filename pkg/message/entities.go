@@ -13,7 +13,7 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
 
-func newMessageEntities(entities []Entity, urlsToArchive map[string][]int) *Entities {
+func NewMessageEntities(entities []Entity, urlsToArchive map[string][]int) *Entities {
 	if urlsToArchive == nil {
 		urlsToArchive = make(map[string][]int)
 	}
@@ -39,6 +39,19 @@ func (me *Entities) Get() []Entity {
 	defer me.mu.Unlock()
 
 	return me.entities
+}
+
+func (me *Entities) Append(e Entity) {
+	me.mu.Lock()
+	defer me.mu.Unlock()
+
+	me.entities = append(me.entities, e)
+	if e.IsURL() && e.Params != nil {
+		urlVal := e.Params[EntityParamURL]
+		if url, ok := urlVal.(string); ok {
+			me.urlsToArchive[url] = append(me.urlsToArchive[url], len(me.entities)-1)
+		}
+	}
 }
 
 func (me *Entities) NeedPreProcess() bool {

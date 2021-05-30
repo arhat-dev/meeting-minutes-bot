@@ -35,7 +35,7 @@ func (c *telegramBot) preProcess(
 
 	switch {
 	case m.msg.Text != nil:
-		me := message.ParseTelegramEntities(*m.msg.Text, m.msg.Entities)
+		me := parseTelegramEntities(*m.msg.Text, m.msg.Entities)
 
 		if !me.NeedPreProcess() {
 			m.entities = me.Get()
@@ -187,7 +187,7 @@ func (c *telegramBot) preProcess(
 	wg := &sync.WaitGroup{}
 
 	if m.msg.Caption != nil {
-		cme := message.ParseTelegramEntities(*m.msg.Caption, m.msg.CaptionEntities)
+		cme := parseTelegramEntities(*m.msg.Caption, m.msg.CaptionEntities)
 
 		wg.Add(1)
 		if cme.NeedPreProcess() {

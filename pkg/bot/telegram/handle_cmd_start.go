@@ -78,7 +78,7 @@ func (c *telegramBot) handleStartCommand(
 		var ok bool
 		standbySession, ok = c.GetStandbySession(userID)
 		if !ok {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "No discussion requested")
+			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "No session requested")
 			return nil
 		}
 
@@ -109,13 +109,13 @@ func (c *telegramBot) handleStartCommand(
 				// best effort
 				_, _ = c.sendTextMessage(
 					chatID, true, true, 0,
-					fmt.Sprintf("The discussion was canceled due to error, please retry later: %v", err2),
+					fmt.Sprintf("The session was canceled due to error, please retry later: %v", err2),
 				)
 
 				if standbySession.ChatID != chatID {
 					_, _ = c.sendTextMessage(
 						standbySession.ChatID, true, true, 0,
-						"The discussion was canceled due to error, please retry later",
+						"The session was canceled due to error, please retry later",
 					)
 				}
 			}
@@ -172,7 +172,7 @@ func (c *telegramBot) handleStartCommand(
 			logger.D("invalid usage of discuss", log.String("reason", err2.Error()))
 			_, _ = c.sendTextMessage(
 				standbySession.ChatID, true, true, 0,
-				fmt.Sprintf("Could not activate discussion: %v", err2),
+				fmt.Sprintf("Could not activate the session: %v", err2),
 			)
 			return err2
 		}
@@ -204,7 +204,7 @@ func (c *telegramBot) handleStartCommand(
 		if !c.MarkRequestExpectingInput(userID, uint64(msgID)) {
 			msgID2, _ := c.sendTextMessage(
 				chatID, false, true, msg.MessageId,
-				"The discussion is not expecting any input",
+				"The session is not expecting any input",
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msgID2))
