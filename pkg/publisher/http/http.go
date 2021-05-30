@@ -219,9 +219,9 @@ func (d *Driver) Append(yamlSpec []byte) ([]message.Entity, error) {
 	}
 
 	for _, h := range d.headers {
-		name, value, err := h.render(spec)
-		if err != nil {
-			return nil, fmt.Errorf("failed to render headers: %w", err)
+		name, value, err2 := h.render(spec)
+		if err2 != nil {
+			return nil, fmt.Errorf("failed to render headers: %w", err2)
 		}
 
 		req.Header.Add(name, value)
