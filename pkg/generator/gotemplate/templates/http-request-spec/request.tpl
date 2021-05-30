@@ -1,0 +1,34 @@
+{{-
+/*
+    HTTP request template for `http` publisher
+    the generated result is yaml text config, which can be recognized by the `http` publisher
+*/ -}}
+
+{{- define "page.header" -}}{{- end -}}
+
+{{-
+/*
+    Render messages as http request body
+*/ -}}
+
+{{- define "req.body" -}}
+  {{- range . -}}
+    {{- if not (hasPrefix .Text "q:") -}}
+      {{- .Text -}}
+    {{- end -}}
+  {{- end -}}
+{{- end -}}
+
+{{- define "page.body" -}}
+
+{{- range .Messages -}}
+params:
+{{- if hasPrefix .Text "p:" -}}
+  {{- $parts := splitList "=" (trimPrefix "p:" .Text) -}}
+  - name: {{ index $parts 0 }}
+    value: {{ if eq (len $parts) 2 }}{{ index $parts 1 }}{{ else }}""{{ end }}
+{{ end -}}
+{{- end -}}
+
+body: {{ template "req.body" .Messages }}
+{{- end -}}

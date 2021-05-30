@@ -33,6 +33,7 @@ import (
 
 	// post publishing drivers
 	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/file"
+	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/http"
 	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/interpreter"
 	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/telegraph"
 
