@@ -1,6 +1,7 @@
 package file
 
 import (
+	"context"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -136,7 +137,7 @@ func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
 	}, os.WriteFile(filepath.Join(d.dir, filename), body, 0640)
 }
 
-func (d *Driver) Append(body []byte) ([]message.Entity, error) {
+func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, error) {
 	filename := normalizeFilename(d.currentFilename.Load().(string))
 	f, err := os.OpenFile(filepath.Join(d.dir, filename), os.O_APPEND|os.O_WRONLY, 0640)
 	if err != nil {

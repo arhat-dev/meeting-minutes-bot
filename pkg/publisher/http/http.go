@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -168,7 +169,7 @@ func (d *Driver) Delete(urls ...string) error {
 	return fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Append(yamlSpec []byte) ([]message.Entity, error) {
+func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Entity, error) {
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,

@@ -1,6 +1,16 @@
 package publisher
 
-import "arhat.dev/meeting-minutes-bot/pkg/message"
+import (
+	"context"
+
+	"arhat.dev/meeting-minutes-bot/pkg/message"
+)
+
+type Input struct {
+	// From is the name of the generator/
+	From string
+	Data []byte
+}
 
 type Interface interface {
 	Name() string
@@ -26,7 +36,7 @@ type Interface interface {
 	Delete(urls ...string) error
 
 	// Append content to local post cache
-	Append(body []byte) ([]message.Entity, error)
+	Append(ctx context.Context, body []byte) ([]message.Entity, error)
 }
 
 type PostInfo struct {
