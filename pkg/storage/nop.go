@@ -13,5 +13,5 @@ func (u *Nop) Name() string {
 }
 
 func (u *Nop) Upload(ctx context.Context, filename string, data []byte) (url string, err error) {
-	return "", nil
+	return filename, nil
 }
