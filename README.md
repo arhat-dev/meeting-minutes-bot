@@ -22,9 +22,10 @@ Build your KnowledgeBase in Chat
   - [x] `telegram`
 - Storage
   - [x] `s3` (no presign support, requires public read access)
-- Post Generator
+- [Generator](./docs/generator/README.md)
   - [x] [`gotemplate`](./docs/generator/gotemplate.md)
-- Post Publisher
+  - [x] [`file`](./docs/generator/file.md)
+- [Publisher](./docs/publisher/README.md)
   - [x] [`telegraph`](./docs/publisher/telegraph.md)
   - [x] [`file`](./docs/publisher/file.md)
   - [x] [`interpreter`](./docs/publisher/interpreter.md)
