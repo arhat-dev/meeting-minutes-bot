@@ -1,6 +1,7 @@
 package telegraph
 
 import (
+	"context"
 	"fmt"
 	"sync"
 
@@ -290,7 +291,7 @@ func (t *Driver) Delete(urls ...string) error {
 	return nil
 }
 
-func (t *Driver) Append(body []byte) ([]message.Entity, error) {
+func (t *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, error) {
 	content, err := telegraph.ContentFormat(body)
 	if err != nil {
 		return nil, err

@@ -547,7 +547,7 @@ func (c *telegramBot) handleCmd(
 		}
 
 		pub := currentSession.GetPublisher()
-		note, err := pub.Append(content)
+		note, err := pub.Append(c.ctx, content)
 		if err != nil {
 			logger.I("failed to append content to post", log.Error(err))
 			_, _ = c.sendTextMessage(

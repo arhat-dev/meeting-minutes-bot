@@ -1,6 +1,7 @@
 package publisher
 
 import (
+	"context"
 	"fmt"
 
 	"arhat.dev/meeting-minutes-bot/pkg/message"
@@ -42,7 +43,7 @@ func (a *nop) Publish(title string, body []byte) ([]message.Entity, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (a *nop) Append(body []byte) ([]message.Entity, error) {
+func (a *nop) Append(ctx context.Context, body []byte) ([]message.Entity, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 

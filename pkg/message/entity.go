@@ -24,18 +24,25 @@ const (
 	KindImage
 	KindVideo
 	KindAudio
-	KindDocument
+	KindFile
 )
 
 type EntityParamKey = string
 
 // entity param keys
 const (
-	EntityParamURL                     EntityParamKey = "url"
-	EntityParamWebArchiveURL           EntityParamKey = "web_archive_url"
+	// url of the link
+	EntityParamURL EntityParamKey = "url"
+	// web page archive url
+	EntityParamWebArchiveURL EntityParamKey = "web_archive_url"
+	// web page screenshot url
 	EntityParamWebArchiveScreenshotURL EntityParamKey = "web_archive_screenshot_url"
-	EntityParamCaption                 EntityParamKey = "caption"
-	EntityParamFilename                EntityParamKey = "filename"
+	// caption for photo/video/audio
+	EntityParamCaption EntityParamKey = "caption"
+	// filename of a document
+	EntityParamFilename EntityParamKey = "filename"
+	// data of the photo/video/audio
+	EntityParamData EntityParamKey = "data"
 )
 
 type Entity struct {
@@ -60,4 +67,4 @@ func (m Entity) IsURL() bool         { return m.Kind == KindURL }
 func (m Entity) IsImage() bool    { return m.Kind == KindImage }
 func (m Entity) IsVideo() bool    { return m.Kind == KindVideo }
 func (m Entity) IsAudio() bool    { return m.Kind == KindAudio }
-func (m Entity) IsDocument() bool { return m.Kind == KindDocument }
+func (m Entity) IsDocument() bool { return m.Kind == KindFile }

@@ -1,12 +1,16 @@
 package interpreter
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"os/exec"
+	"text/template"
 
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+	"arhat.dev/pkg/textquery"
+	"github.com/Masterminds/sprig/v3"
 )
 
 // nolint:revive
@@ -23,9 +27,24 @@ func init() {
 				return nil, nil, fmt.Errorf("unexpected non interpreter config")
 			}
 
+			var argTpls []*template.Template
+			for _, arg := range c.Args {
+				tpl, err := template.New("").
+					Funcs(sprig.TxtFuncMap()).
+					Funcs(map[string]interface{}{
+						"jq":      textquery.JQ,
+						"jqBytes": textquery.JQBytes,
+					}).Parse(arg)
+				if err != nil {
+					return nil, nil, fmt.Errorf("failed to parse arg template %q: %w", arg, err)
+				}
+
+				argTpls = append(argTpls, tpl)
+			}
+
 			return &Driver{
-				bin:      c.Bin,
-				baseArgs: c.BaseArgs,
+				bin:     c.Bin,
+				argTpls: argTpls,
 			}, &UserConfig{}, nil
 		},
 		func() interface{} {
@@ -35,8 +54,8 @@ func init() {
 }
 
 type Config struct {
-	Bin      string   `json:"bin" yaml:"bin"`
-	BaseArgs []string `json:"baseArgs" yaml:"baseArgs"`
+	Bin  string   `json:"bin" yaml:"bin"`
+	Args []string `json:"args" yaml:"args"`
 }
 
 var _ publisher.UserConfig = (*UserConfig)(nil)
@@ -48,8 +67,8 @@ func (u *UserConfig) SetAuthToken(token string) {}
 var _ publisher.Interface = (*Driver)(nil)
 
 type Driver struct {
-	bin      string
-	baseArgs []string
+	bin     string
+	argTpls []*template.Template
 }
 
 func (d *Driver) Name() string {
@@ -80,16 +99,19 @@ func (d *Driver) Delete(urls ...string) error {
 	return fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Append(body []byte) ([]message.Entity, error) {
+func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, error) {
 	var args []string
-	args = append(args, d.baseArgs...)
-	args = append(args, string(body))
+	buf := &bytes.Buffer{}
+	for i, tpl := range d.argTpls {
+		buf.Reset()
+		err := tpl.Execute(buf, string(body))
+		if err != nil {
+			return nil, fmt.Errorf("failed to execute #%d arg template: %w", i, err)
+		}
+		args = append(args, buf.String())
+	}
 
-	cmd := exec.CommandContext(
-		context.TODO(),
-		d.bin,
-		args...,
-	)
+	cmd := exec.CommandContext(ctx, d.bin, args...)
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {

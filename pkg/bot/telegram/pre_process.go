@@ -92,7 +92,7 @@ func (c *telegramBot) preProcess(
 		}
 
 		m.entities = append(m.entities, message.Entity{
-			Kind: message.KindDocument,
+			Kind: message.KindFile,
 			Text: "",
 			Params: map[message.EntityParamKey]interface{}{
 				message.EntityParamURL:     "",
@@ -353,6 +353,7 @@ func (c *telegramBot) preProcess(
 		m.update(func() {
 			m.entities[0].Params[message.EntityParamURL] = fileURL
 			m.entities[0].Params[message.EntityParamFilename] = requestFileName
+			m.entities[0].Params[message.EntityParamData] = fileContent
 		})
 	}()
 
