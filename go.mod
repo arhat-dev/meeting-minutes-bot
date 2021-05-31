@@ -23,7 +23,7 @@ require (
 	github.com/spf13/pflag v1.0.5
 	github.com/valyala/fasthttp v1.24.0 // indirect
 	gitlab.com/toby3d/telegraph v1.2.1
-	go.uber.org/multierr v1.5.0
+	go.uber.org/multierr v1.7.0
 	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a // indirect
 	golang.org/x/net v0.0.0-20210521195947-fe42d452be8f // indirect
 	golang.org/x/sys v0.0.0-20210521203332-0cec03c779c1 // indirect

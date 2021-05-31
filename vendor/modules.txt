@@ -173,9 +173,9 @@ github.com/valyala/fasthttp/stackless
 # gitlab.com/toby3d/telegraph v1.2.1
 ## explicit
 gitlab.com/toby3d/telegraph
-# go.uber.org/atomic v1.6.0
+# go.uber.org/atomic v1.7.0
 go.uber.org/atomic
-# go.uber.org/multierr v1.5.0
+# go.uber.org/multierr v1.7.0
 ## explicit
 go.uber.org/multierr
 # go.uber.org/zap v1.16.0
