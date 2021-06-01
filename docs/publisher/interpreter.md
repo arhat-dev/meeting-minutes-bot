@@ -6,7 +6,10 @@ Run specified interpreter with generated content
 
 ```yaml
 bin: /path/to/some/executable
-baseArgs: [some, args]
+args:
+- some
+- --args
+- with template {{- . -}} support
 ```
 
 ## Reference Commands Mapping
