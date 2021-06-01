@@ -57,6 +57,11 @@ func (d *Driver) RenderPageHeader() ([]byte, error) {
 }
 
 func (d *Driver) RenderPageBody(messages []message.Interface) (_ []byte, err error) {
+	err = os.MkdirAll(d.dir, 0750)
+	if err != nil && !os.IsExist(err) {
+		return nil, err
+	}
+
 	var files []string
 	for _, msg := range messages {
 		for _, e := range msg.Entities() {
