@@ -7,7 +7,6 @@ type Interface interface {
 	Archive(ctx context.Context, url string) (
 		archiveURL string,
 		screenshot []byte,
-		screenshotFileExt string,
 		err error,
 	)
 }

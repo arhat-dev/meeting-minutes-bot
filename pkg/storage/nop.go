@@ -12,6 +12,11 @@ func (u *Nop) Name() string {
 	return "nop"
 }
 
-func (u *Nop) Upload(ctx context.Context, filename string, data []byte) (url string, err error) {
+func (u *Nop) Upload(
+	ctx context.Context,
+	filename string,
+	contentType string,
+	data []byte,
+) (url string, err error) {
 	return filename, nil
 }

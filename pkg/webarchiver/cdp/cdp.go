@@ -19,10 +19,9 @@ func (d *Driver) Archive(
 ) (
 	archiveURL string,
 	screenshot []byte,
-	screenshotFileExt string,
 	err error,
 ) {
 	chromedp.NewContext(ctx)
 
-	return "", nil, "", nil
+	return "", nil, nil
 }
