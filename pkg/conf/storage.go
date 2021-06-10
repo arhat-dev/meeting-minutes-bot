@@ -11,7 +11,10 @@ import (
 )
 
 type StorageConfig struct {
-	Driver string      `json:"driver" yaml:"driver"`
+	Driver        string `json:"driver" yaml:"driver"`
+	MIMEMatch     string `json:"mimeMatch" yaml:"mimeMatch"`
+	MaxUploadSize uint64 `json:"maxUploadSize" yaml:"maxUploadSize"`
+
 	Config interface{} `json:"config" yaml:"config"`
 }
 
@@ -23,7 +26,7 @@ func (c *StorageConfig) UnmarshalJSON(data []byte) error {
 		return err
 	}
 
-	c.Driver, c.Config, err = unmarshalStorageConfig(m)
+	c.Driver, c.MIMEMatch, c.MaxUploadSize, c.Config, err = unmarshalStorageConfig(m)
 	if err != nil {
 		return err
 	}
@@ -44,7 +47,7 @@ func (c *StorageConfig) UnmarshalYAML(value *yaml.Node) error {
 		return err
 	}
 
-	c.Driver, c.Config, err = unmarshalStorageConfig(m)
+	c.Driver, c.MIMEMatch, c.MaxUploadSize, c.Config, err = unmarshalStorageConfig(m)
 	if err != nil {
 		return err
 	}
@@ -52,7 +55,9 @@ func (c *StorageConfig) UnmarshalYAML(value *yaml.Node) error {
 	return nil
 }
 
-func unmarshalStorageConfig(m map[string]interface{}) (driver string, config interface{}, err error) {
+func unmarshalStorageConfig(
+	m map[string]interface{},
+) (driver, mimeMatch string, maxSize uint64, config interface{}, err error) {
 	n, ok := m["driver"]
 	if !ok {
 		return
@@ -64,9 +69,49 @@ func unmarshalStorageConfig(m map[string]interface{}) (driver string, config int
 		return
 	}
 
+	match, ok := m["mimeMatch"]
+	if ok {
+		mimeMatch, ok = match.(string)
+		if !ok {
+			err = fmt.Errorf("mimeMatch must be a string")
+			return
+		}
+	}
+
+	switch s := m["maxUploadSize"].(type) {
+	case float64:
+		maxSize = uint64(s)
+	case float32:
+		maxSize = uint64(s)
+	case int64:
+		maxSize = uint64(s)
+	case int32:
+		maxSize = uint64(s)
+	case int16:
+		maxSize = uint64(s)
+	case int8:
+		maxSize = uint64(s)
+	case int:
+		maxSize = uint64(s)
+	case uint64:
+		maxSize = s
+	case uint32:
+		maxSize = uint64(s)
+	case uint16:
+		maxSize = uint64(s)
+	case uint8:
+		maxSize = uint64(s)
+	case uint:
+		maxSize = uint64(s)
+	case nil:
+	default:
+		err = fmt.Errorf("invaid type of maxUploadSize, expecting an integer: %T", s)
+		return
+	}
+
 	config, err = storage.NewConfig(driver)
 	if err != nil {
-		return driver, nil, nil
+		return driver, "", 0, nil, nil
 	}
 
 	configRaw, ok := m["config"]
@@ -91,9 +136,6 @@ func unmarshalStorageConfig(m map[string]interface{}) (driver string, config int
 	dec := yaml.NewDecoder(bytes.NewReader(configData))
 	dec.KnownFields(true)
 	err = dec.Decode(config)
-	if err != nil {
-		return
-	}
 
-	return driver, config, nil
+	return
 }

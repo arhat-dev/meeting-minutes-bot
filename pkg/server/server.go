@@ -25,9 +25,12 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 
 	mux := http.NewServeMux()
 
-	storage, err := storage.NewDriver(opts.Storage.Driver, opts.Storage.Config)
-	if err != nil {
-		return fmt.Errorf("failed to create file uploader: %w", err)
+	storageMgr := storage.NewManager()
+	for _, cfg := range opts.Storage {
+		err = storageMgr.Add(cfg.Driver, cfg.MIMEMatch, cfg.MaxUploadSize, cfg.Config)
+		if err != nil {
+			return fmt.Errorf("failed to add storage driver %q: %w", cfg.Driver, err)
+		}
 	}
 
 	webarchiver, err := webarchiver.NewDriver(opts.WebArchiver.Driver, opts.WebArchiver.Config)
@@ -50,7 +53,7 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 		tgBot, err := telegram.Create(
 			ctx,
 			log.Log.WithFields(log.String("bot", "telegram")),
-			storage,
+			storageMgr,
 			webarchiver,
 			generator,
 			func() (publisher.Interface, publisher.UserConfig, error) {

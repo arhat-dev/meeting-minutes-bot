@@ -35,7 +35,7 @@ type AppConfig struct {
 	Listen string              `json:"listen" yaml:"listen"`
 	TLS    tlshelper.TLSConfig `json:"tls" yaml:"tls"`
 
-	Storage     StorageConfig     `json:"storage" yaml:"storage"`
+	Storage     []StorageConfig   `json:"storage" yaml:"storage"`
 	WebArchiver WebArchiverConfig `json:"webarchiver" yaml:"webarchiver"`
 	Generator   GeneratorConfig   `json:"generator" yaml:"generator"`
 	Publisher   PublisherConfig   `json:"publisher" yaml:"publisher"`
@@ -51,13 +51,11 @@ func FlagsForAppConfig(prefix string, config *AppConfig) *pflag.FlagSet {
 
 	fs.AddFlagSet(tlshelper.FlagsForTLSConfig(prefix+"tls", &config.TLS))
 
-	fs.StringVar(&config.Storage.Driver,
-		prefix+"storage.driver", "", "set storage for files, one of [s3], leave empty to disable")
 	fs.StringVar(&config.WebArchiver.Driver,
 		prefix+"webarchiver.driver", "", "set web archive service provider, one of [cdp], leave empty to disable")
 	fs.StringVar(&config.Generator.Driver,
 		prefix+"generator.driver", "",
-		"set post generation engine, one of [gotemplate], leave empty to disable",
+		"set post generation engine, one of [gotemplate, file], leave empty to disable",
 	)
 	fs.StringVar(&config.Publisher.Driver,
 		prefix+"publisher.driver", "",
