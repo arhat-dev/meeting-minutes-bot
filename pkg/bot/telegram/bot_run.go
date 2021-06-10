@@ -174,7 +174,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 		_ = mw.WriteField("allowed_updates", string(allowedUpdatesBytes))
 		_ = mw.WriteField("drop_pending_updates", "False")
 
-		mw.Close()
+		_ = mw.Close()
 
 		resp, err2 := c.client.PostSetWebhookWithBody(c.ctx, mw.FormDataContentType(), body)
 		if err2 != nil {

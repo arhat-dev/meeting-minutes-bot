@@ -78,12 +78,20 @@ func (d *Driver) Upload(
 		return "", fmt.Errorf("failed to buffer request body: %w", err)
 	}
 
+	err = mw.Close()
+	if err != nil {
+		return "", fmt.Errorf("multipart form closed with error: %w", err)
+	}
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://telegra.ph/upload", body)
 	if err != nil {
 		return "", fmt.Errorf("failed to create upload request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Referer", "https://telegra.ph/")
+	req.Header.Set("Origin", "https://telegra.ph")
 
 	resp, err := d.client.Do(req)
 	if err != nil {
@@ -91,24 +99,29 @@ func (d *Driver) Upload(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respData, err := ioutil.ReadAll(resp.Body)
+	respBody, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("file upload failed: %v", string(respData))
+		return "", fmt.Errorf("file upload failed: %v", string(respBody))
 	}
 
 	type uploadResp struct {
 		SRC string `json:"src"`
 	}
 
-	result := &uploadResp{}
-	err = json.Unmarshal(respData, result)
+	result := []uploadResp{}
+	err = json.Unmarshal(respBody, &result)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse upload response: %w", err)
+		return "", fmt.Errorf("failed to parse upload response %q: %w", string(respBody), err)
 	}
 
-	return "https://telegra.ph" + strings.TrimLeft(unescapeQuotes(result.SRC), "/"), nil
+	if len(result) == 0 {
+		return "", fmt.Errorf("no url returned")
+	}
+
+	url = "https://telegra.ph/" + strings.TrimLeft(unescapeQuotes(result[0].SRC), "/")
+	return url, nil
 }
