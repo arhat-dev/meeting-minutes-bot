@@ -81,7 +81,12 @@ func (s *Driver) Name() string {
 	return Name
 }
 
-func (s *Driver) Upload(ctx context.Context, filename string, data []byte) (url string, err error) {
+func (s *Driver) Upload(
+	ctx context.Context,
+	filename string,
+	contentType string,
+	data []byte,
+) (url string, err error) {
 	if len(s.bucket) != 0 {
 		hasBucket, err2 := s.client.BucketExists(ctx, s.bucket)
 		if err2 != nil {
@@ -105,7 +110,9 @@ func (s *Driver) Upload(ctx context.Context, filename string, data []byte) (url 
 		objectKey,
 		bytes.NewReader(data),
 		int64(len(data)),
-		minio.PutObjectOptions{},
+		minio.PutObjectOptions{
+			ContentType: contentType,
+		},
 	)
 	if err != nil {
 		return "", fmt.Errorf("failed to put object: %w", err)

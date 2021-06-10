@@ -18,8 +18,7 @@ func (a *Nop) Archive(
 ) (
 	archiveURL string,
 	screenshot []byte,
-	screenshotFileExt string,
 	err error,
 ) {
-	return "", nil, "", nil
+	return "", nil, nil
 }

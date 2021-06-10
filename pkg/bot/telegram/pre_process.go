@@ -29,8 +29,9 @@ func (c *telegramBot) preProcess(
 	defer m.mu.Unlock()
 
 	var (
-		requestFileID   string
-		requestFileName string // can be empty
+		requestFileID          string
+		requestFileName        string // can be empty
+		requestFileContentType string
 	)
 
 	switch {
@@ -75,6 +76,10 @@ func (c *telegramBot) preProcess(
 			requestFileName = *audio.FileName
 		}
 
+		if audio.MimeType != nil {
+			requestFileContentType = *audio.MimeType
+		}
+
 		m.entities = append(m.entities, message.Entity{
 			Kind: message.KindAudio,
 			Text: "",
@@ -89,6 +94,10 @@ func (c *telegramBot) preProcess(
 		requestFileID = doc.FileId
 		if doc.FileName != nil {
 			requestFileName = *doc.FileName
+		}
+
+		if doc.MimeType != nil {
+			requestFileContentType = *doc.MimeType
 		}
 
 		m.entities = append(m.entities, message.Entity{
@@ -131,6 +140,10 @@ func (c *telegramBot) preProcess(
 			requestFileName = *video.FileName
 		}
 
+		if video.MimeType != nil {
+			requestFileContentType = *video.MimeType
+		}
+
 		m.entities = append(m.entities, message.Entity{
 			Kind: message.KindVideo,
 			Text: "",
@@ -143,6 +156,10 @@ func (c *telegramBot) preProcess(
 		// TODO: sound to text
 		voice := m.msg.Voice
 		requestFileID = voice.FileId
+
+		if voice.MimeType != nil {
+			requestFileContentType = *voice.MimeType
+		}
 
 		m.entities = append(m.entities, message.Entity{
 			Kind: message.KindVideo,
@@ -320,8 +337,14 @@ func (c *telegramBot) preProcess(
 			return
 		}
 
-		var fileExt string
+		var (
+			fileExt     string
+			contentType string
+		)
+
 		filename := hex.EncodeToString(hashhelper.Sha256Sum(fileContent))
+
+		// get file extension name
 		if len(requestFileName) != 0 {
 			fileExt = path.Ext(requestFileName)
 		}
@@ -329,16 +352,27 @@ func (c *telegramBot) preProcess(
 		if len(fileExt) == 0 {
 			t, err2 := filetype.Match(fileContent)
 			if err2 == nil {
-				fileExt = "." + t.Extension
+				if len(t.Extension) != 0 {
+					fileExt = "." + t.Extension
+				}
+
+				contentType = t.MIME.Value
 			}
+		}
+
+		// get content type
+		if len(contentType) == 0 && len(requestFileContentType) != 0 {
+			contentType = requestFileContentType
 		}
 
 		filename += fileExt
 		logger.V("uploading file",
 			log.String("upload_name", filename),
 			log.Int("size", len(fileContent)),
+			log.String("content_type", contentType),
 		)
-		fileURL, err := u.Upload(c.ctx, filename, fileContent)
+
+		fileURL, err := u.Upload(c.ctx, filename, contentType, fileContent)
 		if err != nil {
 			select {
 			case errCh <- fmt.Errorf("failed to upload file: %w", err):

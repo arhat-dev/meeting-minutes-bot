@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	"arhat.dev/pkg/hashhelper"
+	"github.com/h2non/filetype"
 	"go.uber.org/multierr"
 
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
@@ -76,7 +77,7 @@ func (me *Entities) PreProcess(ctx context.Context, w webarchiver.Interface, u s
 			me.urlsToArchive[url] = make([]int, 0, 1)
 		}
 
-		archiveURL, screenshot, ext, err2 := w.Archive(ctx, url)
+		archiveURL, screenshot, err2 := w.Archive(ctx, url)
 		if err2 != nil {
 			err = multierr.Append(err, fmt.Errorf("unable to archive web page %s: %w", url, err2))
 			continue
@@ -89,8 +90,21 @@ func (me *Entities) PreProcess(ctx context.Context, w webarchiver.Interface, u s
 			continue
 		}
 
-		filename := hex.EncodeToString(hashhelper.Sha256Sum(screenshot)) + ext
-		screenshotURL, err2 := u.Upload(ctx, filename, screenshot)
+		var (
+			contentType string
+			fileExt     string
+		)
+		t, err2 := filetype.Match(screenshot)
+		if err2 == nil {
+			if len(t.Extension) != 0 {
+				fileExt = "." + t.Extension
+			}
+
+			contentType = t.MIME.Value
+		}
+
+		filename := hex.EncodeToString(hashhelper.Sha256Sum(screenshot)) + fileExt
+		screenshotURL, err2 := u.Upload(ctx, filename, contentType, screenshot)
 		if err2 != nil {
 			err = multierr.Append(err, fmt.Errorf("unable to upload web page screenshot: %w", err2))
 			continue
