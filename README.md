@@ -84,9 +84,21 @@ app:
     enabled: false
 
   storage:
-    # currently only supports `s3`, leave it empty to disable automatic file uploading
-    driver: s3
+    # driver name, one of [s3, telegraph]
+  - driver: telegraph
+    # max data size for uploading, size limit in bytes
+    #
+    # defaults to 0, no size limit
+    maxUploadSize: 5242880 # 5MB
+    # mime type match (regex), only matched data will use this storage driver
+    #
+    # defaults to "", match all
+    mimeMatch: image/.*
     # read ./docs/storage/{DRIVER}.md to find out config options
+    config: {}
+  - driver: s3
+    maxUploadSize: 0 # no limit
+    mimeMatch: "" # match all
     config: {}
 
   # currently not supported
