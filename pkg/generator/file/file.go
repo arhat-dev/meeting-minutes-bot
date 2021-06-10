@@ -8,10 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/pkg/hashhelper"
 	"go.uber.org/multierr"
+
+	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
 // nolint:revive

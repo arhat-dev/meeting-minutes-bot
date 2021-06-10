@@ -7,10 +7,11 @@ import (
 	"os/exec"
 	"text/template"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
-	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 	"arhat.dev/pkg/textquery"
 	"github.com/Masterminds/sprig/v3"
+
+	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
 // nolint:revive
