@@ -110,5 +110,5 @@ func (d *Driver) Upload(
 		return "", fmt.Errorf("failed to parse upload response: %w", err)
 	}
 
-	return unescapeQuotes(result.SRC), nil
+	return "https://telegra.ph" + strings.TrimLeft(unescapeQuotes(result.SRC), "/"), nil
 }

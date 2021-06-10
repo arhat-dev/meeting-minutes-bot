@@ -27,12 +27,13 @@ import (
 
 	// storage drivers
 	_ "arhat.dev/meeting-minutes-bot/pkg/storage/s3"
+	_ "arhat.dev/meeting-minutes-bot/pkg/storage/telegraph"
 
-	// post generation drivers
+	// data generation drivers
 	_ "arhat.dev/meeting-minutes-bot/pkg/generator/file"
 	_ "arhat.dev/meeting-minutes-bot/pkg/generator/gotemplate"
 
-	// post publishing drivers
+	// data publishing drivers
 	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/file"
 	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/http"
 	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/interpreter"
