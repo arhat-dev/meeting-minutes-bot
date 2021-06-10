@@ -11,7 +11,6 @@ Build your KnowledgeBase in Chat
 ## Features
 
 - [x] Automatic post generation from messages
-- [ ] Automatic post update on message update
 - [x] Automatic file uploading for content sharing
 - [ ] Automatic web archiving for links in message
 - [x] Basic post management (list, delete, edit)
@@ -20,8 +19,9 @@ Build your KnowledgeBase in Chat
 
 - Chat Platform
   - [x] `telegram`
-- Storage
-  - [x] `s3` (no presign support, requires public read access)
+- [Storage](./docs/storage/README.md)
+  - [x] [`s3`](./docs/storage/s3.md) (no presign support, requires public read access)
+  - [x] [`telegraph`](./docs/storage/telegraph.md)
 - [Generator](./docs/generator/README.md)
   - [x] [`gotemplate`](./docs/generator/gotemplate.md)
   - [x] [`file`](./docs/generator/file.md)
