@@ -6,7 +6,7 @@ require (
 	arhat.dev/pkg v0.5.5
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/andybalholm/brotli v1.0.2 // indirect
-	github.com/chromedp/chromedp v0.7.2
+	github.com/chromedp/chromedp v0.7.4
 	github.com/google/uuid v1.2.0 // indirect
 	github.com/h2non/filetype v1.1.1
 	github.com/huandu/xstrings v1.3.2 // indirect
@@ -26,7 +26,6 @@ require (
 	go.uber.org/multierr v1.5.0
 	golang.org/x/crypto v0.0.0-20210513164829-c07d793c2f9a // indirect
 	golang.org/x/net v0.0.0-20210521195947-fe42d452be8f // indirect
-	golang.org/x/sys v0.0.0-20210521203332-0cec03c779c1 // indirect
 	gopkg.in/ini.v1 v1.62.0 // indirect
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )

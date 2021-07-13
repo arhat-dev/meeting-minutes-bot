@@ -108,6 +108,8 @@ type ExecAllocator struct {
 	wg sync.WaitGroup
 
 	combinedOutputWriter io.Writer
+
+	modifyCmdFunc func(cmd *exec.Cmd)
 }
 
 // allocTempDir is used to group all ExecAllocator temporary user data dirs in
@@ -170,7 +172,12 @@ func (a *ExecAllocator) Allocate(ctx context.Context, opts ...BrowserOption) (*B
 			os.RemoveAll(dataDir)
 		}
 	}()
-	allocateCmdOptions(cmd)
+
+	if a.modifyCmdFunc != nil {
+		a.modifyCmdFunc(cmd)
+	} else {
+		allocateCmdOptions(cmd)
+	}
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -178,8 +185,11 @@ func (a *ExecAllocator) Allocate(ctx context.Context, opts ...BrowserOption) (*B
 	}
 	cmd.Stderr = cmd.Stdout
 
-	if len(a.initEnv) > 0 {
-		cmd.Env = append(os.Environ(), a.initEnv...)
+	// Preserve environment variables set in the (lowest priority) existing
+	// environment, OverrideCmdFunc(), and Env (highest priority)
+	if len(a.initEnv) > 0 || len(cmd.Env) > 0 {
+		cmd.Env = append(os.Environ(), cmd.Env...)
+		cmd.Env = append(cmd.Env, a.initEnv...)
 	}
 
 	// We must start the cmd before calling cmd.Wait, as otherwise the two
@@ -391,6 +401,16 @@ func Env(vars ...string) ExecAllocatorOption {
 	}
 }
 
+// ModifyCmdFunc allows for running an arbitrary function on the
+// browser exec.Cmd object. This overrides the default version
+// of the command which sends SIGKILL to any open browsers when
+// the Go program exits.
+func ModifyCmdFunc(f func(cmd *exec.Cmd)) ExecAllocatorOption {
+	return func(a *ExecAllocator) {
+		a.modifyCmdFunc = f
+	}
+}
+
 // UserDataDir is the command line option to set the user data dir.
 //
 // Note: set this option to manually set the profile directory used by Chrome.
@@ -405,6 +425,13 @@ func ProxyServer(proxy string) ExecAllocatorOption {
 	return Flag("proxy-server", proxy)
 }
 
+// IgnoreCertErrors is the command line option to ignore certificate-related
+// errors. This options is useful when you need to access an HTTPS website
+// through a proxy.
+func IgnoreCertErrors(a *ExecAllocator) {
+	Flag("ignore-certificate-errors", true)(a)
+}
+
 // WindowSize is the command line option to set the initial window size.
 func WindowSize(width, height int) ExecAllocatorOption {
 	return Flag("window-size", fmt.Sprintf("%d,%d", width, height))
@@ -416,18 +443,18 @@ func UserAgent(userAgent string) ExecAllocatorOption {
 	return Flag("user-agent", userAgent)
 }
 
-// NoSandbox is the Chrome comamnd line option to disable the sandbox.
+// NoSandbox is the Chrome command line option to disable the sandbox.
 func NoSandbox(a *ExecAllocator) {
 	Flag("no-sandbox", true)(a)
 }
 
-// NoFirstRun is the Chrome comamnd line option to disable the first run
+// NoFirstRun is the Chrome command line option to disable the first run
 // dialog.
 func NoFirstRun(a *ExecAllocator) {
 	Flag("no-first-run", true)(a)
 }
 
-// NoDefaultBrowserCheck is the Chrome comamnd line option to disable the
+// NoDefaultBrowserCheck is the Chrome command line option to disable the
 // default browser check.
 func NoDefaultBrowserCheck(a *ExecAllocator) {
 	Flag("no-default-browser-check", true)(a)
@@ -443,6 +470,12 @@ func Headless(a *ExecAllocator) {
 }
 
 // DisableGPU is the command line option to disable the GPU process.
+//
+// The --disable-gpu option is a temporary work around for a few bugs
+// in headless mode. But now it's not longer required. References:
+// - https://bugs.chromium.org/p/chromium/issues/detail?id=737678
+// - https://github.com/puppeteer/puppeteer/pull/2908
+// - https://github.com/puppeteer/puppeteer/pull/4523
 func DisableGPU(a *ExecAllocator) {
 	Flag("disable-gpu", true)(a)
 }
@@ -458,10 +491,20 @@ func CombinedOutput(w io.Writer) ExecAllocatorOption {
 // NewRemoteAllocator creates a new context set up with a RemoteAllocator,
 // suitable for use with NewContext. The url should point to the browser's
 // websocket address, such as "ws://127.0.0.1:$PORT/devtools/browser/...".
+// If the url does not contain "/devtools/browser/", it will try to detect
+// the correct one by sending a request to "http://$HOST:$PORT/json/version".
+//
+// The url with the following formats are accepted:
+// * ws://127.0.0.1:9222/
+// * http://127.0.0.1:9222/
+//
+// But "ws://127.0.0.1:9222/devtools/browser/" are not accepted.
+// Because it contains "/devtools/browser/" and will be considered
+// as a valid websocket debugger URL.
 func NewRemoteAllocator(parent context.Context, url string) (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(parent)
 	c := &Context{Allocator: &RemoteAllocator{
-		wsURL: url,
+		wsURL: detectURL(url),
 	}}
 	ctx = context.WithValue(ctx, contextKey{}, c)
 	return ctx, cancel
