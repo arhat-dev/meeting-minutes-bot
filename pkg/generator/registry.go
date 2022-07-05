@@ -3,58 +3,29 @@ package generator
 import "fmt"
 
 type (
-	ConfigFactoryFunc func() interface{}
-	FactoryFunc       func(config interface{}) (Interface, error)
+	ConfigFactoryFunc func() Config
 )
-
-type bundle struct {
-	f  FactoryFunc
-	cf ConfigFactoryFunc
-}
 
 var (
-	supportedDrivers = map[string]*bundle{
-		"": {
-			f: func(interface{}) (Interface, error) {
-				return &nop{}, nil
-			},
-			cf: func() interface{} {
-				return &nopConfig{}
-			},
-		},
+	supportedDrivers = map[string]ConfigFactoryFunc{
+		"": func() Config { return nopConfig{} },
 	}
 )
 
-func Register(name string, f FactoryFunc, cf ConfigFactoryFunc) {
-	if f == nil || cf == nil {
-		return
-	}
-
+func Register(name string, cf ConfigFactoryFunc) {
 	// reserve empty name
 	if name == "" {
 		return
 	}
 
-	supportedDrivers[name] = &bundle{
-		f:  f,
-		cf: cf,
-	}
+	supportedDrivers[name] = cf
 }
 
-func NewConfig(name string) (interface{}, error) {
-	b, ok := supportedDrivers[name]
+func NewConfig(name string) (Config, error) {
+	cf, ok := supportedDrivers[name]
 	if !ok {
 		return nil, fmt.Errorf("driver %q not found", name)
 	}
 
-	return b.cf(), nil
-}
-
-func NewDriver(name string, config interface{}) (Interface, error) {
-	b, ok := supportedDrivers[name]
-	if !ok {
-		return nil, fmt.Errorf("driver %q not found", name)
-	}
-
-	return b.f(config)
+	return cf(), nil
 }

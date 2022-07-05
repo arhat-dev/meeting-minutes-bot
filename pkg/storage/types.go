@@ -2,6 +2,11 @@ package storage
 
 import "context"
 
+type Config interface {
+	// Create storage based on this config
+	Create() (Interface, error)
+}
+
 type Interface interface {
 	Name() string
 

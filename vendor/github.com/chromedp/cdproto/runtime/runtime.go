@@ -76,16 +76,18 @@ func (p *AwaitPromiseParams) Do(ctx context.Context) (result *RemoteObject, exce
 // CallFunctionOnParams calls function with given declaration on the given
 // object. Object group of the result is inherited from the target object.
 type CallFunctionOnParams struct {
-	FunctionDeclaration string             `json:"functionDeclaration"`          // Declaration of the function to call.
-	ObjectID            RemoteObjectID     `json:"objectId,omitempty"`           // Identifier of the object to call function on. Either objectId or executionContextId should be specified.
-	Arguments           []*CallArgument    `json:"arguments,omitempty"`          // Call arguments. All call arguments must belong to the same JavaScript world as the target object.
-	Silent              bool               `json:"silent,omitempty"`             // In silent mode exceptions thrown during evaluation are not reported and do not pause execution. Overrides setPauseOnException state.
-	ReturnByValue       bool               `json:"returnByValue,omitempty"`      // Whether the result is expected to be a JSON object which should be sent by value.
-	GeneratePreview     bool               `json:"generatePreview,omitempty"`    // Whether preview should be generated for the result.
-	UserGesture         bool               `json:"userGesture,omitempty"`        // Whether execution should be treated as initiated by user in the UI.
-	AwaitPromise        bool               `json:"awaitPromise,omitempty"`       // Whether execution should await for resulting value and return once awaited promise is resolved.
-	ExecutionContextID  ExecutionContextID `json:"executionContextId,omitempty"` // Specifies execution context which global object will be used to call function on. Either executionContextId or objectId should be specified.
-	ObjectGroup         string             `json:"objectGroup,omitempty"`        // Symbolic group name that can be used to release multiple objects. If objectGroup is not specified and objectId is, objectGroup will be inherited from object.
+	FunctionDeclaration    string             `json:"functionDeclaration"`              // Declaration of the function to call.
+	ObjectID               RemoteObjectID     `json:"objectId,omitempty"`               // Identifier of the object to call function on. Either objectId or executionContextId should be specified.
+	Arguments              []*CallArgument    `json:"arguments,omitempty"`              // Call arguments. All call arguments must belong to the same JavaScript world as the target object.
+	Silent                 bool               `json:"silent,omitempty"`                 // In silent mode exceptions thrown during evaluation are not reported and do not pause execution. Overrides setPauseOnException state.
+	ReturnByValue          bool               `json:"returnByValue,omitempty"`          // Whether the result is expected to be a JSON object which should be sent by value.
+	GeneratePreview        bool               `json:"generatePreview,omitempty"`        // Whether preview should be generated for the result.
+	UserGesture            bool               `json:"userGesture,omitempty"`            // Whether execution should be treated as initiated by user in the UI.
+	AwaitPromise           bool               `json:"awaitPromise,omitempty"`           // Whether execution should await for resulting value and return once awaited promise is resolved.
+	ExecutionContextID     ExecutionContextID `json:"executionContextId,omitempty"`     // Specifies execution context which global object will be used to call function on. Either executionContextId or objectId should be specified.
+	ObjectGroup            string             `json:"objectGroup,omitempty"`            // Symbolic group name that can be used to release multiple objects. If objectGroup is not specified and objectId is, objectGroup will be inherited from object.
+	ThrowOnSideEffect      bool               `json:"throwOnSideEffect,omitempty"`      // Whether to throw an exception if side effect cannot be ruled out during evaluation.
+	GenerateWebDriverValue bool               `json:"generateWebDriverValue,omitempty"` // Whether the result should contain webDriverValue, serialized according to https://w3c.github.io/webdriver-bidi. This is mutually exclusive with returnByValue, but resulting objectId is still provided.
 }
 
 // CallFunctionOn calls function with given declaration on the given object.
@@ -162,6 +164,22 @@ func (p CallFunctionOnParams) WithExecutionContextID(executionContextID Executio
 // inherited from object.
 func (p CallFunctionOnParams) WithObjectGroup(objectGroup string) *CallFunctionOnParams {
 	p.ObjectGroup = objectGroup
+	return &p
+}
+
+// WithThrowOnSideEffect whether to throw an exception if side effect cannot
+// be ruled out during evaluation.
+func (p CallFunctionOnParams) WithThrowOnSideEffect(throwOnSideEffect bool) *CallFunctionOnParams {
+	p.ThrowOnSideEffect = throwOnSideEffect
+	return &p
+}
+
+// WithGenerateWebDriverValue whether the result should contain
+// webDriverValue, serialized according to https://w3c.github.io/webdriver-bidi.
+// This is mutually exclusive with returnByValue, but resulting objectId is
+// still provided.
+func (p CallFunctionOnParams) WithGenerateWebDriverValue(generateWebDriverValue bool) *CallFunctionOnParams {
+	p.GenerateWebDriverValue = generateWebDriverValue
 	return &p
 }
 
@@ -308,6 +326,7 @@ type EvaluateParams struct {
 	ReplMode                    bool               `json:"replMode,omitempty"`                    // Setting this flag to true enables let re-declaration and top-level await. Note that let variables can only be re-declared if they originate from replMode themselves.
 	AllowUnsafeEvalBlockedByCSP bool               `json:"allowUnsafeEvalBlockedByCSP,omitempty"` // The Content Security Policy (CSP) for the target might block 'unsafe-eval' which includes eval(), Function(), setTimeout() and setInterval() when called with non-callable arguments. This flag bypasses CSP for this evaluation and allows unsafe-eval. Defaults to true.
 	UniqueContextID             string             `json:"uniqueContextId,omitempty"`             // An alternative way to specify the execution context to evaluate in. Compared to contextId that may be reused across processes, this is guaranteed to be system-unique, so it can be used to prevent accidental evaluation of the expression in context different than intended (e.g. as a result of navigation across process boundaries). This is mutually exclusive with contextId.
+	GenerateWebDriverValue      bool               `json:"generateWebDriverValue,omitempty"`      // Whether the result should be serialized according to https://w3c.github.io/webdriver-bidi.
 }
 
 // Evaluate evaluates expression on global object.
@@ -428,6 +447,13 @@ func (p EvaluateParams) WithUniqueContextID(uniqueContextID string) *EvaluatePar
 	return &p
 }
 
+// WithGenerateWebDriverValue whether the result should be serialized
+// according to https://w3c.github.io/webdriver-bidi.
+func (p EvaluateParams) WithGenerateWebDriverValue(generateWebDriverValue bool) *EvaluateParams {
+	p.GenerateWebDriverValue = generateWebDriverValue
+	return &p
+}
+
 // EvaluateReturns return values.
 type EvaluateReturns struct {
 	Result           *RemoteObject     `json:"result,omitempty"`           // Evaluation result.
@@ -517,10 +543,11 @@ func (p *GetHeapUsageParams) Do(ctx context.Context) (usedSize float64, totalSiz
 // GetPropertiesParams returns properties of a given object. Object group of
 // the result is inherited from the target object.
 type GetPropertiesParams struct {
-	ObjectID               RemoteObjectID `json:"objectId"`                         // Identifier of the object to return properties for.
-	OwnProperties          bool           `json:"ownProperties,omitempty"`          // If true, returns properties belonging only to the element itself, not to its prototype chain.
-	AccessorPropertiesOnly bool           `json:"accessorPropertiesOnly,omitempty"` // If true, returns accessor properties (with getter/setter) only; internal properties are not returned either.
-	GeneratePreview        bool           `json:"generatePreview,omitempty"`        // Whether preview should be generated for the results.
+	ObjectID                 RemoteObjectID `json:"objectId"`                           // Identifier of the object to return properties for.
+	OwnProperties            bool           `json:"ownProperties,omitempty"`            // If true, returns properties belonging only to the element itself, not to its prototype chain.
+	AccessorPropertiesOnly   bool           `json:"accessorPropertiesOnly,omitempty"`   // If true, returns accessor properties (with getter/setter) only; internal properties are not returned either.
+	GeneratePreview          bool           `json:"generatePreview,omitempty"`          // Whether preview should be generated for the results.
+	NonIndexedPropertiesOnly bool           `json:"nonIndexedPropertiesOnly,omitempty"` // If true, returns non-indexed properties only.
 }
 
 // GetProperties returns properties of a given object. Object group of the
@@ -553,6 +580,12 @@ func (p GetPropertiesParams) WithAccessorPropertiesOnly(accessorPropertiesOnly b
 // WithGeneratePreview whether preview should be generated for the results.
 func (p GetPropertiesParams) WithGeneratePreview(generatePreview bool) *GetPropertiesParams {
 	p.GeneratePreview = generatePreview
+	return &p
+}
+
+// WithNonIndexedPropertiesOnly if true, returns non-indexed properties only.
+func (p GetPropertiesParams) WithNonIndexedPropertiesOnly(nonIndexedPropertiesOnly bool) *GetPropertiesParams {
+	p.NonIndexedPropertiesOnly = nonIndexedPropertiesOnly
 	return &p
 }
 
@@ -958,6 +991,49 @@ func (p *RemoveBindingParams) Do(ctx context.Context) (err error) {
 	return cdp.Execute(ctx, CommandRemoveBinding, p, nil)
 }
 
+// GetExceptionDetailsParams this method tries to lookup and populate
+// exception details for a JavaScript Error object. Note that the stackTrace
+// portion of the resulting exceptionDetails will only be populated if the
+// Runtime domain was enabled at the time when the Error was thrown.
+type GetExceptionDetailsParams struct {
+	ErrorObjectID RemoteObjectID `json:"errorObjectId"` // The error object for which to resolve the exception details.
+}
+
+// GetExceptionDetails this method tries to lookup and populate exception
+// details for a JavaScript Error object. Note that the stackTrace portion of
+// the resulting exceptionDetails will only be populated if the Runtime domain
+// was enabled at the time when the Error was thrown.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Runtime#method-getExceptionDetails
+//
+// parameters:
+//   errorObjectID - The error object for which to resolve the exception details.
+func GetExceptionDetails(errorObjectID RemoteObjectID) *GetExceptionDetailsParams {
+	return &GetExceptionDetailsParams{
+		ErrorObjectID: errorObjectID,
+	}
+}
+
+// GetExceptionDetailsReturns return values.
+type GetExceptionDetailsReturns struct {
+	ExceptionDetails *ExceptionDetails `json:"exceptionDetails,omitempty"`
+}
+
+// Do executes Runtime.getExceptionDetails against the provided context.
+//
+// returns:
+//   exceptionDetails
+func (p *GetExceptionDetailsParams) Do(ctx context.Context) (exceptionDetails *ExceptionDetails, err error) {
+	// execute
+	var res GetExceptionDetailsReturns
+	err = cdp.Execute(ctx, CommandGetExceptionDetails, p, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	return res.ExceptionDetails, nil
+}
+
 // Command names.
 const (
 	CommandAwaitPromise                    = "Runtime.awaitPromise"
@@ -981,4 +1057,5 @@ const (
 	CommandTerminateExecution              = "Runtime.terminateExecution"
 	CommandAddBinding                      = "Runtime.addBinding"
 	CommandRemoveBinding                   = "Runtime.removeBinding"
+	CommandGetExceptionDetails             = "Runtime.getExceptionDetails"
 )

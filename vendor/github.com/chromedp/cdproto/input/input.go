@@ -67,7 +67,7 @@ type DispatchKeyEventParams struct {
 	IsKeypad              bool            `json:"isKeypad"`                        // Whether the event was generated from the keypad (default: false).
 	IsSystemKey           bool            `json:"isSystemKey"`                     // Whether the event was a system key event (default: false).
 	Location              int64           `json:"location,omitempty"`              // Whether the event was from the left or right side of the keyboard. 1=Left, 2=Right (default: 0).
-	Commands              []string        `json:"commands,omitempty"`              // Editing commands to send with the key event (e.g., 'selectAll') (default: []). These are related to but not equal the command names used in document.execCommand and NSStandardKeyBindingResponding. See https://source.chromium.org/chromium/chromium/src/+/master:third_party/blink/renderer/core/editing/commands/editor_command_names.h for valid command names.
+	Commands              []string        `json:"commands,omitempty"`              // Editing commands to send with the key event (e.g., 'selectAll') (default: []). These are related to but not equal the command names used in document.execCommand and NSStandardKeyBindingResponding. See https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/editing/commands/editor_command_names.h for valid command names.
 }
 
 // DispatchKeyEvent dispatches a key event to the page.
@@ -174,7 +174,7 @@ func (p DispatchKeyEventParams) WithLocation(location int64) *DispatchKeyEventPa
 // WithCommands editing commands to send with the key event (e.g.,
 // 'selectAll') (default: []). These are related to but not equal the command
 // names used in document.execCommand and NSStandardKeyBindingResponding. See
-// https://source.chromium.org/chromium/chromium/src/+/master:third_party/blink/renderer/core/editing/commands/editor_command_names.h
+// https://source.chromium.org/chromium/chromium/src/+/main:third_party/blink/renderer/core/editing/commands/editor_command_names.h
 // for valid command names.
 func (p DispatchKeyEventParams) WithCommands(commands []string) *DispatchKeyEventParams {
 	p.Commands = commands
@@ -210,6 +210,52 @@ func (p *InsertTextParams) Do(ctx context.Context) (err error) {
 	return cdp.Execute(ctx, CommandInsertText, p, nil)
 }
 
+// ImeSetCompositionParams this method sets the current candidate text for
+// ime. Use imeCommitComposition to commit the final text. Use imeSetComposition
+// with empty string as text to cancel composition.
+type ImeSetCompositionParams struct {
+	Text             string `json:"text"`                       // The text to insert
+	SelectionStart   int64  `json:"selectionStart"`             // selection start
+	SelectionEnd     int64  `json:"selectionEnd"`               // selection end
+	ReplacementStart int64  `json:"replacementStart,omitempty"` // replacement start
+	ReplacementEnd   int64  `json:"replacementEnd,omitempty"`   // replacement end
+}
+
+// ImeSetComposition this method sets the current candidate text for ime. Use
+// imeCommitComposition to commit the final text. Use imeSetComposition with
+// empty string as text to cancel composition.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Input#method-imeSetComposition
+//
+// parameters:
+//   text - The text to insert
+//   selectionStart - selection start
+//   selectionEnd - selection end
+func ImeSetComposition(text string, selectionStart int64, selectionEnd int64) *ImeSetCompositionParams {
+	return &ImeSetCompositionParams{
+		Text:           text,
+		SelectionStart: selectionStart,
+		SelectionEnd:   selectionEnd,
+	}
+}
+
+// WithReplacementStart replacement start.
+func (p ImeSetCompositionParams) WithReplacementStart(replacementStart int64) *ImeSetCompositionParams {
+	p.ReplacementStart = replacementStart
+	return &p
+}
+
+// WithReplacementEnd replacement end.
+func (p ImeSetCompositionParams) WithReplacementEnd(replacementEnd int64) *ImeSetCompositionParams {
+	p.ReplacementEnd = replacementEnd
+	return &p
+}
+
+// Do executes Input.imeSetComposition against the provided context.
+func (p *ImeSetCompositionParams) Do(ctx context.Context) (err error) {
+	return cdp.Execute(ctx, CommandImeSetComposition, p, nil)
+}
+
 // DispatchMouseEventParams dispatches a mouse event to the page.
 type DispatchMouseEventParams struct {
 	Type               MouseType                     `json:"type"`                         // Type of the mouse event.
@@ -225,8 +271,8 @@ type DispatchMouseEventParams struct {
 	TiltX              int64                         `json:"tiltX,omitempty"`              // The plane angle between the Y-Z plane and the plane containing both the stylus axis and the Y axis, in degrees of the range [-90,90], a positive tiltX is to the right (default: 0).
 	TiltY              int64                         `json:"tiltY,omitempty"`              // The plane angle between the X-Z plane and the plane containing both the stylus axis and the X axis, in degrees of the range [-90,90], a positive tiltY is towards the user (default: 0).
 	Twist              int64                         `json:"twist,omitempty"`              // The clockwise rotation of a pen stylus around its own major axis, in degrees in the range [0,359] (default: 0).
-	DeltaX             float64                       `json:"deltaX,omitempty"`             // X delta in CSS pixels for mouse wheel event (default: 0).
-	DeltaY             float64                       `json:"deltaY,omitempty"`             // Y delta in CSS pixels for mouse wheel event (default: 0).
+	DeltaX             float64                       `json:"deltaX"`                       // X delta in CSS pixels for mouse wheel event (default: 0).
+	DeltaY             float64                       `json:"deltaY"`                       // Y delta in CSS pixels for mouse wheel event (default: 0).
 	PointerType        DispatchMouseEventPointerType `json:"pointerType,omitempty"`        // Pointer type (default: "mouse").
 }
 
@@ -703,6 +749,7 @@ const (
 	CommandDispatchDragEvent          = "Input.dispatchDragEvent"
 	CommandDispatchKeyEvent           = "Input.dispatchKeyEvent"
 	CommandInsertText                 = "Input.insertText"
+	CommandImeSetComposition          = "Input.imeSetComposition"
 	CommandDispatchMouseEvent         = "Input.dispatchMouseEvent"
 	CommandDispatchTouchEvent         = "Input.dispatchTouchEvent"
 	CommandEmulateTouchFromMouseEvent = "Input.emulateTouchFromMouseEvent"

@@ -19,14 +19,13 @@ package conf
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"strings"
 	"syscall"
 
-	"arhat.dev/pkg/envhelper"
 	"arhat.dev/pkg/log"
+	"arhat.dev/pkg/rshelper"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
@@ -40,30 +39,27 @@ func ReadConfig(
 	config *Config,
 ) (context.Context, error) {
 	flags := cmd.Flags()
-	configBytes, err := ioutil.ReadFile(*configFile)
+	configBytes, err := os.ReadFile(*configFile)
 	if err != nil && flags.Changed("config") {
 		return nil, fmt.Errorf("failed to read config file %s: %v", *configFile, err)
 	}
 
-	if len(configBytes) > 0 {
-		configStr := envhelper.Expand(string(configBytes), func(s, origin string) string {
-			// nolint:gocritic
-			switch s {
-			// TODO: add special cases if any
-			default:
-				v, found := os.LookupEnv(s)
-				if found {
-					return v
-				}
-				return origin
-			}
-		})
+	err = yaml.Unmarshal(configBytes, config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
 
-		dec := yaml.NewDecoder(strings.NewReader(configStr))
-		dec.KnownFields(true)
-		if err = dec.Decode(config); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal config file %s: %v", *configFile, err)
-		}
+	osEnv := os.Environ()
+	env := make(map[string]string, len(osEnv))
+
+	for _, kv := range osEnv {
+		k, v, _ := strings.Cut(kv, "=")
+		env[k] = v
+	}
+
+	err = config.ResolveFields(rshelper.DefaultRenderingManager(env, nil), -1)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve config: %w", err)
 	}
 
 	if len(config.App.Log) > 0 {

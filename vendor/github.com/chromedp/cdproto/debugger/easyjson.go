@@ -4578,8 +4578,6 @@ func easyjsonC5a4559bDecodeGithubComChromedpCdprotoDebugger49(in *jlexer.Lexer, 
 				}
 				(*out.Location).UnmarshalEasyJSON(in)
 			}
-		case "url":
-			out.URL = string(in.String())
 		case "scopeChain":
 			if in.IsNull() {
 				in.Skip()
@@ -4631,6 +4629,8 @@ func easyjsonC5a4559bDecodeGithubComChromedpCdprotoDebugger49(in *jlexer.Lexer, 
 				}
 				(*out.ReturnValue).UnmarshalEasyJSON(in)
 			}
+		case "canBeRestarted":
+			out.CanBeRestarted = bool(in.Bool())
 		default:
 			in.SkipRecursive()
 		}
@@ -4670,11 +4670,6 @@ func easyjsonC5a4559bEncodeGithubComChromedpCdprotoDebugger49(out *jwriter.Write
 		}
 	}
 	{
-		const prefix string = ",\"url\":"
-		out.RawString(prefix)
-		out.String(string(in.URL))
-	}
-	{
 		const prefix string = ",\"scopeChain\":"
 		out.RawString(prefix)
 		if in.ScopeChain == nil && (out.Flags&jwriter.NilSliceAsEmpty) == 0 {
@@ -4707,6 +4702,11 @@ func easyjsonC5a4559bEncodeGithubComChromedpCdprotoDebugger49(out *jwriter.Write
 		const prefix string = ",\"returnValue\":"
 		out.RawString(prefix)
 		(*in.ReturnValue).MarshalEasyJSON(out)
+	}
+	if in.CanBeRestarted {
+		const prefix string = ",\"canBeRestarted\":"
+		out.RawString(prefix)
+		out.Bool(bool(in.CanBeRestarted))
 	}
 	out.RawByte('}')
 }

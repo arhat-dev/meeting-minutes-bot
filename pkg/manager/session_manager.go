@@ -12,14 +12,14 @@ import (
 )
 
 func NewSessionManager(ctx context.Context) *SessionManager {
-	tq := queue.NewTimeoutQueue()
+	tq := queue.NewTimeoutQueue[uint64, struct{}]()
 	tq.Start(ctx.Done())
 
 	pendingRequests := &sync.Map{}
 	ch := tq.TakeCh()
 	go func() {
 		for td := range ch {
-			pendingRequests.Delete(td.Key.(uint64))
+			pendingRequests.Delete(td.Key)
 		}
 	}()
 
@@ -40,7 +40,7 @@ type SessionManager struct {
 	// chat_id -> Session
 	activeSessions *sync.Map
 
-	tq *queue.TimeoutQueue
+	tq *queue.TimeoutQueue[uint64, struct{}]
 
 	mu *sync.Mutex
 }

@@ -22,41 +22,35 @@ const (
 func init() {
 	publisher.Register(
 		Name,
-		func(config interface{}) (publisher.Interface, publisher.UserConfig, error) {
-			c, ok := config.(*Config)
-			if !ok {
-				return nil, nil, fmt.Errorf("unexpected non interpreter config")
-			}
-
-			var argTpls []*template.Template
-			for _, arg := range c.Args {
-				tpl, err := template.New("").
-					Funcs(sprig.TxtFuncMap()).
-					Funcs(map[string]interface{}{
-						"jq":      textquery.JQ,
-						"jqBytes": textquery.JQBytes,
-					}).Parse(arg)
-				if err != nil {
-					return nil, nil, fmt.Errorf("failed to parse arg template %q: %w", arg, err)
-				}
-
-				argTpls = append(argTpls, tpl)
-			}
-
-			return &Driver{
-				bin:     c.Bin,
-				argTpls: argTpls,
-			}, &UserConfig{}, nil
-		},
-		func() interface{} {
-			return &Config{}
-		},
+		func() publisher.Config { return &Config{} },
 	)
 }
 
 type Config struct {
 	Bin  string   `json:"bin" yaml:"bin"`
 	Args []string `json:"args" yaml:"args"`
+}
+
+func (c *Config) Create() (publisher.Interface, publisher.UserConfig, error) {
+	var argTpls []*template.Template
+	for _, arg := range c.Args {
+		tpl, err := template.New("").
+			Funcs(sprig.TxtFuncMap()).
+			Funcs(map[string]interface{}{
+				"jq":      textquery.JQ[byte, string],
+				"jqBytes": textquery.JQ[byte, []byte],
+			}).Parse(arg)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed to parse arg template %q: %w", arg, err)
+		}
+
+		argTpls = append(argTpls, tpl)
+	}
+
+	return &Driver{
+		bin:     c.Bin,
+		argTpls: argTpls,
+	}, &UserConfig{}, nil
 }
 
 var _ publisher.UserConfig = (*UserConfig)(nil)

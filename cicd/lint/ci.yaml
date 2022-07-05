@@ -1,0 +1,17 @@
+workflow:run:
+# required by ci job
+- name: lint
+  matrix:
+    include:
+    - tool: [editorconfig-checker]
+      config:
+      - __@presets#cached-file?str: tools/editorconfig-checker/config.json
+    - tool: [shellcheck]
+    - tool: [yamllint]
+      config:
+      - __@presets#cached-file?str: tools/yamllint/config.yaml
+    - tool: [golangci-lint]
+      config:
+      - __@presets#cached-file?str: tools/golangci-lint/config.vendor.yaml
+  jobs:
+  - cmd@presets?str|tpl#use-spec: tools/presets.tpl

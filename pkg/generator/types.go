@@ -4,6 +4,11 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
+type Config interface {
+	// Create a generation based on this config
+	Create() (Interface, error)
+}
+
 type Interface interface {
 	Name() string
 

@@ -8,7 +8,7 @@ import (
 
 	"arhat.dev/pkg/log"
 
-	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
+	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
 	"arhat.dev/meeting-minutes-bot/pkg/manager"
 )
@@ -19,7 +19,7 @@ func (c *telegramBot) handleStartCommand(
 	userID uint64,
 	isPrivateMessage bool,
 	params string,
-	msg *telegram.Message,
+	msg *api.Message,
 ) error {
 	if !isPrivateMessage {
 		msgID, _ := c.sendTextMessage(
@@ -191,7 +191,7 @@ func (c *telegramBot) handleStartCommand(
 	case "enter":
 		msgID, err2 := c.sendTextMessage(chatID, false, true, 0,
 			fmt.Sprintf("Enter your %s token as a reply to this message", c.publisherName),
-			telegram.ForceReply{
+			api.ForceReply{
 				ForceReply: true,
 				Selective:  constant.True(),
 			},
@@ -217,7 +217,7 @@ func (c *telegramBot) handleStartCommand(
 		msgID, err2 := c.sendTextMessage(
 			chatID, true, true, 0,
 			fmt.Sprintf("Enter your %s token as a reply to this message", c.publisherName),
-			telegram.ForceReply{
+			api.ForceReply{
 				ForceReply: true,
 				Selective:  constant.True(),
 			},

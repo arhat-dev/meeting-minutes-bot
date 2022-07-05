@@ -54,6 +54,6 @@ func loadTemplatesFromFS(base templateExecutor, dirFS fs.FS) (templateExecutor, 
 }
 
 var customFuncMap = map[string]interface{}{
-	"jq":      textquery.JQ,
-	"jqBytes": textquery.JQBytes,
+	"jq":      textquery.JQ[byte, string],
+	"jqBytes": textquery.JQ[byte, []byte],
 }

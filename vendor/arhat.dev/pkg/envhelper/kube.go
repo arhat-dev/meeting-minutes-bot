@@ -1,3 +1,4 @@
+//go:build !noenvhelper_kube
 // +build !noenvhelper_kube
 
 /*
@@ -22,6 +23,7 @@ import (
 	"os"
 )
 
+// Kubernetes pod identification
 const (
 	EnvKeyPodName      = "POD_NAME"
 	EnvKeyPodNamespace = "POD_NAMESPACE"

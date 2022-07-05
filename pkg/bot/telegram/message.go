@@ -6,13 +6,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
+	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
 var _ message.Interface = (*telegramMessage)(nil)
 
-func newTelegramMessage(msg *telegram.Message, msgs *[]message.Interface) *telegramMessage {
+func newTelegramMessage(msg *api.Message, msgs *[]message.Interface) *telegramMessage {
 	return &telegramMessage{
 		id: formatMessageID(msg.MessageId),
 
@@ -30,7 +30,7 @@ func newTelegramMessage(msg *telegram.Message, msgs *[]message.Interface) *teleg
 type telegramMessage struct {
 	id string
 
-	msg      *telegram.Message
+	msg      *api.Message
 	entities []message.Entity
 	msgs     *[]message.Interface
 
@@ -174,7 +174,7 @@ func (m *telegramMessage) OriginalAuthorURL() string {
 }
 
 func (m *telegramMessage) IsPrivateMessage() bool {
-	return m.msg.Chat.Type == telegram.ChatTypePrivate
+	return m.msg.Chat.Type == api.ChatTypePrivate
 }
 
 func (m *telegramMessage) IsReply() bool {

@@ -27,7 +27,7 @@ func (m *Manager) Name() string {
 	return ""
 }
 
-func (m *Manager) Add(driver, mimeMatch string, maxUploadSize uint64, config interface{}) error {
+func (m *Manager) Add(mimeMatch string, maxUploadSize uint64, config Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -42,9 +42,9 @@ func (m *Manager) Add(driver, mimeMatch string, maxUploadSize uint64, config int
 		}
 	}
 
-	d, err := NewDriver(driver, config)
+	d, err := config.Create()
 	if err != nil {
-		return fmt.Errorf("failed to create driver %q: %w", driver, err)
+		return fmt.Errorf("failed to create driver from config %T: %w", config, err)
 	}
 
 	m.drivers = append(m.drivers, d)

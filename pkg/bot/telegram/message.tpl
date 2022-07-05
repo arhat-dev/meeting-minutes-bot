@@ -1,9 +1,6 @@
-
-{{-
-/*
+{{- /*
     Render telegram message in html format
     https://core.telegram.org/bots/api/#formatting-options
-
 */ -}}
 
 {{- define "message" -}}

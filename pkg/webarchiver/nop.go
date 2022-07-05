@@ -2,17 +2,15 @@ package webarchiver
 
 import "context"
 
-var _ Interface = (*Nop)(nil)
+var _ Interface = (*nop)(nil)
 
 type NopConfig struct{}
 
-type Nop struct{}
+func (NopConfig) Create() (Interface, error) { return nop{}, nil }
 
-func (a *Nop) Login(config interface{}) error {
-	return nil
-}
+type nop struct{}
 
-func (a *Nop) Archive(
+func (nop) Archive(
 	ctx context.Context,
 	url string,
 ) (

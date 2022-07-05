@@ -179,6 +179,7 @@ func (t ValueNativeSourceType) String() string {
 
 // ValueNativeSourceType values.
 const (
+	ValueNativeSourceTypeDescription    ValueNativeSourceType = "description"
 	ValueNativeSourceTypeFigcaption     ValueNativeSourceType = "figcaption"
 	ValueNativeSourceTypeLabel          ValueNativeSourceType = "label"
 	ValueNativeSourceTypeLabelfor       ValueNativeSourceType = "labelfor"
@@ -203,6 +204,8 @@ func (t ValueNativeSourceType) MarshalJSON() ([]byte, error) {
 // UnmarshalEasyJSON satisfies easyjson.Unmarshaler.
 func (t *ValueNativeSourceType) UnmarshalEasyJSON(in *jlexer.Lexer) {
 	switch ValueNativeSourceType(in.String()) {
+	case ValueNativeSourceTypeDescription:
+		*t = ValueNativeSourceTypeDescription
 	case ValueNativeSourceTypeFigcaption:
 		*t = ValueNativeSourceTypeFigcaption
 	case ValueNativeSourceTypeLabel:
@@ -446,6 +449,8 @@ type Node struct {
 	Description      *Value            `json:"description,omitempty"`      // The accessible description for this Node.
 	Value            *Value            `json:"value,omitempty"`            // The value for this Node.
 	Properties       []*Property       `json:"properties,omitempty"`       // All other properties
-	ChildIds         []NodeID          `json:"childIds,omitempty"`         // IDs for each of this node's child nodes.
+	ParentID         NodeID            `json:"parentId,omitempty"`         // ID for this node's parent.
+	ChildIDs         []NodeID          `json:"childIds,omitempty"`         // IDs for each of this node's child nodes.
 	BackendDOMNodeID cdp.BackendNodeID `json:"backendDOMNodeId,omitempty"` // The backend ID for the associated DOM node, if any.
+	FrameID          cdp.FrameID       `json:"frameId,omitempty"`          // The frame ID for the frame associated with this nodes document.
 }

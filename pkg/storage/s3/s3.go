@@ -21,37 +21,7 @@ const (
 func init() {
 	storage.Register(
 		Name,
-		func(config interface{}) (storage.Interface, error) {
-			c, ok := config.(*Config)
-			if !ok {
-				return nil, fmt.Errorf("unexpected non s3 config: %T", config)
-			}
-
-			eURL, err := url.Parse(c.EndpointURL)
-			if err != nil {
-				return nil, fmt.Errorf("invalid endpoint url: %w", err)
-			}
-
-			client, err := minio.New(eURL.Host, &minio.Options{
-				Creds:  credentials.NewStaticV4(c.AccessKeyID, c.AccessKeySecret, ""),
-				Secure: eURL.Scheme == "https",
-				Region: c.Region,
-			})
-			if err != nil {
-				return nil, fmt.Errorf("failed to create s3 client: %w", err)
-			}
-
-			return &Driver{
-				client: client,
-
-				bucket:   c.Bucket,
-				region:   c.Region,
-				basePath: c.BasePath,
-			}, nil
-		},
-		func() interface{} {
-			return &Config{}
-		},
+		func() storage.Config { return &Config{} },
 	)
 }
 
@@ -65,6 +35,30 @@ type Config struct {
 
 	AccessKeyID     string `json:"accessKeyID" yaml:"accessKeyID"`
 	AccessKeySecret string `json:"accessKeySecret" yaml:"accessKeySecret"`
+}
+
+func (c *Config) Create() (storage.Interface, error) {
+	eURL, err := url.Parse(c.EndpointURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid endpoint url: %w", err)
+	}
+
+	client, err := minio.New(eURL.Host, &minio.Options{
+		Creds:  credentials.NewStaticV4(c.AccessKeyID, c.AccessKeySecret, ""),
+		Secure: eURL.Scheme == "https",
+		Region: c.Region,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create s3 client: %w", err)
+	}
+
+	return &Driver{
+		client: client,
+
+		bucket:   c.Bucket,
+		region:   c.Region,
+		basePath: c.BasePath,
+	}, nil
 }
 
 var _ storage.Interface = (*Driver)(nil)

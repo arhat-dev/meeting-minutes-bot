@@ -13,7 +13,7 @@ import (
 
 	"arhat.dev/pkg/log"
 
-	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
+	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 
@@ -103,7 +103,7 @@ func (c *telegramBot) sendTextMessage(
 	var htmlStyle = "HTML"
 	resp, err := c.client.PostSendMessage(
 		c.ctx,
-		telegram.PostSendMessageJSONRequestBody{
+		api.PostSendMessageJSONRequestBody{
 			AllowSendingWithoutReply: constant.True(),
 			ChatId:                   chatID,
 			DisableNotification:      &disableNotification,
@@ -118,7 +118,7 @@ func (c *telegramBot) sendTextMessage(
 		return 0, fmt.Errorf("failed to send message: %w", err)
 	}
 
-	result, err := telegram.ParsePostSendMessageResponse(resp)
+	result, err := api.ParsePostSendMessageResponse(resp)
 	_ = resp.Body.Close()
 	if err != nil {
 		return 0, fmt.Errorf("failed to parse response of message send: %w", err)
@@ -133,7 +133,7 @@ func (c *telegramBot) sendTextMessage(
 
 func parseTelegramEntities(
 	content string,
-	entities *[]telegram.MessageEntity,
+	entities *[]api.MessageEntity,
 ) *message.Entities {
 	if entities == nil {
 		return message.NewMessageEntities([]message.Entity{{
@@ -160,21 +160,21 @@ func parseTelegramEntities(
 		textIndex = e.Offset + e.Length
 
 		// handle entities without params
-		kind, ok := map[telegram.MessageEntityType]message.EntityKind{
-			telegram.MessageEntityTypeBotCommand: message.KindCode,
-			telegram.MessageEntityTypeHashtag:    message.KindBold,
-			telegram.MessageEntityTypeCashtag:    message.KindBold,
-			telegram.MessageEntityTypeTextLink:   message.KindBold,
+		kind, ok := map[api.MessageEntityType]message.EntityKind{
+			api.MessageEntityTypeBotCommand: message.KindCode,
+			api.MessageEntityTypeHashtag:    message.KindBold,
+			api.MessageEntityTypeCashtag:    message.KindBold,
+			api.MessageEntityTypeTextLink:   message.KindBold,
 
-			telegram.MessageEntityTypeBold:          message.KindBold,
-			telegram.MessageEntityTypeItalic:        message.KindItalic,
-			telegram.MessageEntityTypeStrikethrough: message.KindStrikethrough,
-			telegram.MessageEntityTypeUnderline:     message.KindUnderline,
-			telegram.MessageEntityTypeCode:          message.KindCode,
-			telegram.MessageEntityTypePre:           message.KindPre,
+			api.MessageEntityTypeBold:          message.KindBold,
+			api.MessageEntityTypeItalic:        message.KindItalic,
+			api.MessageEntityTypeStrikethrough: message.KindStrikethrough,
+			api.MessageEntityTypeUnderline:     message.KindUnderline,
+			api.MessageEntityTypeCode:          message.KindCode,
+			api.MessageEntityTypePre:           message.KindPre,
 
-			telegram.MessageEntityTypeEmail:       message.KindEmail,
-			telegram.MessageEntityTypePhoneNumber: message.KindPhoneNumber,
+			api.MessageEntityTypeEmail:       message.KindEmail,
+			api.MessageEntityTypePhoneNumber: message.KindPhoneNumber,
 		}[e.Type]
 
 		if ok {
@@ -188,7 +188,7 @@ func parseTelegramEntities(
 		}
 
 		switch e.Type {
-		case telegram.MessageEntityTypeUrl:
+		case api.MessageEntityTypeUrl:
 			result.Append(message.Entity{
 				Kind: message.KindURL,
 				Text: data,
@@ -198,7 +198,7 @@ func parseTelegramEntities(
 					message.EntityParamWebArchiveScreenshotURL: "",
 				},
 			})
-		case telegram.MessageEntityTypeMention, telegram.MessageEntityTypeTextMention:
+		case api.MessageEntityTypeMention, api.MessageEntityTypeTextMention:
 			url := "https://t.me/" + strings.TrimPrefix(data, "@")
 			result.Append(message.Entity{
 				Kind: message.KindURL,

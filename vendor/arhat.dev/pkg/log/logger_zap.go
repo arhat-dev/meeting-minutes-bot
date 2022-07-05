@@ -27,6 +27,7 @@ import (
 
 type Field = zapcore.Field
 
+// log fields for zap logger
 var (
 	Any        = zap.Any
 	Error      = zap.Error

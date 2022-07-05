@@ -1,24 +1,30 @@
 package conf
 
-import "github.com/spf13/pflag"
+import (
+	"arhat.dev/rs"
+	"github.com/spf13/pflag"
+)
 
 // TelegramConfig for telegram bot
 type TelegramConfig struct {
-	Enabled bool `json:"enabled" yaml:"enabled"`
+	rs.BaseField
 
-	Endpoint string `json:"endpoint" yaml:"endpoint"`
-	BotToken string `json:"botToken" yaml:"botToken"`
+	Enabled bool `yaml:"enabled"`
 
-	CommandsMapping BotCommandsMappingConfig `json:"commandsMapping" yaml:"commandsMapping"`
+	Endpoint string `yaml:"endpoint"`
+	BotToken string `yaml:"botToken"`
+
+	CommandsMapping BotCommandsMappingConfig `yaml:"commandsMapping"`
 
 	Webhook struct {
-		Enabled        bool   `json:"enabled" yaml:"enabled"`
-		Path           string `json:"path" yaml:"path"`
-		MaxConnections int32  `json:"maxConnections" yaml:"maxConnections"`
+		rs.BaseField
 
-		TLSPublicKey     string `json:"tlsPublicKey" yaml:"tlsPublicKey"`
-		TLSPublicKeyData string `json:"tlsPublicKeyData" yaml:"tlsPublicKeyData"`
-	} `json:"webhook" yaml:"webhook"`
+		Enabled        bool   `yaml:"enabled"`
+		Path           string `yaml:"path"`
+		MaxConnections int32  `yaml:"maxConnections"`
+
+		TLSPublicKey string `yaml:"tlsPublicKey"`
+	} `yaml:"webhook"`
 }
 
 // nolint:lll
@@ -32,8 +38,7 @@ func flagsForTelegramConfig(prefix string, config *TelegramConfig) *pflag.FlagSe
 	fs.BoolVar(&config.Webhook.Enabled, prefix+"webhook.enabled", true, "enabled webhook when server address is not empty")
 	fs.StringVar(&config.Webhook.Path, prefix+"webhook.path", "", "set the http path for this webhook, relative to the server base url, https will be used, and server port can be one of [443, 80, 88, 8443]")
 	fs.Int32Var(&config.Webhook.MaxConnections, prefix+"webhook.maxConnections", 40, "max concurrent requests to this bot, 1 - 100")
-	fs.StringVar(&config.Webhook.TLSPublicKey, prefix+"webhook.tlsPublicKey", "", "path to the public key of your self-signed certificate, only needed if you are using self-signed certs for this webhook")
-	fs.StringVar(&config.Webhook.TLSPublicKeyData, prefix+"webhook.tlsPublicKeyData", "", "base64 encoded public key of your self-signed certificate, if set, will override tlsPublicKey")
+	fs.StringVar(&config.Webhook.TLSPublicKey, prefix+"webhook.tlsPublicKey", "", "public key of your self-signed certificate, only needed if you are using self-signed certs for this webhook")
 
 	return fs
 }

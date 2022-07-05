@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net"
 	"net/http"
 	"strings"
@@ -29,65 +28,7 @@ const (
 func init() {
 	publisher.Register(
 		Name,
-		func(config interface{}) (publisher.Interface, publisher.UserConfig, error) {
-			c, ok := config.(*Config)
-			if !ok {
-				return nil, nil, fmt.Errorf("unexpected non http config")
-			}
-
-			urlTpl, err := parseTemplate(c.URL)
-			if err != nil {
-				return nil, nil, fmt.Errorf("invalud url template %q: %w", c.URL, err)
-			}
-
-			methodTpl, err := parseTemplate(c.Method)
-			if err != nil {
-				return nil, nil, fmt.Errorf("invalid method template %q: %w", c.Method, err)
-			}
-
-			var respTpl *template.Template
-			if len(c.ResponseTemplate) != 0 {
-				respTpl, err = template.New("").
-					Funcs(sprig.TxtFuncMap()).
-					Funcs(map[string]interface{}{
-						"jq":      textquery.JQ,
-						"jqBytes": textquery.JQBytes,
-					}).
-					Parse(c.ResponseTemplate)
-				if err != nil {
-					return nil, nil, fmt.Errorf("invalid template: %w", err)
-				}
-			}
-
-			var headers []nameValueTemplatePair
-			for _, p := range c.Headers {
-				nameTpl, err2 := parseTemplate(p.Name)
-				if err2 != nil {
-					return nil, nil, fmt.Errorf("invalid header name template %q: %w", p.Name, err2)
-				}
-
-				valueTpl, err2 := parseTemplate(p.Value)
-				if err2 != nil {
-					return nil, nil, fmt.Errorf("invalid header value template %q: %w", p.Value, err2)
-				}
-
-				headers = append(headers, nameValueTemplatePair{
-					nameTpl:  nameTpl,
-					valueTpl: valueTpl,
-				})
-			}
-
-			return &Driver{
-				methodTpl: methodTpl,
-				urlTpl:    urlTpl,
-
-				headers: headers,
-				respTpl: respTpl,
-			}, &userConfig{}, nil
-		},
-		func() interface{} {
-			return &Config{}
-		},
+		func() publisher.Config { return &Config{} },
 	)
 }
 
@@ -127,6 +68,58 @@ type Config struct {
 	Headers []nameValuePair `json:"headers" yaml:"headers"`
 
 	ResponseTemplate string `json:"responseTemplate" yaml:"responseTemplate"`
+}
+
+func (c *Config) Create() (publisher.Interface, publisher.UserConfig, error) {
+	urlTpl, err := parseTemplate(c.URL)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalud url template %q: %w", c.URL, err)
+	}
+
+	methodTpl, err := parseTemplate(c.Method)
+	if err != nil {
+		return nil, nil, fmt.Errorf("invalid method template %q: %w", c.Method, err)
+	}
+
+	var respTpl *template.Template
+	if len(c.ResponseTemplate) != 0 {
+		respTpl, err = template.New("").
+			Funcs(sprig.TxtFuncMap()).
+			Funcs(map[string]interface{}{
+				"jq":      textquery.JQ[byte, string],
+				"jqBytes": textquery.JQ[byte, []byte],
+			}).
+			Parse(c.ResponseTemplate)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid template: %w", err)
+		}
+	}
+
+	var headers []nameValueTemplatePair
+	for _, p := range c.Headers {
+		nameTpl, err2 := parseTemplate(p.Name)
+		if err2 != nil {
+			return nil, nil, fmt.Errorf("invalid header name template %q: %w", p.Name, err2)
+		}
+
+		valueTpl, err2 := parseTemplate(p.Value)
+		if err2 != nil {
+			return nil, nil, fmt.Errorf("invalid header value template %q: %w", p.Value, err2)
+		}
+
+		headers = append(headers, nameValueTemplatePair{
+			nameTpl:  nameTpl,
+			valueTpl: valueTpl,
+		})
+	}
+
+	return &Driver{
+		methodTpl: methodTpl,
+		urlTpl:    urlTpl,
+
+		headers: headers,
+		respTpl: respTpl,
+	}, &userConfig{}, nil
 }
 
 var _ publisher.UserConfig = (*userConfig)(nil)
@@ -234,7 +227,7 @@ func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Entity,
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	data, err := ioutil.ReadAll(resp.Body)
+	data, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -292,8 +285,8 @@ func parseTemplate(text string) (*template.Template, error) {
 	return template.New("").
 		Funcs(sprig.TxtFuncMap()).
 		Funcs(map[string]interface{}{
-			"jq":      textquery.JQ,
-			"jqBytes": textquery.JQBytes,
+			"jq":      textquery.JQ[byte, string],
+			"jqBytes": textquery.JQ[byte, []byte],
 		}).
 		Parse(text)
 }

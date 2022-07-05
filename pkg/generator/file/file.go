@@ -2,13 +2,12 @@ package file
 
 import (
 	"encoding/hex"
-	"fmt"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
-	"arhat.dev/pkg/hashhelper"
+	"arhat.dev/pkg/sha256helper"
 	"go.uber.org/multierr"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
@@ -23,26 +22,16 @@ const (
 func init() {
 	generator.Register(
 		Name,
-		func(config interface{}) (generator.Interface, error) {
-			c, ok := config.(*Config)
-			if !ok {
-				return nil, fmt.Errorf("unexpected non file generator config")
-			}
-
-			_ = c
-
-			return &Driver{
-				dir: c.Dir,
-			}, nil
-		},
-		func() interface{} {
-			return &Config{}
-		},
+		func() generator.Config { return &Config{} },
 	)
 }
 
 type Config struct {
 	Dir string `json:"dir" yaml:"dir"`
+}
+
+func (c *Config) Create() (generator.Interface, error) {
+	return &Driver{dir: c.Dir}, nil
 }
 
 var _ generator.Interface = (*Driver)(nil)
@@ -106,7 +95,7 @@ func (d *Driver) RenderPageBody(messages []message.Interface) (_ []byte, err err
 				}
 			}
 
-			filename := hex.EncodeToString(hashhelper.Sha256Sum(data)) + fileExt
+			filename := hex.EncodeToString(sha256helper.Sum(data)) + fileExt
 			err2 := os.WriteFile(filepath.Join(d.dir, filename), data, 0644)
 			if err2 != nil {
 				err = multierr.Append(err, err2)

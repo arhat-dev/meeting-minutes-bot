@@ -5,16 +5,16 @@ import (
 	"strings"
 	"time"
 
-	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
+	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
-type tokenInputHandleFunc func(chatID uint64, userID uint64, msg *telegram.Message) (bool, error)
+type tokenInputHandleFunc func(chatID uint64, userID uint64, msg *api.Message) (bool, error)
 
 func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 	chatID uint64,
 	userID uint64,
-	msg *telegram.Message,
+	msg *api.Message,
 ) (bool, error) {
 	standbySession, hasStandbySession := c.GetStandbySession(userID)
 	if !hasStandbySession {
@@ -140,7 +140,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 func (c *telegramBot) tryToHandleInputForEditing(
 	chatID uint64,
 	userID uint64,
-	msg *telegram.Message,
+	msg *api.Message,
 ) (bool, error) {
 	// check if it's a reply for conversion started by links to /edit, /delete, /list
 	req, isPendingEditing := c.GetPendingEditing(userID)
@@ -200,8 +200,8 @@ func (c *telegramBot) tryToHandleInputForEditing(
 
 	msgID, _ := c.sendTextMessage(
 		chatID, true, true, 0, "Login Success!",
-		telegram.InlineKeyboardMarkup{
-			InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
+		api.InlineKeyboardMarkup{
+			InlineKeyboard: [][]api.InlineKeyboardButton{{{
 				Text: "Edit on this device",
 				Url:  &authURL,
 			}}},
@@ -224,7 +224,7 @@ func (c *telegramBot) tryToHandleInputForEditing(
 func (c *telegramBot) tryToHandleInputForListing(
 	chatID uint64,
 	userID uint64,
-	msg *telegram.Message,
+	msg *api.Message,
 ) (bool, error) {
 	// check if it's a reply for conversion started by links to /list
 	req, isPendingListing := c.GetPendingListing(userID)
@@ -313,7 +313,7 @@ func (c *telegramBot) tryToHandleInputForListing(
 func (c *telegramBot) tryToHandleInputForDeleting(
 	chatID uint64,
 	userID uint64,
-	msg *telegram.Message,
+	msg *api.Message,
 ) (bool, error) {
 	// check if it's a reply for conversion started by links to /delete
 	req, isPendingDeleting := c.GetPendingDeleting(userID)

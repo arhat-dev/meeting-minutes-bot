@@ -4,15 +4,15 @@ import "context"
 
 var _ Interface = (*Nop)(nil)
 
-type NopConfig struct{}
+type nopConfig struct{}
+
+func (nopConfig) Create() (Interface, error) { return Nop{}, nil }
 
 type Nop struct{}
 
-func (u *Nop) Name() string {
-	return "nop"
-}
+func (Nop) Name() string { return "nop" }
 
-func (u *Nop) Upload(
+func (Nop) Upload(
 	ctx context.Context,
 	filename string,
 	contentType string,

@@ -26,26 +26,50 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 	mux := http.NewServeMux()
 
 	storageMgr := storage.NewManager()
-	for _, cfg := range opts.Storage {
-		err = storageMgr.Add(cfg.Driver, cfg.MIMEMatch, cfg.MaxUploadSize, cfg.Config)
+	for _, st := range opts.Storage {
+		var cfg storage.Config
+		for _, cfg = range st.Config {
+			break
+		}
+
+		err = storageMgr.Add(st.MIMEMatch, st.MaxUploadSize, cfg)
 		if err != nil {
-			return fmt.Errorf("failed to add storage driver %q: %w", cfg.Driver, err)
+			return fmt.Errorf("failed to add storage driver: %w", err)
 		}
 	}
 
-	webarchiver, err := webarchiver.NewDriver(opts.WebArchiver.Driver, opts.WebArchiver.Config)
-	if err != nil {
-		return fmt.Errorf("failed to create web archiver: %w", err)
+	var (
+		wa     webarchiver.Interface
+		gen    generator.Interface
+		pubCfg publisher.Config
+	)
+
+	for _, cfg := range opts.WebArchiver.Config {
+		wa, err = cfg.Create()
+		if err != nil {
+			return fmt.Errorf("failed to create web archiver: %w", err)
+		}
+
+		break
 	}
 
-	generator, err := generator.NewDriver(opts.Generator.Driver, opts.Generator.Config)
-	if err != nil {
-		return fmt.Errorf("failed to create post generator: %w", err)
+	for _, cfg := range opts.Generator.Config {
+		gen, err = cfg.Create()
+		if err != nil {
+			return fmt.Errorf("failed to create post generator: %w", err)
+		}
+
+		break
 	}
 
-	_, _, err = publisher.NewDriver(opts.Publisher.Driver, opts.Publisher.Config)
-	if err != nil {
-		return fmt.Errorf("failed to pre check publisher creation: %w", err)
+	for _, cfg := range opts.Publisher.Config {
+		_, _, err = cfg.Create()
+		if err != nil {
+			return fmt.Errorf("failed to pre check publisher creation: %w", err)
+		}
+
+		pubCfg = cfg
+		break
 	}
 
 	if bots.Telegram.Enabled {
@@ -54,11 +78,9 @@ func Run(ctx context.Context, opts *conf.AppConfig, bots *conf.BotsConfig) error
 			ctx,
 			log.Log.WithFields(log.String("bot", "telegram")),
 			storageMgr,
-			webarchiver,
-			generator,
-			func() (publisher.Interface, publisher.UserConfig, error) {
-				return publisher.NewDriver(opts.Publisher.Driver, opts.Publisher.Config)
-			},
+			wa,
+			gen,
+			pubCfg.Create,
 			cmds,
 			newToOld,
 			&bots.Telegram,
@@ -111,30 +133,95 @@ func getCommands(
 
 	// use loop to ensure no command skipped
 	for _, cmd := range constant.AllBotCommands {
-		originalDescription := constant.BotCommandShortDescriptions[cmd]
 		switch cmd {
 		case constant.CommandStart:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Start, botMapping.Start))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Start, botMapping.Start,
+				),
+			)
 		case constant.CommandDiscuss:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Discuss, botMapping.Discuss))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Discuss, botMapping.Discuss,
+				),
+			)
 		case constant.CommandIgnore:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Ignore, botMapping.Ignore))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Ignore, botMapping.Ignore,
+				),
+			)
 		case constant.CommandInclude:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Include, botMapping.Include))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Include, botMapping.Include,
+				),
+			)
 		case constant.CommandEnd:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.End, botMapping.End))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.End, botMapping.End,
+				),
+			)
 		case constant.CommandCancel:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Cancel, botMapping.Cancel))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Cancel, botMapping.Cancel,
+				),
+			)
 		case constant.CommandContinue:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Continue, botMapping.Continue))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Continue, botMapping.Continue,
+				),
+			)
 		case constant.CommandEdit:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Edit, botMapping.Edit))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Edit, botMapping.Edit,
+				),
+			)
 		case constant.CommandList:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.List, botMapping.List))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.List, botMapping.List,
+				),
+			)
 		case constant.CommandDelete:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Delete, botMapping.Delete))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Delete, botMapping.Delete,
+				),
+			)
 		case constant.CommandHelp:
-			setCmd(getCommandOverride(cmd, originalDescription, globalMapping.Help, botMapping.Help))
+			setCmd(
+				getCommandOverride(
+					cmd,
+					constant.BotCommandShortDescriptions[cmd],
+					globalMapping.Help, botMapping.Help,
+				),
+			)
 		default:
 			panic(fmt.Errorf("command %s not processed", cmd))
 		}

@@ -2,10 +2,8 @@ package telegram
 
 import (
 	"bytes"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"mime/multipart"
 	"net/http"
 	"net/url"
@@ -17,7 +15,7 @@ import (
 	"arhat.dev/pkg/log"
 
 	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
+	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
 )
 
@@ -28,7 +26,7 @@ func (c *telegramBot) Configure() error {
 		return fmt.Errorf("failed to get my own info: %w", err2)
 	}
 
-	mr, err2 := telegram.ParsePostGetMeResponse(resp)
+	mr, err2 := api.ParsePostGetMeResponse(resp)
 	_ = resp.Body.Close()
 	if err2 != nil {
 		return fmt.Errorf("failed to parse bot get info response: %w", err2)
@@ -47,7 +45,7 @@ func (c *telegramBot) Configure() error {
 
 	// everything working, set commands to keep them up to date (best effort)
 
-	var commands []telegram.BotCommand
+	var commands []api.BotCommand
 
 	for _, cmd := range constant.VisibleBotCommands {
 		newCmd, ok := c.oldToNew[cmd]
@@ -55,20 +53,20 @@ func (c *telegramBot) Configure() error {
 			continue
 		}
 
-		commands = append(commands, telegram.BotCommand{
+		commands = append(commands, api.BotCommand{
 			Command:     strings.TrimPrefix(newCmd.As, "/"),
 			Description: newCmd.Description,
 		})
 	}
 
 	// set bot commands
-	resp, err := c.client.PostSetMyCommands(c.ctx, telegram.PostSetMyCommandsJSONRequestBody{
+	resp, err := c.client.PostSetMyCommands(c.ctx, api.PostSetMyCommandsJSONRequestBody{
 		Commands: commands,
 	})
 	if err != nil {
 		c.logger.E("failed to request set telegram bot commands", log.Error(err))
 	} else {
-		sr, err := telegram.ParsePostSetMyCommandsResponse(resp)
+		sr, err := api.ParsePostSetMyCommandsResponse(resp)
 		_ = resp.Body.Close()
 		if err != nil {
 			c.logger.E("failed to parse bot command set response", log.Error(err))
@@ -137,29 +135,13 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 			return fmt.Errorf("failed to set url: %w", err2)
 		}
 
-		var certBytes []byte
-		switch {
-		case len(c.opts.Webhook.TLSPublicKeyData) != 0:
-			// use embedded data
-			certBytes, err2 = base64.StdEncoding.DecodeString(c.opts.Webhook.TLSPublicKeyData)
-			if err2 != nil {
-				return fmt.Errorf("failed to decode base64 encoded cert: %w", err2)
-			}
-		case len(c.opts.Webhook.TLSPublicKey) != 0 && len(c.opts.Webhook.TLSPublicKeyData) == 0:
-			// read from file
-			certBytes, err2 = ioutil.ReadFile(c.opts.Webhook.TLSPublicKey)
-			if err2 != nil {
-				return fmt.Errorf("failed to load public key: %w", err2)
-			}
-		}
-
-		if len(certBytes) != 0 {
+		if len(c.opts.Webhook.TLSPublicKey) != 0 {
 			filePart, err3 := mw.CreateFormFile("certificate", "cert.pem")
 			if err3 != nil {
 				return fmt.Errorf("failed to create form file: %w", err3)
 			}
 
-			_, err3 = filePart.Write(certBytes)
+			_, err3 = filePart.Write([]byte(c.opts.Webhook.TLSPublicKey))
 			if err3 != nil {
 				return fmt.Errorf("failed to write cert bytes: %w", err3)
 			}
@@ -181,7 +163,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 			return fmt.Errorf("failed to request set webhook: %w", err2)
 		}
 
-		swr, err2 := telegram.ParsePostSetWebhookResponse(resp)
+		swr, err2 := api.ParsePostSetWebhookResponse(resp)
 		_ = resp.Body.Close()
 		if err2 != nil {
 			return fmt.Errorf("failed to parse response of set webhook: %w", err2)
@@ -196,8 +178,8 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 			defer func() { _ = r.Body.Close() }()
 
 			var dest struct {
-				Ok     bool              `json:"ok"`
-				Result []telegram.Update `json:"result"`
+				Ok     bool         `json:"ok"`
+				Result []api.Update `json:"result"`
 			}
 
 			if err3 := dec.Decode(&dest); err3 != nil {
@@ -220,7 +202,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 			return fmt.Errorf("failed to check bot webhook status: %w", err2)
 		}
 
-		info, err2 := telegram.ParsePostGetWebhookInfoResponse(resp)
+		info, err2 := api.ParsePostGetWebhookInfoResponse(resp)
 		_ = resp.Body.Close()
 		if err2 != nil {
 			return fmt.Errorf("failed to parse bot webhook info: %w", err2)
@@ -234,14 +216,14 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 
 		if len(info.JSON200.Result.Url) != 0 {
 			// TODO: handle error
-			resp, err2 = c.client.PostDeleteWebhook(c.ctx, telegram.PostDeleteWebhookJSONRequestBody{
+			resp, err2 = c.client.PostDeleteWebhook(c.ctx, api.PostDeleteWebhookJSONRequestBody{
 				DropPendingUpdates: constant.False(),
 			})
 			if err2 != nil {
 				return fmt.Errorf("failed to delete webhook: %w", err2)
 			}
 
-			wd, err3 := telegram.ParsePostDeleteWebhookResponse(resp)
+			wd, err3 := api.ParsePostDeleteWebhookResponse(resp)
 			_ = resp.Body.Close()
 			if err3 != nil {
 				return fmt.Errorf("failed to parse webhook deletion response: %w", err3)
@@ -272,7 +254,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 					}()
 					resp, err3 := c.client.PostGetUpdates(
 						c.ctx,
-						telegram.PostGetUpdatesJSONRequestBody{
+						api.PostGetUpdatesJSONRequestBody{
 							AllowedUpdates: &allowedUpdates,
 							Offset:         offsetPtr,
 						},
@@ -282,7 +264,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 						continue
 					}
 
-					updates, err3 := telegram.ParsePostGetUpdatesResponse(resp)
+					updates, err3 := api.ParsePostGetUpdatesResponse(resp)
 					_ = resp.Body.Close()
 
 					if err3 != nil {
@@ -324,13 +306,12 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 	go func() {
 		for td := range msgDelCh {
 			// delete message with best effort
-			k := td.Key.(msgDeleteKey)
 			for i := 0; i < 5; i++ {
 				resp, err2 := c.client.PostDeleteMessage(
 					c.ctx,
-					telegram.PostDeleteMessageJSONRequestBody{
-						ChatId:    k.chatID,
-						MessageId: int(k.messageID),
+					api.PostDeleteMessageJSONRequestBody{
+						ChatId:    td.Key.chatID,
+						MessageId: int(td.Key.messageID),
 					},
 				)
 				if err2 != nil {

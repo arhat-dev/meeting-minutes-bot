@@ -10,8 +10,7 @@ import (
 
 var _ webarchiver.Interface = (*Driver)(nil)
 
-type Driver struct {
-}
+type Driver struct{}
 
 func (d *Driver) Archive(
 	ctx context.Context,

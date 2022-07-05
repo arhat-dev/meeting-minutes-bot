@@ -18,22 +18,57 @@ package cmd
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 
 	"arhat.dev/pkg/log"
+	"arhat.dev/rs"
 	"github.com/spf13/cobra"
 
 	"arhat.dev/meeting-minutes-bot/pkg/conf"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
+	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 	"arhat.dev/meeting-minutes-bot/pkg/server"
+	"arhat.dev/meeting-minutes-bot/pkg/storage"
+	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
+
+var (
+	generatorConfigType   = reflect.TypeOf((*generator.Config)(nil)).Elem()
+	publisherConfigType   = reflect.TypeOf((*publisher.Config)(nil)).Elem()
+	storageConfigType     = reflect.TypeOf((*storage.Config)(nil)).Elem()
+	webarchiverConfigType = reflect.TypeOf((*webarchiver.Config)(nil)).Elem()
+)
+
+type globalInterfaceTypeHandler struct{}
+
+func (globalInterfaceTypeHandler) Create(typ reflect.Type, yamlKey string) (interface{}, error) {
+	switch typ {
+	case generatorConfigType:
+		return generator.NewConfig(yamlKey)
+	case publisherConfigType:
+		return publisher.NewConfig(yamlKey)
+	case storageConfigType:
+		return storage.NewConfig(yamlKey)
+	case webarchiverConfigType:
+		return webarchiver.NewConfig(yamlKey)
+	default:
+		return nil, fmt.Errorf("unknown config type %s (key: %s)", typ.String(), yamlKey)
+	}
+}
 
 func NewRootCmd() *cobra.Command {
 	var (
 		appCtx       context.Context
 		configFile   string
-		config       = new(conf.Config)
-		cliLogConfig = new(log.Config)
+		config       conf.Config
+		cliLogConfig log.Config
 	)
+
+	rs.Init(&config, &rs.Options{
+		InterfaceTypeHandler: globalInterfaceTypeHandler{},
+	})
 
 	rootCmd := &cobra.Command{
 		Use:           "meeting-minutes-bot",
@@ -45,7 +80,7 @@ func NewRootCmd() *cobra.Command {
 			}
 
 			var err error
-			appCtx, err = conf.ReadConfig(cmd, &configFile, cliLogConfig, config)
+			appCtx, err = conf.ReadConfig(cmd, &configFile, &cliLogConfig, &config)
 			if err != nil {
 				return err
 			}
@@ -53,7 +88,7 @@ func NewRootCmd() *cobra.Command {
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(appCtx, config)
+			return run(appCtx, &config)
 		},
 	}
 

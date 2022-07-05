@@ -395,6 +395,40 @@ func (p *GetManifestIconsParams) Do(ctx context.Context) (primaryIcon []byte, er
 	return dec, nil
 }
 
+// GetAppIDParams returns the unique (PWA) app id. Only returns values if the
+// feature flag 'WebAppEnableManifestId' is enabled.
+type GetAppIDParams struct{}
+
+// GetAppID returns the unique (PWA) app id. Only returns values if the
+// feature flag 'WebAppEnableManifestId' is enabled.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Page#method-getAppId
+func GetAppID() *GetAppIDParams {
+	return &GetAppIDParams{}
+}
+
+// GetAppIDReturns return values.
+type GetAppIDReturns struct {
+	AppID         string `json:"appId,omitempty"`         // App id, either from manifest's id attribute or computed from start_url
+	RecommendedID string `json:"recommendedId,omitempty"` // Recommendation for manifest's id attribute to match current id computed from start_url
+}
+
+// Do executes Page.getAppId against the provided context.
+//
+// returns:
+//   appID - App id, either from manifest's id attribute or computed from start_url
+//   recommendedID - Recommendation for manifest's id attribute to match current id computed from start_url
+func (p *GetAppIDParams) Do(ctx context.Context) (appID string, recommendedID string, err error) {
+	// execute
+	var res GetAppIDReturns
+	err = cdp.Execute(ctx, CommandGetAppID, nil, &res)
+	if err != nil {
+		return "", "", err
+	}
+
+	return res.AppID, res.RecommendedID, nil
+}
+
 // GetFrameTreeParams returns present frame tree structure.
 type GetFrameTreeParams struct{}
 
@@ -439,9 +473,9 @@ func GetLayoutMetrics() *GetLayoutMetricsParams {
 
 // GetLayoutMetricsReturns return values.
 type GetLayoutMetricsReturns struct {
-	LayoutViewport    *LayoutViewport `json:"layoutViewport"`    // Deprecated metrics relating to the layout viewport. Can be in DP or in CSS pixels depending on the enable-use-zoom-for-dsf flag. Use cssLayoutViewport instead.
-	VisualViewport    *VisualViewport `json:"visualViewport"`    // Deprecated metrics relating to the visual viewport. Can be in DP or in CSS pixels depending on the enable-use-zoom-for-dsf flag. Use cssVisualViewport instead.
-	ContentSize       *dom.Rect       `json:"contentSize"`       // Deprecated size of scrollable area. Can be in DP or in CSS pixels depending on the enable-use-zoom-for-dsf flag. Use cssContentSize instead.
+	LayoutViewport    *LayoutViewport `json:"layoutViewport"`    // Deprecated metrics relating to the layout viewport. Is in device pixels. Use cssLayoutViewport instead.
+	VisualViewport    *VisualViewport `json:"visualViewport"`    // Deprecated metrics relating to the visual viewport. Is in device pixels. Use cssVisualViewport instead.
+	ContentSize       *dom.Rect       `json:"contentSize"`       // Deprecated size of scrollable area. Is in DP. Use cssContentSize instead.
 	CSSLayoutViewport *LayoutViewport `json:"cssLayoutViewport"` // Metrics relating to the layout viewport in CSS pixels.
 	CSSVisualViewport *VisualViewport `json:"cssVisualViewport"` // Metrics relating to the visual viewport in CSS pixels.
 	CSSContentSize    *dom.Rect       `json:"cssContentSize"`    // Size of scrollable area in CSS pixels.
@@ -450,9 +484,9 @@ type GetLayoutMetricsReturns struct {
 // Do executes Page.getLayoutMetrics against the provided context.
 //
 // returns:
-//   layoutViewport - Deprecated metrics relating to the layout viewport. Can be in DP or in CSS pixels depending on the enable-use-zoom-for-dsf flag. Use cssLayoutViewport instead.
-//   visualViewport - Deprecated metrics relating to the visual viewport. Can be in DP or in CSS pixels depending on the enable-use-zoom-for-dsf flag. Use cssVisualViewport instead.
-//   contentSize - Deprecated size of scrollable area. Can be in DP or in CSS pixels depending on the enable-use-zoom-for-dsf flag. Use cssContentSize instead.
+//   layoutViewport - Deprecated metrics relating to the layout viewport. Is in device pixels. Use cssLayoutViewport instead.
+//   visualViewport - Deprecated metrics relating to the visual viewport. Is in device pixels. Use cssVisualViewport instead.
+//   contentSize - Deprecated size of scrollable area. Is in DP. Use cssContentSize instead.
 //   cssLayoutViewport - Metrics relating to the layout viewport in CSS pixels.
 //   cssVisualViewport - Metrics relating to the visual viewport in CSS pixels.
 //   cssContentSize - Size of scrollable area in CSS pixels.
@@ -724,22 +758,21 @@ func (p *NavigateToHistoryEntryParams) Do(ctx context.Context) (err error) {
 
 // PrintToPDFParams print page as PDF.
 type PrintToPDFParams struct {
-	Landscape               bool                   `json:"landscape,omitempty"`               // Paper orientation. Defaults to false.
-	DisplayHeaderFooter     bool                   `json:"displayHeaderFooter,omitempty"`     // Display header and footer. Defaults to false.
-	PrintBackground         bool                   `json:"printBackground,omitempty"`         // Print background graphics. Defaults to false.
-	Scale                   float64                `json:"scale,omitempty"`                   // Scale of the webpage rendering. Defaults to 1.
-	PaperWidth              float64                `json:"paperWidth,omitempty"`              // Paper width in inches. Defaults to 8.5 inches.
-	PaperHeight             float64                `json:"paperHeight,omitempty"`             // Paper height in inches. Defaults to 11 inches.
-	MarginTop               float64                `json:"marginTop"`                         // Top margin in inches. Defaults to 1cm (~0.4 inches).
-	MarginBottom            float64                `json:"marginBottom"`                      // Bottom margin in inches. Defaults to 1cm (~0.4 inches).
-	MarginLeft              float64                `json:"marginLeft"`                        // Left margin in inches. Defaults to 1cm (~0.4 inches).
-	MarginRight             float64                `json:"marginRight"`                       // Right margin in inches. Defaults to 1cm (~0.4 inches).
-	PageRanges              string                 `json:"pageRanges,omitempty"`              // Paper ranges to print, e.g., '1-5, 8, 11-13'. Defaults to the empty string, which means print all pages.
-	IgnoreInvalidPageRanges bool                   `json:"ignoreInvalidPageRanges,omitempty"` // Whether to silently ignore invalid but successfully parsed page ranges, such as '3-2'. Defaults to false.
-	HeaderTemplate          string                 `json:"headerTemplate,omitempty"`          // HTML template for the print header. Should be valid HTML markup with following classes used to inject printing values into them: - date: formatted print date - title: document title - url: document location - pageNumber: current page number - totalPages: total pages in the document  For example, <span class=title></span> would generate span containing the title.
-	FooterTemplate          string                 `json:"footerTemplate,omitempty"`          // HTML template for the print footer. Should use the same format as the headerTemplate.
-	PreferCSSPageSize       bool                   `json:"preferCSSPageSize,omitempty"`       // Whether or not to prefer page size as defined by css. Defaults to false, in which case the content will be scaled to fit the paper size.
-	TransferMode            PrintToPDFTransferMode `json:"transferMode,omitempty"`            // return as stream
+	Landscape           bool                   `json:"landscape,omitempty"`           // Paper orientation. Defaults to false.
+	DisplayHeaderFooter bool                   `json:"displayHeaderFooter,omitempty"` // Display header and footer. Defaults to false.
+	PrintBackground     bool                   `json:"printBackground,omitempty"`     // Print background graphics. Defaults to false.
+	Scale               float64                `json:"scale,omitempty"`               // Scale of the webpage rendering. Defaults to 1.
+	PaperWidth          float64                `json:"paperWidth,omitempty"`          // Paper width in inches. Defaults to 8.5 inches.
+	PaperHeight         float64                `json:"paperHeight,omitempty"`         // Paper height in inches. Defaults to 11 inches.
+	MarginTop           float64                `json:"marginTop"`                     // Top margin in inches. Defaults to 1cm (~0.4 inches).
+	MarginBottom        float64                `json:"marginBottom"`                  // Bottom margin in inches. Defaults to 1cm (~0.4 inches).
+	MarginLeft          float64                `json:"marginLeft"`                    // Left margin in inches. Defaults to 1cm (~0.4 inches).
+	MarginRight         float64                `json:"marginRight"`                   // Right margin in inches. Defaults to 1cm (~0.4 inches).
+	PageRanges          string                 `json:"pageRanges,omitempty"`          // Paper ranges to print, one based, e.g., '1-5, 8, 11-13'. Pages are printed in the document order, not in the order specified, and no more than once. Defaults to empty string, which implies the entire document is printed. The page numbers are quietly capped to actual page count of the document, and ranges beyond the end of the document are ignored. If this results in no pages to print, an error is reported. It is an error to specify a range with start greater than end.
+	HeaderTemplate      string                 `json:"headerTemplate,omitempty"`      // HTML template for the print header. Should be valid HTML markup with following classes used to inject printing values into them: - date: formatted print date - title: document title - url: document location - pageNumber: current page number - totalPages: total pages in the document  For example, <span class=title></span> would generate span containing the title.
+	FooterTemplate      string                 `json:"footerTemplate,omitempty"`      // HTML template for the print footer. Should use the same format as the headerTemplate.
+	PreferCSSPageSize   bool                   `json:"preferCSSPageSize,omitempty"`   // Whether or not to prefer page size as defined by css. Defaults to false, in which case the content will be scaled to fit the paper size.
+	TransferMode        PrintToPDFTransferMode `json:"transferMode,omitempty"`        // return as stream
 }
 
 // PrintToPDF print page as PDF.
@@ -811,17 +844,15 @@ func (p PrintToPDFParams) WithMarginRight(marginRight float64) *PrintToPDFParams
 	return &p
 }
 
-// WithPageRanges paper ranges to print, e.g., '1-5, 8, 11-13'. Defaults to
-// the empty string, which means print all pages.
+// WithPageRanges paper ranges to print, one based, e.g., '1-5, 8, 11-13'.
+// Pages are printed in the document order, not in the order specified, and no
+// more than once. Defaults to empty string, which implies the entire document
+// is printed. The page numbers are quietly capped to actual page count of the
+// document, and ranges beyond the end of the document are ignored. If this
+// results in no pages to print, an error is reported. It is an error to specify
+// a range with start greater than end.
 func (p PrintToPDFParams) WithPageRanges(pageRanges string) *PrintToPDFParams {
 	p.PageRanges = pageRanges
-	return &p
-}
-
-// WithIgnoreInvalidPageRanges whether to silently ignore invalid but
-// successfully parsed page ranges, such as '3-2'. Defaults to false.
-func (p PrintToPDFParams) WithIgnoreInvalidPageRanges(ignoreInvalidPageRanges bool) *PrintToPDFParams {
-	p.IgnoreInvalidPageRanges = ignoreInvalidPageRanges
 	return &p
 }
 
@@ -1107,9 +1138,47 @@ func (p *GetPermissionsPolicyStateParams) Do(ctx context.Context) (states []*Per
 	return res.States, nil
 }
 
+// GetOriginTrialsParams get Origin Trials on given frame.
+type GetOriginTrialsParams struct {
+	FrameID cdp.FrameID `json:"frameId"`
+}
+
+// GetOriginTrials get Origin Trials on given frame.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Page#method-getOriginTrials
+//
+// parameters:
+//   frameID
+func GetOriginTrials(frameID cdp.FrameID) *GetOriginTrialsParams {
+	return &GetOriginTrialsParams{
+		FrameID: frameID,
+	}
+}
+
+// GetOriginTrialsReturns return values.
+type GetOriginTrialsReturns struct {
+	OriginTrials []*cdp.OriginTrial `json:"originTrials,omitempty"`
+}
+
+// Do executes Page.getOriginTrials against the provided context.
+//
+// returns:
+//   originTrials
+func (p *GetOriginTrialsParams) Do(ctx context.Context) (originTrials []*cdp.OriginTrial, err error) {
+	// execute
+	var res GetOriginTrialsReturns
+	err = cdp.Execute(ctx, CommandGetOriginTrials, p, &res)
+	if err != nil {
+		return nil, err
+	}
+
+	return res.OriginTrials, nil
+}
+
 // SetFontFamiliesParams set generic font families.
 type SetFontFamiliesParams struct {
-	FontFamilies *FontFamilies `json:"fontFamilies"` // Specifies font families to set. If a font family is not specified, it won't be changed.
+	FontFamilies *FontFamilies         `json:"fontFamilies"`         // Specifies font families to set. If a font family is not specified, it won't be changed.
+	ForScripts   []*ScriptFontFamilies `json:"forScripts,omitempty"` // Specifies font families to set for individual scripts.
 }
 
 // SetFontFamilies set generic font families.
@@ -1122,6 +1191,12 @@ func SetFontFamilies(fontFamilies *FontFamilies) *SetFontFamiliesParams {
 	return &SetFontFamiliesParams{
 		FontFamilies: fontFamilies,
 	}
+}
+
+// WithForScripts specifies font families to set for individual scripts.
+func (p SetFontFamiliesParams) WithForScripts(forScripts []*ScriptFontFamilies) *SetFontFamiliesParams {
+	p.ForScripts = forScripts
+	return &p
 }
 
 // Do executes Page.setFontFamilies against the provided context.
@@ -1372,51 +1447,21 @@ func (p *StopScreencastParams) Do(ctx context.Context) (err error) {
 	return cdp.Execute(ctx, CommandStopScreencast, nil, nil)
 }
 
-// SetProduceCompilationCacheParams forces compilation cache to be generated
-// for every subresource script. See also: Page.produceCompilationCache.
-type SetProduceCompilationCacheParams struct {
-	Enabled bool `json:"enabled"`
-}
-
-// SetProduceCompilationCache forces compilation cache to be generated for
-// every subresource script. See also: Page.produceCompilationCache.
-//
-// See: https://chromedevtools.github.io/devtools-protocol/tot/Page#method-setProduceCompilationCache
-//
-// parameters:
-//   enabled
-func SetProduceCompilationCache(enabled bool) *SetProduceCompilationCacheParams {
-	return &SetProduceCompilationCacheParams{
-		Enabled: enabled,
-	}
-}
-
-// Do executes Page.setProduceCompilationCache against the provided context.
-func (p *SetProduceCompilationCacheParams) Do(ctx context.Context) (err error) {
-	return cdp.Execute(ctx, CommandSetProduceCompilationCache, p, nil)
-}
-
 // ProduceCompilationCacheParams requests backend to produce compilation
-// cache for the specified scripts. Unlike setProduceCompilationCache, this
-// allows client to only produce cache for specific scripts. scripts are
-// appeneded to the list of scripts for which the cache for would produced.
-// Disabling compilation cache with setProduceCompilationCache would reset all
-// pending cache requests. The list may also be reset during page navigation.
-// When script with a matching URL is encountered, the cache is optionally
-// produced upon backend discretion, based on internal heuristics. See also:
-// Page.compilationCacheProduced.
+// cache for the specified scripts. scripts are appeneded to the list of scripts
+// for which the cache would be produced. The list may be reset during page
+// navigation. When script with a matching URL is encountered, the cache is
+// optionally produced upon backend discretion, based on internal heuristics.
+// See also: Page.compilationCacheProduced.
 type ProduceCompilationCacheParams struct {
 	Scripts []*CompilationCacheParams `json:"scripts"`
 }
 
 // ProduceCompilationCache requests backend to produce compilation cache for
-// the specified scripts. Unlike setProduceCompilationCache, this allows client
-// to only produce cache for specific scripts. scripts are appeneded to the list
-// of scripts for which the cache for would produced. Disabling compilation
-// cache with setProduceCompilationCache would reset all pending cache requests.
-// The list may also be reset during page navigation. When script with a
-// matching URL is encountered, the cache is optionally produced upon backend
-// discretion, based on internal heuristics. See also:
+// the specified scripts. scripts are appeneded to the list of scripts for which
+// the cache would be produced. The list may be reset during page navigation.
+// When script with a matching URL is encountered, the cache is optionally
+// produced upon backend discretion, based on internal heuristics. See also:
 // Page.compilationCacheProduced.
 //
 // See: https://chromedevtools.github.io/devtools-protocol/tot/Page#method-produceCompilationCache
@@ -1474,6 +1519,32 @@ func ClearCompilationCache() *ClearCompilationCacheParams {
 // Do executes Page.clearCompilationCache against the provided context.
 func (p *ClearCompilationCacheParams) Do(ctx context.Context) (err error) {
 	return cdp.Execute(ctx, CommandClearCompilationCache, nil, nil)
+}
+
+// SetSPCTransactionModeParams sets the Secure Payment Confirmation
+// transaction mode.
+// https://w3c.github.io/secure-payment-confirmation/#sctn-automation-set-spc-transaction-mode.
+type SetSPCTransactionModeParams struct {
+	Mode SetSPCTransactionModeMode `json:"mode"`
+}
+
+// SetSPCTransactionMode sets the Secure Payment Confirmation transaction
+// mode.
+// https://w3c.github.io/secure-payment-confirmation/#sctn-automation-set-spc-transaction-mode.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Page#method-setSPCTransactionMode
+//
+// parameters:
+//   mode
+func SetSPCTransactionMode(mode SetSPCTransactionModeMode) *SetSPCTransactionModeParams {
+	return &SetSPCTransactionModeParams{
+		Mode: mode,
+	}
+}
+
+// Do executes Page.setSPCTransactionMode against the provided context.
+func (p *SetSPCTransactionModeParams) Do(ctx context.Context) (err error) {
+	return cdp.Execute(ctx, CommandSetSPCTransactionMode, p, nil)
 }
 
 // GenerateTestReportParams generates a report for testing.
@@ -1562,6 +1633,7 @@ const (
 	CommandGetAppManifest                      = "Page.getAppManifest"
 	CommandGetInstallabilityErrors             = "Page.getInstallabilityErrors"
 	CommandGetManifestIcons                    = "Page.getManifestIcons"
+	CommandGetAppID                            = "Page.getAppId"
 	CommandGetFrameTree                        = "Page.getFrameTree"
 	CommandGetLayoutMetrics                    = "Page.getLayoutMetrics"
 	CommandGetNavigationHistory                = "Page.getNavigationHistory"
@@ -1579,6 +1651,7 @@ const (
 	CommandSetAdBlockingEnabled                = "Page.setAdBlockingEnabled"
 	CommandSetBypassCSP                        = "Page.setBypassCSP"
 	CommandGetPermissionsPolicyState           = "Page.getPermissionsPolicyState"
+	CommandGetOriginTrials                     = "Page.getOriginTrials"
 	CommandSetFontFamilies                     = "Page.setFontFamilies"
 	CommandSetFontSizes                        = "Page.setFontSizes"
 	CommandSetDocumentContent                  = "Page.setDocumentContent"
@@ -1590,10 +1663,10 @@ const (
 	CommandClose                               = "Page.close"
 	CommandSetWebLifecycleState                = "Page.setWebLifecycleState"
 	CommandStopScreencast                      = "Page.stopScreencast"
-	CommandSetProduceCompilationCache          = "Page.setProduceCompilationCache"
 	CommandProduceCompilationCache             = "Page.produceCompilationCache"
 	CommandAddCompilationCache                 = "Page.addCompilationCache"
 	CommandClearCompilationCache               = "Page.clearCompilationCache"
+	CommandSetSPCTransactionMode               = "Page.setSPCTransactionMode"
 	CommandGenerateTestReport                  = "Page.generateTestReport"
 	CommandWaitForDebugger                     = "Page.waitForDebugger"
 	CommandSetInterceptFileChooserDialog       = "Page.setInterceptFileChooserDialog"

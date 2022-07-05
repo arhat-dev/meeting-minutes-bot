@@ -1,0 +1,35 @@
+workflow:run:
+- name: install-oapi-codegen
+  jobs:
+  - env:
+    - name: GOBIN
+      value@tpl: &gobin |-
+        {{- fs.Join dukkha.CacheDir "bin" -}}
+    shell:
+      go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.11.0
+
+- name: gen-openapi
+  matrix:
+    include:
+    - platform:
+      - telegram
+      spec@:
+      - __@http#cached-file: https://raw.githubusercontent.com/ark0f/tg-bot-api/gh-pages/openapi.json
+  jobs:
+  - env:
+    - name: PATH
+      value@tpl: *gobin
+    - name: CONFIG_FILE
+      value@tpl: |-
+        {{- fs.Join dukkha.CacheDir matrix.platform -}}.gen.yaml
+
+    shell: |-
+      tpl:fs.WriteFile "${CONFIG_FILE}" <<EOF
+      package: ${MATRIX_PLATFORM}
+      generate:
+        client: true
+        models: true
+      output: pkg/botapis/telegram/openapi.go
+      EOF
+
+      oapi-codegen -config "${CONFIG_FILE}" "${MATRIX_SPEC}"

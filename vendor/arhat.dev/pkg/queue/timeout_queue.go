@@ -1,3 +1,4 @@
+//go:build !noqueue_timeoutqueue
 // +build !noqueue_timeoutqueue
 
 /*
@@ -35,67 +36,67 @@ var (
 )
 
 // NewTimeoutQueue returns an idle TimeoutQueue
-func NewTimeoutQueue() *TimeoutQueue {
+func NewTimeoutQueue[K comparable, V any]() *TimeoutQueue[K, V] {
 	t := time.NewTimer(0)
 	if !t.Stop() {
 		<-t.C
 	}
 
-	return &TimeoutQueue{
+	return &TimeoutQueue[K, V]{
 		stop:    nil,
 		running: 0,
 
 		mu:             new(sync.RWMutex),
 		hasExpiredData: make(chan struct{}),
 
-		blackList: make(map[interface{}]struct{}),
-		index:     make(map[interface{}]int),
-		data:      make([]*TimeoutData, 0, 16),
+		blackList: make(map[K]struct{}),
+		index:     make(map[K]int),
+		data:      make([]*TimeoutData[K, V], 0, 16),
 
 		timer:   t,
 		resetCh: make(chan int64, 1),
 
 		timeGot: 1,
 
-		timeoutCh: make(chan *TimeoutData, 1),
+		timeoutCh: make(chan *TimeoutData[K, V], 1),
 	}
 }
 
 // TimeoutData is the data set used internally
-type TimeoutData struct {
-	Key  interface{}
-	Data interface{}
+type TimeoutData[K comparable, V any] struct {
+	Key  K
+	Data V
 
 	expireAt int64 // utc unix nano
 }
 
 // TimeoutQueue to arrange timeout events in a single queue, then you can
 // access them in sequence with channel
-type TimeoutQueue struct {
+type TimeoutQueue[K comparable, V any] struct {
 	stop    <-chan struct{}
 	running uint32
 
 	expireNotified uint32
 	// protected by expireNotified
 	hasExpiredData chan struct{}
-	expiredData    []*TimeoutData
+	expiredData    []*TimeoutData[K, V]
 
 	mu *sync.RWMutex
 
 	nextSort  int64 // utc unix nano
-	blackList map[interface{}]struct{}
-	index     map[interface{}]int
-	data      []*TimeoutData
+	blackList map[K]struct{}
+	index     map[K]int
+	data      []*TimeoutData[K, V]
 
 	timer   *time.Timer
 	resetCh chan int64
 	timeGot uint32
 
-	timeoutCh chan *TimeoutData
+	timeoutCh chan *TimeoutData[K, V]
 }
 
 // Start routine to generate timeout data
-func (q *TimeoutQueue) Start(stop <-chan struct{}) {
+func (q *TimeoutQueue[K, V]) Start(stop <-chan struct{}) {
 	if !atomic.CompareAndSwapUint32(&q.running, 0, 1) {
 		// already running and not stopped
 		return
@@ -174,17 +175,17 @@ func (q *TimeoutQueue) Start(stop <-chan struct{}) {
 }
 
 // Len is used internally for timeout data sort
-func (q *TimeoutQueue) Len() int {
+func (q *TimeoutQueue[K, V]) Len() int {
 	return len(q.data)
 }
 
 // Less is used internally for timeout data sort
-func (q *TimeoutQueue) Less(i, j int) bool {
+func (q *TimeoutQueue[K, V]) Less(i, j int) bool {
 	return q.data[i].expireAt < q.data[j].expireAt
 }
 
 // Swap is used internally for timeout data sort
-func (q *TimeoutQueue) Swap(i, j int) {
+func (q *TimeoutQueue[K, V]) Swap(i, j int) {
 	// swap index
 	q.index[q.data[i].Key], q.index[q.data[j].Key] = j, i
 	// swap data
@@ -192,7 +193,7 @@ func (q *TimeoutQueue) Swap(i, j int) {
 }
 
 // sort timeout data and find expired
-func (q *TimeoutQueue) sort() {
+func (q *TimeoutQueue[K, V]) sort() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -254,7 +255,7 @@ func (q *TimeoutQueue) sort() {
 // OfferWithTime to enqueue key-value pair with time, timeout at `time`, if you
 // would like to call Remove to delete the timeout object, `key` must be unique
 // in this queue
-func (q *TimeoutQueue) OfferWithTime(key, val interface{}, at time.Time) error {
+func (q *TimeoutQueue[K, V]) OfferWithTime(key K, val V, at time.Time) error {
 	if atomic.LoadUint32(&q.running) == 0 {
 		return ErrNotStarted
 	}
@@ -271,7 +272,7 @@ func (q *TimeoutQueue) OfferWithTime(key, val interface{}, at time.Time) error {
 		}
 	}
 	expireAt := at.UTC().UnixNano()
-	q.data = append(q.data, &TimeoutData{Key: key, Data: val, expireAt: expireAt})
+	q.data = append(q.data, &TimeoutData[K, V]{Key: key, Data: val, expireAt: expireAt})
 	q.index[key] = len(q.data) - 1
 
 	if len(q.data) == 1 || q.nextSort > expireAt {
@@ -291,28 +292,28 @@ func (q *TimeoutQueue) OfferWithTime(key, val interface{}, at time.Time) error {
 // OfferWithDelay to enqueue key-value pair, timeout after `wait`, if you
 // would like to call Remove to delete the timeout object, `key` must be unique
 // in this queue
-func (q *TimeoutQueue) OfferWithDelay(key, val interface{}, wait time.Duration) error {
+func (q *TimeoutQueue[K, V]) OfferWithDelay(key K, val V, wait time.Duration) error {
 	return q.OfferWithTime(key, val, time.Now().Add(wait))
 }
 
 // TakeCh returns the channel from which you can get key-value pairs timed out
 // one by one
-func (q *TimeoutQueue) TakeCh() <-chan *TimeoutData {
+func (q *TimeoutQueue[K, V]) TakeCh() <-chan *TimeoutData[K, V] {
 	return q.timeoutCh
 }
 
 // Clear out all timeout key-value pairs
-func (q *TimeoutQueue) Clear() {
+func (q *TimeoutQueue[K, V]) Clear() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
-	q.blackList = make(map[interface{}]struct{})
-	q.index = make(map[interface{}]int)
-	q.data = make([]*TimeoutData, 0, 16)
+	q.blackList = make(map[K]struct{})
+	q.index = make(map[K]int)
+	q.data = make([]*TimeoutData[K, V], 0, 16)
 }
 
 // Remove a timeout object from the queue according to the key
-func (q *TimeoutQueue) Remove(key interface{}) (interface{}, bool) {
+func (q *TimeoutQueue[K, V]) Remove(key K) (ret V, _ bool) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -328,11 +329,12 @@ func (q *TimeoutQueue) Remove(key interface{}) (interface{}, bool) {
 		}
 		return toRemove, true
 	}
-	return nil, false
+
+	return
 }
 
 // Allow allow tasks with key, future tasks with the key can be offered
-func (q *TimeoutQueue) Allow(key interface{}) {
+func (q *TimeoutQueue[K, V]) Allow(key K) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -340,7 +342,7 @@ func (q *TimeoutQueue) Allow(key interface{}) {
 }
 
 // Forbid forbid tasks with key, future tasks with the key cannot be offered
-func (q *TimeoutQueue) Forbid(key interface{}) {
+func (q *TimeoutQueue[K, V]) Forbid(key K) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -348,20 +350,20 @@ func (q *TimeoutQueue) Forbid(key interface{}) {
 }
 
 // Find timeout key-value pair according to the key
-func (q *TimeoutQueue) Find(key interface{}) (interface{}, bool) {
+func (q *TimeoutQueue[K, V]) Find(key K) (_ V, _ bool) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
 	idx, ok := q.index[key]
 	if ok {
-		return q.data[idx], true
+		return q.data[idx].Data, true
 	}
 
-	return nil, false
+	return
 }
 
 // Remains shows key-value pairs not timed out
-func (q *TimeoutQueue) Remains() []TimeoutData {
+func (q *TimeoutQueue[K, V]) Remains() []TimeoutData[K, V] {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
@@ -369,7 +371,7 @@ func (q *TimeoutQueue) Remains() []TimeoutData {
 		return nil
 	}
 
-	result := make([]TimeoutData, len(q.data))
+	result := make([]TimeoutData[K, V], len(q.data))
 	for i, d := range q.data {
 		result[i] = *d
 	}

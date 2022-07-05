@@ -28,10 +28,12 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// TimeLayout used by this logger
 const (
 	TimeLayout = time.RFC3339Nano
 )
 
+// Global log instance
 var (
 	Log        Interface
 	NoOpLogger Interface

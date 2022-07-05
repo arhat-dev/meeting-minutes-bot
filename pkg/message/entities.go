@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"sync"
 
-	"arhat.dev/pkg/hashhelper"
+	"arhat.dev/pkg/sha256helper"
 	"github.com/h2non/filetype"
 	"go.uber.org/multierr"
 
@@ -103,7 +103,7 @@ func (me *Entities) PreProcess(ctx context.Context, w webarchiver.Interface, u s
 			contentType = t.MIME.Value
 		}
 
-		filename := hex.EncodeToString(hashhelper.Sha256Sum(screenshot)) + fileExt
+		filename := hex.EncodeToString(sha256helper.Sum(screenshot)) + fileExt
 		screenshotURL, err2 := u.Upload(ctx, filename, contentType, screenshot)
 		if err2 != nil {
 			err = multierr.Append(err, fmt.Errorf("unable to upload web page screenshot: %w", err2))

@@ -17,28 +17,64 @@ limitations under the License.
 package conf
 
 import (
+	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+	"arhat.dev/meeting-minutes-bot/pkg/storage"
+	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 	"arhat.dev/pkg/log"
 	"arhat.dev/pkg/tlshelper"
+	"arhat.dev/rs"
 	"github.com/spf13/pflag"
 )
 
 type Config struct {
-	App  AppConfig  `json:"app" yaml:"app"`
-	Bots BotsConfig `json:"bots" yaml:"bots"`
+	rs.BaseField
+
+	App  AppConfig  `yaml:"app"`
+	Bots BotsConfig `yaml:"bots"`
 }
 
 type AppConfig struct {
-	Log log.ConfigSet `json:"log" yaml:"log"`
+	rs.BaseField
 
-	PublicBaseURL string `json:"publicBaseURL" yaml:"publicBaseURL"`
+	Log log.ConfigSet `yaml:"log"`
 
-	Listen string              `json:"listen" yaml:"listen"`
-	TLS    tlshelper.TLSConfig `json:"tls" yaml:"tls"`
+	PublicBaseURL string `yaml:"publicBaseURL"`
 
-	Storage     []StorageConfig   `json:"storage" yaml:"storage"`
-	WebArchiver WebArchiverConfig `json:"webarchiver" yaml:"webarchiver"`
-	Generator   GeneratorConfig   `json:"generator" yaml:"generator"`
-	Publisher   PublisherConfig   `json:"publisher" yaml:"publisher"`
+	Listen string              `yaml:"listen"`
+	TLS    tlshelper.TLSConfig `yaml:"tls"`
+
+	Storage     []StorageConfig   `yaml:"storage"`
+	WebArchiver WebArchiverConfig `yaml:"webarchiver"`
+	Generator   GeneratorConfig   `yaml:"generator"`
+	Publisher   PublisherConfig   `yaml:"publisher"`
+}
+
+type GeneratorConfig struct {
+	rs.BaseField
+
+	Config map[string]generator.Config `yaml:",inline"`
+}
+
+type WebArchiverConfig struct {
+	rs.BaseField
+
+	Config map[string]webarchiver.Config `yaml:",inline"`
+}
+
+type PublisherConfig struct {
+	rs.BaseField
+
+	Config map[string]publisher.Config `yaml:",inline"`
+}
+
+type StorageConfig struct {
+	rs.BaseField
+
+	MIMEMatch     string `yaml:"mimeMatch"`
+	MaxUploadSize uint64 `yaml:"maxUploadSize"`
+
+	Config map[string]storage.Config `yaml:",inline"`
 }
 
 func FlagsForAppConfig(prefix string, config *AppConfig) *pflag.FlagSet {
@@ -49,47 +85,38 @@ func FlagsForAppConfig(prefix string, config *AppConfig) *pflag.FlagSet {
 	fs.StringVar(&config.PublicBaseURL, prefix+"publicBaseURL", "",
 		"url for external endpoints like telegram server to access")
 
-	fs.AddFlagSet(tlshelper.FlagsForTLSConfig(prefix+"tls", &config.TLS))
-
-	fs.StringVar(&config.WebArchiver.Driver,
-		prefix+"webarchiver.driver", "", "set web archive service provider, one of [cdp], leave empty to disable")
-	fs.StringVar(&config.Generator.Driver,
-		prefix+"generator.driver", "",
-		"set post generation engine, one of [gotemplate, file], leave empty to disable",
-	)
-	fs.StringVar(&config.Publisher.Driver,
-		prefix+"publisher.driver", "",
-		"set post publisher service provider, one of [telegraph, file, http, interpreter], leave empty to disable",
-	)
-
 	return fs
 }
 
 type BotsConfig struct {
-	GlobalCommandMapping BotCommandsMappingConfig `json:"globalCommandsMapping" yaml:"globalCommandsMapping"`
+	rs.BaseField
 
-	Telegram TelegramConfig `json:"telegram" yaml:"telegram"`
+	GlobalCommandMapping BotCommandsMappingConfig `yaml:"globalCommandsMapping"`
+
+	Telegram TelegramConfig `yaml:"telegram"`
 }
 
 type BotCommandsMappingConfig struct {
-	Discuss  *BotCommandMappingConfig `json:"/discuss" yaml:"/discuss"`
-	Continue *BotCommandMappingConfig `json:"/continue" yaml:"/continue"`
-	Ignore   *BotCommandMappingConfig `json:"/ignore" yaml:"/ignore"`
-	Include  *BotCommandMappingConfig `json:"/include" yaml:"/include"`
-	End      *BotCommandMappingConfig `json:"/end" yaml:"/end"`
-	Cancel   *BotCommandMappingConfig `json:"/cancel" yaml:"/cancel"`
+	rs.BaseField
 
-	Edit   *BotCommandMappingConfig `json:"/edit" yaml:"/edit"`
-	List   *BotCommandMappingConfig `json:"/list" yaml:"/list"`
-	Delete *BotCommandMappingConfig `json:"/delete" yaml:"/delete"`
+	Discuss  *BotCommandMappingConfig `yaml:"/discuss"`
+	Continue *BotCommandMappingConfig `yaml:"/continue"`
+	Ignore   *BotCommandMappingConfig `yaml:"/ignore"`
+	Include  *BotCommandMappingConfig `yaml:"/include"`
+	End      *BotCommandMappingConfig `yaml:"/end"`
+	Cancel   *BotCommandMappingConfig `yaml:"/cancel"`
 
-	Help  *BotCommandMappingConfig `json:"/help" yaml:"/help"`
-	Start *BotCommandMappingConfig `json:"/start" yaml:"/start"`
+	Edit   *BotCommandMappingConfig `yaml:"/edit"`
+	List   *BotCommandMappingConfig `yaml:"/list"`
+	Delete *BotCommandMappingConfig `yaml:"/delete"`
+
+	Help  *BotCommandMappingConfig `yaml:"/help"`
+	Start *BotCommandMappingConfig `yaml:"/start"`
 }
 
 type BotCommandMappingConfig struct {
-	As          string `json:"as" yaml:"as"`
-	Description string `json:"description" yaml:"description"`
+	As          string `yaml:"as"`
+	Description string `yaml:"description"`
 }
 
 func FlagsForBotsConfig(prefix string, config *BotsConfig) *pflag.FlagSet {

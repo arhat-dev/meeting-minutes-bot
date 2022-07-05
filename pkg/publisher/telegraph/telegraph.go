@@ -19,19 +19,7 @@ const (
 func init() {
 	publisher.Register(
 		Name,
-		func(config interface{}) (publisher.Interface, publisher.UserConfig, error) {
-			c, ok := config.(*Config)
-			if !ok {
-				return nil, nil, fmt.Errorf("unexpected non %s config: %T", Name, config)
-			}
-
-			return &Driver{
-				defaultAccountShortName: c.DefaultAccountShortName,
-
-				mu: &sync.RWMutex{},
-			}, &userConfig{}, nil
-		},
-		func() interface{} {
+		func() publisher.Config {
 			return &Config{
 				DefaultAccountShortName: "meeting-minutes-bot",
 			}
@@ -41,6 +29,14 @@ func init() {
 
 type Config struct {
 	DefaultAccountShortName string `json:"defaultAccountShortName" yaml:"defaultAccountShortName"`
+}
+
+func (c *Config) Create() (publisher.Interface, publisher.UserConfig, error) {
+	return &Driver{
+		defaultAccountShortName: c.DefaultAccountShortName,
+
+		mu: &sync.RWMutex{},
+	}, &userConfig{}, nil
 }
 
 var _ publisher.Interface = (*Driver)(nil)

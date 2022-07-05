@@ -23,14 +23,14 @@ type Query struct {
 //
 // It is safe to call this method of a *Query in multiple goroutines.
 func (e *Query) Run(v interface{}) Iter {
-	return e.RunWithContext(nil, v)
+	return e.RunWithContext(context.Background(), v)
 }
 
 // RunWithContext runs the query with context.
 func (e *Query) RunWithContext(ctx context.Context, v interface{}) Iter {
 	code, err := Compile(e)
 	if err != nil {
-		return unitIterator(err)
+		return NewIter(err)
 	}
 	return code.RunWithContext(ctx, v)
 }
@@ -98,13 +98,6 @@ func (e *Query) toIndices() []interface{} {
 		return nil
 	}
 	return e.Term.toIndices()
-}
-
-func (e *Query) countCommaQueries() int {
-	if e.Op == OpComma {
-		return e.Left.countCommaQueries() + e.Right.countCommaQueries()
-	}
-	return 1
 }
 
 // Import ...
@@ -433,8 +426,8 @@ type Index struct {
 	Name    string
 	Str     *String
 	Start   *Query
-	IsSlice bool
 	End     *Query
+	IsSlice bool
 }
 
 func (e *Index) String() string {
@@ -462,17 +455,16 @@ func (e *Index) writeSuffixTo(s *strings.Builder) {
 			e.Str.writeTo(s)
 		} else {
 			s.WriteByte('[')
-			if e.Start != nil {
-				e.Start.writeTo(s)
-				if e.IsSlice {
-					s.WriteByte(':')
-					if e.End != nil {
-						e.End.writeTo(s)
-					}
+			if e.IsSlice {
+				if e.Start != nil {
+					e.Start.writeTo(s)
 				}
-			} else if e.End != nil {
 				s.WriteByte(':')
-				e.End.writeTo(s)
+				if e.End != nil {
+					e.End.writeTo(s)
+				}
+			} else {
+				e.Start.writeTo(s)
 			}
 			s.WriteByte(']')
 		}
@@ -1006,14 +998,14 @@ func (e *ConstTerm) writeTo(s *strings.Builder) {
 		e.Array.writeTo(s)
 	} else if e.Number != "" {
 		s.WriteString(e.Number)
-	} else if e.Str != "" {
-		s.WriteString(strconv.Quote(e.Str))
 	} else if e.Null {
 		s.WriteString("null")
 	} else if e.True {
 		s.WriteString("true")
 	} else if e.False {
 		s.WriteString("false")
+	} else {
+		s.WriteString(strconv.Quote(e.Str))
 	}
 }
 
@@ -1023,7 +1015,7 @@ func (e *ConstTerm) toValue() interface{} {
 	} else if e.Array != nil {
 		return e.Array.toValue()
 	} else if e.Number != "" {
-		return normalizeNumbers(json.Number(e.Number))
+		return normalizeNumber(json.Number(e.Number))
 	} else if e.Null {
 		return nil
 	} else if e.True {

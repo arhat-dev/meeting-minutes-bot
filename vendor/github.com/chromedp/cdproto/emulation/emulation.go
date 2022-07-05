@@ -118,6 +118,34 @@ func (p *SetFocusEmulationEnabledParams) Do(ctx context.Context) (err error) {
 	return cdp.Execute(ctx, CommandSetFocusEmulationEnabled, p, nil)
 }
 
+// SetAutoDarkModeOverrideParams automatically render all web contents using
+// a dark theme.
+type SetAutoDarkModeOverrideParams struct {
+	Enabled bool `json:"enabled,omitempty"` // Whether to enable or disable automatic dark mode. If not specified, any existing override will be cleared.
+}
+
+// SetAutoDarkModeOverride automatically render all web contents using a dark
+// theme.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Emulation#method-setAutoDarkModeOverride
+//
+// parameters:
+func SetAutoDarkModeOverride() *SetAutoDarkModeOverrideParams {
+	return &SetAutoDarkModeOverrideParams{}
+}
+
+// WithEnabled whether to enable or disable automatic dark mode. If not
+// specified, any existing override will be cleared.
+func (p SetAutoDarkModeOverrideParams) WithEnabled(enabled bool) *SetAutoDarkModeOverrideParams {
+	p.Enabled = enabled
+	return &p
+}
+
+// Do executes Emulation.setAutoDarkModeOverride against the provided context.
+func (p *SetAutoDarkModeOverrideParams) Do(ctx context.Context) (err error) {
+	return cdp.Execute(ctx, CommandSetAutoDarkModeOverride, p, nil)
+}
+
 // SetCPUThrottlingRateParams enables CPU throttling to emulate slow CPUs.
 type SetCPUThrottlingRateParams struct {
 	Rate float64 `json:"rate"` // Throttling rate as a slowdown factor (1 is no throttle, 2 is 2x slowdown, etc).
@@ -571,7 +599,6 @@ type SetVirtualTimePolicyParams struct {
 	Policy                            VirtualTimePolicy   `json:"policy"`
 	Budget                            float64             `json:"budget,omitempty"`                            // If set, after this many virtual milliseconds have elapsed virtual time will be paused and a virtualTimeBudgetExpired event is sent.
 	MaxVirtualTimeTaskStarvationCount int64               `json:"maxVirtualTimeTaskStarvationCount,omitempty"` // If set this specifies the maximum number of tasks that can be run before virtual is forced forwards to prevent deadlock.
-	WaitForNavigation                 bool                `json:"waitForNavigation,omitempty"`                 // If set the virtual time policy change should be deferred until any frame starts navigating. Note any previous deferred policy change is superseded.
 	InitialVirtualTime                *cdp.TimeSinceEpoch `json:"initialVirtualTime,omitempty"`                // If set, base::Time::Now will be overridden to initially return this value.
 }
 
@@ -601,14 +628,6 @@ func (p SetVirtualTimePolicyParams) WithBudget(budget float64) *SetVirtualTimePo
 // deadlock.
 func (p SetVirtualTimePolicyParams) WithMaxVirtualTimeTaskStarvationCount(maxVirtualTimeTaskStarvationCount int64) *SetVirtualTimePolicyParams {
 	p.MaxVirtualTimeTaskStarvationCount = maxVirtualTimeTaskStarvationCount
-	return &p
-}
-
-// WithWaitForNavigation if set the virtual time policy change should be
-// deferred until any frame starts navigating. Note any previous deferred policy
-// change is superseded.
-func (p SetVirtualTimePolicyParams) WithWaitForNavigation(waitForNavigation bool) *SetVirtualTimePolicyParams {
-	p.WaitForNavigation = waitForNavigation
 	return &p
 }
 
@@ -758,6 +777,28 @@ func (p *SetUserAgentOverrideParams) Do(ctx context.Context) (err error) {
 	return cdp.Execute(ctx, CommandSetUserAgentOverride, p, nil)
 }
 
+// SetAutomationOverrideParams allows overriding the automation flag.
+type SetAutomationOverrideParams struct {
+	Enabled bool `json:"enabled"` // Whether the override should be enabled.
+}
+
+// SetAutomationOverride allows overriding the automation flag.
+//
+// See: https://chromedevtools.github.io/devtools-protocol/tot/Emulation#method-setAutomationOverride
+//
+// parameters:
+//   enabled - Whether the override should be enabled.
+func SetAutomationOverride(enabled bool) *SetAutomationOverrideParams {
+	return &SetAutomationOverrideParams{
+		Enabled: enabled,
+	}
+}
+
+// Do executes Emulation.setAutomationOverride against the provided context.
+func (p *SetAutomationOverrideParams) Do(ctx context.Context) (err error) {
+	return cdp.Execute(ctx, CommandSetAutomationOverride, p, nil)
+}
+
 // Command names.
 const (
 	CommandCanEmulate                        = "Emulation.canEmulate"
@@ -765,6 +806,7 @@ const (
 	CommandClearGeolocationOverride          = "Emulation.clearGeolocationOverride"
 	CommandResetPageScaleFactor              = "Emulation.resetPageScaleFactor"
 	CommandSetFocusEmulationEnabled          = "Emulation.setFocusEmulationEnabled"
+	CommandSetAutoDarkModeOverride           = "Emulation.setAutoDarkModeOverride"
 	CommandSetCPUThrottlingRate              = "Emulation.setCPUThrottlingRate"
 	CommandSetDefaultBackgroundColorOverride = "Emulation.setDefaultBackgroundColorOverride"
 	CommandSetDeviceMetricsOverride          = "Emulation.setDeviceMetricsOverride"
@@ -784,4 +826,5 @@ const (
 	CommandSetTimezoneOverride               = "Emulation.setTimezoneOverride"
 	CommandSetDisabledImageTypes             = "Emulation.setDisabledImageTypes"
 	CommandSetUserAgentOverride              = "Emulation.setUserAgentOverride"
+	CommandSetAutomationOverride             = "Emulation.setAutomationOverride"
 )

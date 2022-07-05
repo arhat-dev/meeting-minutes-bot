@@ -1,0 +1,12 @@
+/.idea
+/.vscode
+
+/build
+/.dukkha
+
+coverage*.txt
+
+# Added by cargo
+
+/target
+Cargo.lock

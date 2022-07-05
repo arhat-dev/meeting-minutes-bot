@@ -1,3 +1,4 @@
+//go:build !noqueue_jobqueue
 // +build !noqueue_jobqueue
 
 /*
@@ -48,43 +49,44 @@ const (
 	ActionCleanup
 )
 
-var actionNames = map[JobAction]string{
-	ActionInvalid: "Invalid",
-	ActionAdd:     "Add",
-	ActionUpdate:  "Update",
-	ActionDelete:  "Delete",
-	ActionCleanup: "Cleanup",
-}
-
 func (t JobAction) String() string {
-	return actionNames[t]
+	switch t {
+	case ActionInvalid:
+		return "Invalid"
+	case ActionAdd:
+		return "Add"
+	case ActionUpdate:
+		return "Update"
+	case ActionDelete:
+		return "Delete"
+	case ActionCleanup:
+		return "Cleanup"
+	default:
+		return "<unknown>"
+	}
 }
 
 // Job item to record action and related resource object
-type Job struct {
+type Job[K comparable] struct {
 	Action JobAction
-	Key    interface{}
+	Key    K
 }
 
-func (w Job) String() string {
-	if s, ok := w.Key.(fmt.Stringer); ok {
-		return w.Action.String() + "/" + s.String()
-	}
-
+func (w Job[K]) String() string {
 	return fmt.Sprintf("%s/%v", w.Action.String(), w.Key)
 }
 
 // NewJobQueue will create a stopped new job queue,
 // you can offer job to it, but any acquire will fail until
 // you have called its Resume()
-func NewJobQueue() *JobQueue {
+func NewJobQueue[K comparable]() *JobQueue[K] {
 	// prepare a closed channel for this job queue
 	hasJob := make(chan struct{})
 	close(hasJob)
 
-	return &JobQueue{
-		queue: make([]Job, 0, 16),
-		index: make(map[Job]int),
+	return &JobQueue[K]{
+		queue: make([]Job[K], 0, 16),
+		index: make(map[Job[K]]int),
 
 		// set job queue to closed
 		hasJob:     hasJob,
@@ -97,9 +99,9 @@ func NewJobQueue() *JobQueue {
 
 // JobQueue is the queue data structure designed to reduce redundant job
 // as much as possible
-type JobQueue struct {
-	queue []Job
-	index map[Job]int
+type JobQueue[K comparable] struct {
+	queue []Job[K]
+	index map[Job[K]]int
 
 	hasJob chan struct{}
 	mu     *sync.RWMutex
@@ -108,18 +110,18 @@ type JobQueue struct {
 	chanClosed bool
 }
 
-func (q *JobQueue) has(action JobAction, key interface{}) bool {
-	_, ok := q.index[Job{Action: action, Key: key}]
+func (q *JobQueue[K]) has(action JobAction, key K) bool {
+	_, ok := q.index[Job[K]{Action: action, Key: key}]
 	return ok
 }
 
-func (q *JobQueue) add(w Job) {
+func (q *JobQueue[K]) add(w Job[K]) {
 	q.index[w] = len(q.queue)
 	q.queue = append(q.queue, w)
 }
 
-func (q *JobQueue) delete(action JobAction, key interface{}) bool {
-	jobToDelete := Job{Action: action, Key: key}
+func (q *JobQueue[K]) delete(action JobAction, key K) bool {
+	jobToDelete := Job[K]{Action: action, Key: key}
 	if idx, ok := q.index[jobToDelete]; ok {
 		delete(q.index, jobToDelete)
 		q.queue = append(q.queue[:idx], q.queue[idx+1:]...)
@@ -132,48 +134,48 @@ func (q *JobQueue) delete(action JobAction, key interface{}) bool {
 	return false
 }
 
-func (q *JobQueue) buildIndex() {
+func (q *JobQueue[K]) buildIndex() {
 	for i, w := range q.queue {
 		q.index[w] = i
 	}
 }
 
 // Remains shows what job we are still meant to do
-func (q *JobQueue) Remains() []Job {
+func (q *JobQueue[K]) Remains() []Job[K] {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
-	jobs := make([]Job, len(q.queue))
+	jobs := make([]Job[K], len(q.queue))
 	for i, w := range q.queue {
-		jobs[i] = Job{Action: w.Action, Key: w.Key}
+		jobs[i] = Job[K]{Action: w.Action, Key: w.Key}
 	}
 	return jobs
 }
 
 // Find the scheduled job according to its key
-func (q *JobQueue) Find(key interface{}) (Job, bool) {
+func (q *JobQueue[K]) Find(key K) (Job[K], bool) {
 	q.mu.RLock()
 	defer q.mu.RUnlock()
 
 	for _, t := range []JobAction{ActionAdd, ActionUpdate, ActionDelete, ActionCleanup} {
-		i, ok := q.index[Job{Action: t, Key: key}]
+		i, ok := q.index[Job[K]{Action: t, Key: key}]
 		if ok {
 			return q.queue[i], true
 		}
 	}
 
-	return Job{}, false
+	return Job[K]{}, false
 }
 
 // Acquire a job item from the job queue
 // if shouldAcquireMore is false, w will be an empty job
-func (q *JobQueue) Acquire() (w Job, shouldAcquireMore bool) {
+func (q *JobQueue[K]) Acquire() (w Job[K], shouldAcquireMore bool) {
 	// wait until we have got some job to do
 	// or we have paused the job queue
 	<-q.hasJob
 
 	if q.isPaused() {
-		return Job{Action: ActionInvalid}, false
+		return Job[K]{Action: ActionInvalid}, false
 	}
 
 	q.mu.Lock()
@@ -189,7 +191,7 @@ func (q *JobQueue) Acquire() (w Job, shouldAcquireMore bool) {
 	}()
 
 	if len(q.queue) == 0 {
-		return Job{Action: ActionInvalid}, true
+		return Job[K]{Action: ActionInvalid}, true
 	}
 
 	// pop first and rebuild index
@@ -201,7 +203,7 @@ func (q *JobQueue) Acquire() (w Job, shouldAcquireMore bool) {
 
 // Offer a job item to the job queue
 // if offered job was not added, an error result will return, otherwise nil
-func (q *JobQueue) Offer(w Job) error {
+func (q *JobQueue[K]) Offer(w Job[K]) error {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -264,7 +266,7 @@ func (q *JobQueue) Offer(w Job) error {
 
 // Resume do nothing but mark you can perform acquire
 // actions to the job queue
-func (q *JobQueue) Resume() {
+func (q *JobQueue[K]) Resume() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -279,7 +281,7 @@ func (q *JobQueue) Resume() {
 
 // Pause do nothing but mark this job queue is closed,
 // you should not perform acquire actions to the job queue
-func (q *JobQueue) Pause() {
+func (q *JobQueue[K]) Pause() {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -292,7 +294,7 @@ func (q *JobQueue) Pause() {
 	atomic.StoreUint32(&q.paused, 1)
 }
 
-func (q *JobQueue) Remove(w Job) bool {
+func (q *JobQueue[K]) Remove(w Job[K]) bool {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 
@@ -301,6 +303,6 @@ func (q *JobQueue) Remove(w Job) bool {
 
 // isPaused is just for approximate check, for real
 // closed state, need to hold the lock
-func (q *JobQueue) isPaused() bool {
+func (q *JobQueue[K]) isPaused() bool {
 	return atomic.LoadUint32(&q.paused) == 1
 }

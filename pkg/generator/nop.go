@@ -1,14 +1,21 @@
 package generator
 
-import "arhat.dev/meeting-minutes-bot/pkg/message"
+import (
+	"arhat.dev/meeting-minutes-bot/pkg/message"
+)
+
+var (
+	_ Config    = (*nopConfig)(nil)
+	_ Interface = (*nop)(nil)
+)
 
 type nopConfig struct{}
 
-var _ Interface = (*nop)(nil)
+func (nopConfig) Create() (Interface, error) { return nop{}, nil }
 
 type nop struct{}
 
-func (a *nop) Name() string { return "nop" }
+func (nop) Name() string { return "nop" }
 
-func (a *nop) RenderPageHeader() ([]byte, error)                           { return nil, nil }
-func (a *nop) RenderPageBody(messages []message.Interface) ([]byte, error) { return nil, nil }
+func (nop) RenderPageHeader() ([]byte, error)                           { return nil, nil }
+func (nop) RenderPageBody(messages []message.Interface) ([]byte, error) { return nil, nil }

@@ -23,6 +23,7 @@ import (
 
 type Level zapcore.Level
 
+// Log levels
 const (
 	LevelVerbose = Level(zapcore.DebugLevel)
 	LevelDebug   = Level(zapcore.InfoLevel)

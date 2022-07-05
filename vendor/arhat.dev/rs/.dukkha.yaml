@@ -1,0 +1,123 @@
+global:
+  default_git_branch: master
+  env:
+  - name: PROFILE_DIR
+    value@tpl: |-
+      {{- filepath.Join dukkha.WorkDir "build" "test-profile" -}}
+  values:
+    cmd:
+      run_ctr@presets?str|tpl: templates/run-ctr.yml
+
+renderers:
+- http:presets:
+    alias: presets
+    cache:
+      enabled: true
+      timeout: 2h
+    base_url: https://raw.githubusercontent.com/arhat-dev/dukkha-presets/master
+
+  env:
+    enable_exec: true
+
+tools:
+  workflow:
+  - name: local
+  - name: in-ctr
+
+  golang:
+  - name: local
+  - name: in-ctr
+    cmd@tpl#use-spec:
+      template: |-
+        {{- include "golang.cmd.ctr" . -}}
+      include:
+      - text@presets?str: templates/image/flavored-tag.tpl
+      - text@presets?str: golang/cmd/ctr.yml
+      variables:
+        version: "1.17"
+
+workflow:run:
+- name: tidy
+  env:
+  - name: GOPROXY
+    value: direct
+  - name: GOSUMDB
+    value: "off"
+  jobs:
+  - shell: |-
+      go mod tidy
+      cd benchmark && go mod tidy
+
+- name: lint
+  matrix:
+    include:
+    - tool: [editorconfig-checker]
+      config:
+      - __@presets#cached-file?str: tools/editorconfig-checker/config.json
+    - tool: [shellcheck]
+    - tool: [yamllint]
+      config:
+      - __@presets#cached-file?str: tools/yamllint/config.yaml
+    - tool: [golangci-lint]
+      config:
+      - __@presets#cached-file?str: tools/golangci-lint/config.yaml
+  jobs:
+  - cmd@presets?str|tpl#use-spec: tools/presets.tpl
+
+- name: test
+  jobs:
+  - task: golang:test(rs, {})
+  - task: golang:test(benchmark, {})
+
+- name: report
+  matrix:
+    tool:
+    - sonar-scanner
+  jobs:
+  # only run sonar scan on linux and darwin during CI
+  - cmd@presets?str|tpl#use-spec: tools/presets.tpl
+    continue_on_error: true
+
+golang:test:
+- name: rs
+  __@tpl#use-spec:
+    template: |-
+      {{- include "golang.test.pkg" . -}}
+    include:
+    - text@presets?str: golang/test/pkg.yml
+  matrix:
+    pkg@tpl: |-
+      {{-
+        eval.Shell "go list ./..."
+        | removePrefix (eval.Shell "go list -m" | trimSuffix "\n")
+        | addPrefix "- "
+      -}}
+  hooks:
+    before:
+    - shell: mkdir -p ${PROFILE_DIR}
+
+- name: benchmark
+  matrix:
+    pkg:
+    - ./
+  chdir: ./benchmark
+  hooks:
+    before:
+    - shell: mkdir -p ${PROFILE_DIR}
+  cgo:
+    enabled: true
+  race: true
+  profile:
+    output_dir@env: ${PROFILE_DIR}
+    coverage:
+      enabled: true
+    memory:
+      enabled: true
+    cpu:
+      enabled: true
+  benchmark:
+    enabled: true
+  json_output_file@tpl: |-
+    {{- filepath.Join env.PROFILE_DIR "result-benchmark.json" -}}
+  verbose: true
+  path: ./

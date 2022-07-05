@@ -54,7 +54,7 @@ type telegramBot struct {
 
 	opts *conf.TelegramConfig
 
-	msgDelQ *queue.TimeoutQueue
+	msgDelQ *queue.TimeoutQueue[msgDeleteKey, struct{}]
 }
 
 func Create(
@@ -113,7 +113,7 @@ func Create(
 
 		msgTpl: msgTpl,
 
-		msgDelQ: queue.NewTimeoutQueue(),
+		msgDelQ: queue.NewTimeoutQueue[msgDeleteKey, struct{}](),
 	}
 
 	return client, nil
@@ -327,7 +327,7 @@ func (c *telegramBot) handleCmd(
 
 		isAdmin := false
 		for _, admin := range admins.JSON200.Result {
-			if uint64(admin.User.Id) == userID {
+			if uint64(admin.(telegram.ChatMemberAdministrator).User.Id) == userID {
 				isAdmin = true
 				break
 			}

@@ -1,0 +1,18 @@
+golang:build:
+- name: app
+  matrix@file: cicd/artifacts/matrix.yml
+  __@tpl#use-spec:
+    template: |-
+      {{- include "golang.build.cmd" . -}}
+    include:
+    - path@presets#cached-file: golang/build/cmd.yml
+  path@echo: ./cmd/meeting-minutes-bot
+  tags:
+  - netgo
+  - osusergo
+  - timetzdata
+  extra_args:
+  - -buildmode=exe
+  - -mod=vendor
+  - -trimpath
+  - -buildvcs=false

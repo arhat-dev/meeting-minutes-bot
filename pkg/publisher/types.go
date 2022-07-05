@@ -14,6 +14,11 @@ type Input struct {
 	Data []byte
 }
 
+type Config interface {
+	// Create a publisher base on this config
+	Create() (Interface, UserConfig, error)
+}
+
 type Interface interface {
 	Name() string
 

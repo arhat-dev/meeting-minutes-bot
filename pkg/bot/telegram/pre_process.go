@@ -3,16 +3,16 @@ package telegram
 import (
 	"encoding/hex"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"path"
 	"sync"
 
-	"arhat.dev/pkg/hashhelper"
 	"arhat.dev/pkg/log"
+	"arhat.dev/pkg/sha256helper"
 	"github.com/h2non/filetype"
 
-	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
+	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
@@ -245,7 +245,7 @@ func (c *telegramBot) preProcess(
 		)
 
 		logger.V("requesting file info")
-		resp, err := c.client.PostGetFile(c.ctx, telegram.PostGetFileJSONRequestBody{
+		resp, err := c.client.PostGetFile(c.ctx, api.PostGetFileJSONRequestBody{
 			FileId: requestFileID,
 		})
 		if err != nil {
@@ -259,7 +259,7 @@ func (c *telegramBot) preProcess(
 			return
 		}
 
-		f, err := telegram.ParsePostGetFileResponse(resp)
+		f, err := api.ParsePostGetFileResponse(resp)
 		_ = resp.Body.Close()
 		if err != nil {
 			logger.I("failed to parse get file response", log.Error(err))
@@ -325,7 +325,7 @@ func (c *telegramBot) preProcess(
 		}
 		defer func() { _ = resp.Body.Close() }()
 
-		fileContent, err := ioutil.ReadAll(resp.Body)
+		fileContent, err := io.ReadAll(resp.Body)
 		if err != nil {
 			logger.I("failed to download file", log.Error(err))
 
@@ -342,7 +342,7 @@ func (c *telegramBot) preProcess(
 			contentType string
 		)
 
-		filename := hex.EncodeToString(hashhelper.Sha256Sum(fileContent))
+		filename := hex.EncodeToString(sha256helper.Sum(fileContent))
 
 		// get file extension name
 		if len(requestFileName) != 0 {

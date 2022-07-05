@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
@@ -19,34 +19,19 @@ const Name = "telegraph"
 func init() {
 	storage.Register(
 		Name,
-		func(config interface{}) (storage.Interface, error) {
-			c, ok := config.(*Config)
-			if !ok {
-				return nil, fmt.Errorf("unexpected non telegraph storage config")
-			}
-			_ = c
-
-			d := &Driver{
-				client: &http.Client{},
-			}
-			return d, nil
-		},
-		func() interface{} {
-			return &Config{}
-		},
+		func() storage.Config { return &Config{} },
 	)
 }
 
-type Config struct {
-}
+type Config struct{}
+
+func (Config) Create() (storage.Interface, error) { return &Driver{}, nil }
 
 type Driver struct {
-	client *http.Client
+	client http.Client
 }
 
-func (d *Driver) Name() string {
-	return Name
-}
+func (d *Driver) Name() string { return Name }
 
 var quoteUnescaper = strings.NewReplacer("\\", "", "\\\"", `"`)
 
@@ -99,7 +84,7 @@ func (d *Driver) Upload(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}

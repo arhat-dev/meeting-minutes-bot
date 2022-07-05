@@ -85,39 +85,37 @@ app:
 
   storage:
     # driver name, one of [s3, telegraph]
-  - driver: telegraph
-    # max data size for uploading, size limit in bytes
-    #
-    # defaults to 0, no size limit
-    maxUploadSize: 5242880 # 5MB
-    # mime type match (regex), only matched data will use this storage driver
-    #
-    # defaults to "", match all
-    mimeMatch: image/.*
-    # read ./docs/storage/{DRIVER}.md to find out config options
-    config: {}
-  - driver: s3
-    maxUploadSize: 0 # no limit
-    mimeMatch: "" # match all
-    config: {}
+  - telegraph:
+      # max data size for uploading, size limit in bytes
+      #
+      # defaults to 0, no size limit
+      maxUploadSize: 5242880 # 5MB
+      # mime type match (regex), only matched data will use this storage driver
+      #
+      # defaults to "", match all
+      mimeMatch: image/.*
+      # read ./docs/storage/{DRIVER}.md to find out config options
+      config: {}
+  - s3:
+      maxUploadSize: 0 # no limit
+      mimeMatch: "" # match all
+      config: {}
 
   # currently not supported
-  webarchiver:
-    driver: ""
+  # webarchiver:
+  #   cdp: {}
 
   # post generator
+  # read ./docs/generator/{DRIVER}.md to find out config options
   generator:
-    # currently only supports `gotemplate`
-    driver: gotemplate
-    # read ./docs/generator/{DRIVER}.md to find out config options
-    config: {}
+    # one of [gotemplate, file]
+    gotemplate: {}
 
   # post publisher
+  # read ./docs/publisher/{DRIVER}.md to find out config options
   publisher:
     # one of [telegraph, file, interpreter, http]
-    driver: interpreter
-    # read ./docs/publisher/{DRIVER}.md to find out config options
-    config: {}
+    interpreter: {}
 
 bots:
   # rename default commands
@@ -145,7 +143,7 @@ bots:
     # telegram api endpoint, NOT a URL
     endpoint: api.telegram.org
     # the bot token provided by the @BotFather
-    botToken: ${MY_TELEGRAM_BOT_TOKEN}
+    botToken@env: ${MY_TELEGRAM_BOT_TOKEN}
 
     # currently not tested, feel free to file issues if you find it not working
     webhook:
@@ -154,8 +152,7 @@ bots:
       path: /telegram
       maxConnections: 100
       # required to provide tls public key when using self-signed certificate
-      # tlsPublicKey:
-      # tlsPublicKeyData:
+      # tlsPublicKey@file: path/to/tls.pub
 ```
 
 __NOTE:__ You can reference environment variables in config file (e.g. `${FOO}`, `$BAR`)

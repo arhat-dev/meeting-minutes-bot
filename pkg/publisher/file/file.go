@@ -3,7 +3,6 @@ package file
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"sync/atomic"
@@ -22,35 +21,29 @@ const (
 func init() {
 	publisher.Register(
 		Name,
-		func(config interface{}) (publisher.Interface, publisher.UserConfig, error) {
-			c, ok := config.(*Config)
-			if !ok {
-				return nil, nil, fmt.Errorf("unexpected non file config")
-			}
-
-			dir, err := filepath.Abs(c.Dir)
-			if err != nil {
-				return nil, nil, fmt.Errorf("failed to determin absolute dir path: %w", err)
-			}
-
-			err = os.MkdirAll(dir, 0755)
-			if err != nil && !os.IsExist(err) {
-				return nil, nil, fmt.Errorf("failed to ensure dir: %w", err)
-			}
-
-			return &Driver{
-				dir:             dir,
-				currentFilename: &atomic.Value{},
-			}, &UserConfig{}, nil
-		},
-		func() interface{} {
-			return &Config{}
-		},
+		func() publisher.Config { return &Config{} },
 	)
 }
 
 type Config struct {
 	Dir string `json:"dir" yaml:"dir"`
+}
+
+func (c *Config) Create() (publisher.Interface, publisher.UserConfig, error) {
+	dir, err := filepath.Abs(c.Dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to determin absolute dir path: %w", err)
+	}
+
+	err = os.MkdirAll(dir, 0755)
+	if err != nil && !os.IsExist(err) {
+		return nil, nil, fmt.Errorf("failed to ensure dir: %w", err)
+	}
+
+	return &Driver{
+		dir:             dir,
+		currentFilename: &atomic.Value{},
+	}, &UserConfig{}, nil
 }
 
 var _ publisher.UserConfig = (*UserConfig)(nil)
@@ -88,7 +81,7 @@ func (d *Driver) Retrieve(key string) ([]message.Entity, error) {
 }
 
 func (d *Driver) List() ([]publisher.PostInfo, error) {
-	entries, err := ioutil.ReadDir(d.dir)
+	entries, err := os.ReadDir(d.dir)
 	if err != nil {
 		return nil, err
 	}
