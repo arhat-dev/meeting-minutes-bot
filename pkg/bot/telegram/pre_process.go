@@ -1,29 +1,23 @@
 package telegram
 
 import (
-	"encoding/hex"
 	"fmt"
-	"io"
 	"net/http"
 	"path"
 	"sync"
 
 	"arhat.dev/pkg/log"
-	"arhat.dev/pkg/sha256helper"
-	"github.com/h2non/filetype"
 
+	"arhat.dev/meeting-minutes-bot/pkg/bot"
 	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
-	"arhat.dev/meeting-minutes-bot/pkg/storage"
-	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
 
 // errCh can be nil when there is no background pre-process worker
 // nolint:gocyclo
 func (c *telegramBot) preProcess(
-	m *telegramMessage,
-	w webarchiver.Interface,
-	u storage.Interface,
+	wf *bot.Workflow,
+	m *Message,
 ) (errCh chan error, err error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -54,11 +48,11 @@ func (c *telegramBot) preProcess(
 				m.markReady()
 			}()
 
-			err2 := me.PreProcess(c.ctx, w, u)
+			err2 := me.PreProcess(c.Context(), wf.WebArchiver, wf.Storage)
 			if err2 != nil {
 				select {
 				case errCh <- fmt.Errorf("Message pre-process error: %w", err2):
-				case <-c.ctx.Done():
+				case <-c.Context().Done():
 				}
 			}
 
@@ -179,7 +173,7 @@ func (c *telegramBot) preProcess(
 	case m.msg.Sticker != nil,
 		m.msg.Dice != nil,
 		m.msg.Game != nil:
-		// TODO: shall we just ignore them
+		// TODO: currently we just ignore them
 		m.markReady()
 		return nil, nil
 	case m.msg.Poll != nil:
@@ -195,13 +189,13 @@ func (c *telegramBot) preProcess(
 		m.markReady()
 		return nil, nil
 	default:
-		c.logger.E("unhandled telegram message", log.Any("msg", m.msg))
+		c.Logger().E("unhandled telegram message", log.Any("msg", m.msg))
 		m.markReady()
 		return nil, nil
 	}
 
 	errCh = make(chan error, 1)
-	wg := &sync.WaitGroup{}
+	var wg sync.WaitGroup
 
 	if m.msg.Caption != nil {
 		cme := parseTelegramEntities(*m.msg.Caption, m.msg.CaptionEntities)
@@ -211,11 +205,11 @@ func (c *telegramBot) preProcess(
 			go func() {
 				defer wg.Done()
 
-				err2 := cme.PreProcess(c.ctx, w, u)
+				err2 := cme.PreProcess(c.Context(), wf.WebArchiver, wf.Storage)
 				if err2 != nil {
 					select {
 					case errCh <- fmt.Errorf("Caption pre-process error: %w", err2):
-					case <-c.ctx.Done():
+					case <-c.Context().Done():
 					}
 				}
 
@@ -239,13 +233,13 @@ func (c *telegramBot) preProcess(
 	go func() {
 		defer wg.Done()
 
-		logger := c.logger.WithFields(
+		logger := c.Logger().WithFields(
 			log.String("filename", requestFileName),
 			log.String("id", requestFileID),
 		)
 
 		logger.V("requesting file info")
-		resp, err := c.client.PostGetFile(c.ctx, api.PostGetFileJSONRequestBody{
+		resp, err := c.client.PostGetFile(c.Context(), api.PostGetFileJSONRequestBody{
 			FileId: requestFileID,
 		})
 		if err != nil {
@@ -253,7 +247,7 @@ func (c *telegramBot) preProcess(
 
 			select {
 			case errCh <- fmt.Errorf("failed to request file: %w", err):
-			case <-c.ctx.Done():
+			case <-c.Context().Done():
 			}
 
 			return
@@ -266,7 +260,7 @@ func (c *telegramBot) preProcess(
 
 			select {
 			case errCh <- fmt.Errorf("failed to parse file response: %w", err):
-			case <-c.ctx.Done():
+			case <-c.Context().Done():
 			}
 
 			return
@@ -277,19 +271,18 @@ func (c *telegramBot) preProcess(
 
 			select {
 			case errCh <- fmt.Errorf("failed to request file: telegram: %s", f.JSONDefault.Description):
-			case <-c.ctx.Done():
+			case <-c.Context().Done():
 			}
 
 			return
 		}
 
-		pathPtr := f.JSON200.Result.FilePath
-		if pathPtr == nil {
+		if f.JSON200.Result.FilePath == nil {
 			logger.I("telegram file path not found")
 
 			select {
 			case errCh <- fmt.Errorf("Invalid empty path for telegram file downloading"):
-			case <-c.ctx.Done():
+			case <-c.Context().Done():
 			}
 
 			return
@@ -297,7 +290,7 @@ func (c *telegramBot) preProcess(
 
 		downloadURL := fmt.Sprintf(
 			"https://api.telegram.org/file/bot%s/%s",
-			c.opts.BotToken, *pathPtr,
+			c.botToken, *f.JSON200.Result.FilePath,
 		)
 
 		req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
@@ -306,7 +299,7 @@ func (c *telegramBot) preProcess(
 
 			select {
 			case errCh <- fmt.Errorf("Internal bot error: %w", err):
-			case <-c.ctx.Done():
+			case <-c.Context().Done():
 			}
 
 			return
@@ -318,20 +311,27 @@ func (c *telegramBot) preProcess(
 
 			select {
 			case errCh <- fmt.Errorf("Internal bot error: %w", err):
-			case <-c.ctx.Done():
+			case <-c.Context().Done():
 			}
 
 			return
 		}
 		defer func() { _ = resp.Body.Close() }()
 
-		fileContent, err := io.ReadAll(resp.Body)
+		// TODO: add cache layer
+		// 		var cacheFile *os.File
+		// 		cacheFile, err = os.OpenFile("", os.O_WRONLY, 0400)
+		// 		if err != nil {
+		//
+		// 		}
+
+		// fileContent, err := io.ReadAll(resp.Body)
 		if err != nil {
 			logger.I("failed to download file", log.Error(err))
 
 			select {
 			case errCh <- fmt.Errorf("Internal bot error: failed to read file body: %w", err):
-			case <-c.ctx.Done():
+			case <-c.Context().Done():
 			}
 
 			return
@@ -342,7 +342,7 @@ func (c *telegramBot) preProcess(
 			contentType string
 		)
 
-		filename := hex.EncodeToString(sha256helper.Sum(fileContent))
+		// filename := hex.EncodeToString(sha256helper.Sum(fileContent))
 
 		// get file extension name
 		if len(requestFileName) != 0 {
@@ -350,14 +350,14 @@ func (c *telegramBot) preProcess(
 		}
 
 		if len(fileExt) == 0 {
-			t, err2 := filetype.Match(fileContent)
-			if err2 == nil {
-				if len(t.Extension) != 0 {
-					fileExt = "." + t.Extension
-				}
-
-				contentType = t.MIME.Value
-			}
+			// 			t, err2 := filetype.Match(fileContent)
+			// 			if err2 == nil {
+			// 				if len(t.Extension) != 0 {
+			// 					fileExt = "." + t.Extension
+			// 				}
+			//
+			// 				contentType = t.MIME.Value
+			// 			}
 		}
 
 		// get content type
@@ -365,29 +365,29 @@ func (c *telegramBot) preProcess(
 			contentType = requestFileContentType
 		}
 
-		filename += fileExt
+		// filename += fileExt
 		logger.V("uploading file",
-			log.String("upload_name", filename),
-			log.Int("size", len(fileContent)),
+			// log.String("upload_name", filename),
+			// log.Int("size", len(fileContent)),
 			log.String("content_type", contentType),
 		)
 
-		fileURL, err := u.Upload(c.ctx, filename, contentType, fileContent)
+		// fileURL, err := c.storage.Upload(c.Context(), filename, contentType, resp.Body)
 		if err != nil {
 			select {
 			case errCh <- fmt.Errorf("failed to upload file: %w", err):
-			case <-c.ctx.Done():
+			case <-c.Context().Done():
 			}
 
 			return
 		}
 
-		logger.V("file uploaded", log.String("url", fileURL))
+		// logger.V("file uploaded", log.String("url", fileURL))
 
 		m.update(func() {
-			m.entities[0].Params[message.EntityParamURL] = fileURL
+			// m.entities[0].Params[message.EntityParamURL] = fileURL
 			m.entities[0].Params[message.EntityParamFilename] = requestFileName
-			m.entities[0].Params[message.EntityParamData] = fileContent
+			// m.entities[0].Params[message.EntityParamData] = fileContent
 		})
 	}()
 

@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"fmt"
+	"io"
 	"math"
 	"regexp"
 	"sync"
@@ -17,7 +18,7 @@ func NewManager() *Manager {
 var _ Interface = (*Manager)(nil)
 
 type Manager struct {
-	matchers []func(mime string, size int) bool
+	matchers []func(mime string, size int64) bool
 	drivers  []Interface
 
 	mu *sync.RWMutex
@@ -27,7 +28,7 @@ func (m *Manager) Name() string {
 	return ""
 }
 
-func (m *Manager) Add(mimeMatch string, maxUploadSize uint64, config Config) error {
+func (m *Manager) Add(mimeMatch string, maxSize int64, config Config) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -49,17 +50,17 @@ func (m *Manager) Add(mimeMatch string, maxUploadSize uint64, config Config) err
 
 	m.drivers = append(m.drivers, d)
 
-	if maxUploadSize == 0 {
-		maxUploadSize = math.MaxUint64
+	if maxSize == 0 {
+		maxSize = math.MaxInt64
 	}
 
 	if exp != nil {
-		m.matchers = append(m.matchers, func(mime string, size int) bool {
-			return exp.MatchString(mime) && (uint64(size) < maxUploadSize)
+		m.matchers = append(m.matchers, func(mime string, size int64) bool {
+			return exp.MatchString(mime) && (size < maxSize)
 		})
 	} else {
-		m.matchers = append(m.matchers, func(mime string, size int) bool {
-			return uint64(size) < maxUploadSize
+		m.matchers = append(m.matchers, func(mime string, size int64) bool {
+			return size < maxSize
 		})
 	}
 
@@ -67,10 +68,7 @@ func (m *Manager) Add(mimeMatch string, maxUploadSize uint64, config Config) err
 }
 
 func (m *Manager) Upload(
-	ctx context.Context,
-	filename string,
-	mimeType string,
-	data []byte,
+	ctx context.Context, filename, mimeType string, size int64, data io.Reader,
 ) (url string, err error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -81,11 +79,11 @@ func (m *Manager) Upload(
 	}
 
 	for i, match := range m.matchers {
-		if !match(mimeType, len(data)) {
+		if !match(mimeType, size) {
 			continue
 		}
 
-		return m.drivers[i].Upload(ctx, filename, mimeType, data)
+		return m.drivers[i].Upload(ctx, filename, mimeType, size, data)
 	}
 
 	return "", fmt.Errorf("not handled by any storage driver")

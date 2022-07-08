@@ -7,6 +7,7 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/rs"
 )
 
 // nolint:revive
@@ -17,24 +18,19 @@ const (
 func init() {
 	generator.Register(
 		Name,
-		func() generator.Config {
-			return &Config{
-				BuiltinTemplate: "",
-
-				OutputFormat: "",
-				TemplatesDir: "",
-			}
-		},
+		func() generator.Config { return &Config{} },
 	)
 }
 
 type Config struct {
-	BuiltinTemplate string `json:"builtinTemplate" yaml:"builtinTemplate"`
+	rs.BaseField
+
+	BuiltinTemplate string `yaml:"builtinTemplate"`
 
 	// Custom template
 	// text or html
-	OutputFormat string `json:"outputFormat" yaml:"outputFormat"`
-	TemplatesDir string `json:"templatesDir" yaml:"templatesDir"`
+	OutputFormat string `yaml:"outputFormat"`
+	TemplatesDir string `yaml:"templatesDir"`
 }
 
 func (c *Config) Create() (generator.Interface, error) {
@@ -43,7 +39,7 @@ func (c *Config) Create() (generator.Interface, error) {
 
 	var (
 		err error
-		tpl templateExecutor
+		tpl tplExecutor
 	)
 
 	switch {
@@ -62,8 +58,18 @@ func (c *Config) Create() (generator.Interface, error) {
 			return nil, fmt.Errorf("failed to load custom templates: %w", err)
 		}
 	case len(c.BuiltinTemplate) != 0:
-		spec, ok := builtinTemplates[c.BuiltinTemplate]
-		if !ok {
+		var spec templateLoadSpec
+
+		switch c.BuiltinTemplate {
+		case "text":
+			spec = builtinTemplates[builtinTpl_Text]
+		case "telegraph":
+			spec = builtinTemplates[builtinTpl_Telegraph]
+		case "beancount":
+			spec = builtinTemplates[builtinTpl_Beancount]
+		case "http-request-spec":
+			spec = builtinTemplates[builtinTpl_HttpRequestSpec]
+		default:
 			return nil, fmt.Errorf("no such builtin template with name %q", c.BuiltinTemplate)
 		}
 
@@ -83,33 +89,35 @@ func (c *Config) Create() (generator.Interface, error) {
 var _ generator.Interface = (*Driver)(nil)
 
 type Driver struct {
-	templates templateExecutor
+	templates tplExecutor
 }
 
 func (g *Driver) Name() string {
 	return Name
 }
 
-func (g *Driver) RenderPageHeader() ([]byte, error) {
-	buf := &bytes.Buffer{}
-	err := g.templates.ExecuteTemplate(buf, "page.header", nil)
+func (g *Driver) RenderPageHeader() (_ []byte, err error) {
+	var (
+		buf bytes.Buffer
+	)
+
+	err = g.templates.ExecuteTemplate(&buf, "page.header", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute page header template: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	return buf.Next(buf.Len()), nil
 }
 
 func (g *Driver) RenderPageBody(
 	messages []message.Interface,
-) ([]byte, error) {
+) (_ []byte, err error) {
 	var (
-		buf = &bytes.Buffer{}
-		err error
+		buf bytes.Buffer
 	)
 
 	err = g.templates.ExecuteTemplate(
-		buf,
+		&buf,
 		"page.body",
 		&generator.TemplateData{
 			Messages: messages,
@@ -120,5 +128,5 @@ func (g *Driver) RenderPageBody(
 		return nil, fmt.Errorf("failed to execute page template: %w", err)
 	}
 
-	return buf.Bytes(), nil
+	return buf.Next(buf.Len()), nil
 }

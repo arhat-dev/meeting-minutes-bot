@@ -22,8 +22,9 @@ import (
 	"os"
 	"time"
 
+	"arhat.dev/pkg/versionhelper"
+
 	"arhat.dev/meeting-minutes-bot/pkg/cmd"
-	"arhat.dev/meeting-minutes-bot/pkg/version"
 
 	// storage drivers
 	_ "arhat.dev/meeting-minutes-bot/pkg/storage/s3"
@@ -41,13 +42,16 @@ import (
 
 	// web archiving drivers
 	_ "arhat.dev/meeting-minutes-bot/pkg/webarchiver/cdp"
+
+	// bot platforms
+	_ "arhat.dev/meeting-minutes-bot/pkg/bot/telegram"
 )
 
 func main() {
 	rand.Seed(time.Now().UnixNano())
 
 	rootCmd := cmd.NewRootCmd()
-	rootCmd.AddCommand(version.NewVersionCmd())
+	rootCmd.AddCommand(versionhelper.NewVersionCmd(os.Stdout))
 
 	err := rootCmd.Execute()
 	if err != nil {

@@ -1,0 +1,40 @@
+app:
+  log:
+  - level: verbose
+    file: stderr
+
+generators:
+  gotemplate:foo:
+    # builtinTemplate: telegraph
+    templatesDir: ./pkg/generator/gotemplate/templates/telegraph
+    outputFormat: html
+
+  file:foo: {}
+
+storageSets:
+  foo:
+  - telegraph:foo:
+      mimeMatch: (image|video)
+      maxSize: 5242880 # 5MB
+  # - s3:foo:
+  #   mimeMatch: (video|audio)
+  #   maxSize: 0
+
+publishers:
+  telegraph:foo: {}
+
+bots:
+  telegram:foo:
+    enabled: true
+    endpoint: api.telegram.org
+    botToken@file: ./private/telegram-bot-token.txt
+
+    workflows:
+    - generator: gotemplate:foo
+      storageSet: foo
+      publisher: telegraph:foo
+
+      # cmdMapping:
+      #   /discuss:
+      #     as: /x
+      #     description:

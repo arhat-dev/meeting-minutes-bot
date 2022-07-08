@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
+	"arhat.dev/rs"
 	"go.uber.org/multierr"
 
 	"arhat.dev/meeting-minutes-bot/pkg/message"
@@ -26,6 +27,8 @@ func init() {
 }
 
 type Config struct {
+	rs.BaseField
+
 	Dir string `json:"dir" yaml:"dir"`
 }
 
@@ -120,7 +123,7 @@ func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
 
 	return []message.Entity{
 		{
-			Kind: message.KindText,
+			Kind: message.KindPlainText,
 			Text: "Your messages will be rendered into ",
 		},
 		{
@@ -146,7 +149,7 @@ func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, err
 
 	return []message.Entity{
 		{
-			Kind: message.KindText,
+			Kind: message.KindPlainText,
 			Text: "Your messages have been rendered into ",
 		},
 		{

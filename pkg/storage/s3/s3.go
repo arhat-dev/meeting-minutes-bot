@@ -1,14 +1,12 @@
 package s3
 
 import (
-	"bytes"
 	"context"
 	"fmt"
-	"net/url"
+	"io"
 	"path"
 
 	"github.com/minio/minio-go/v7"
-	"github.com/minio/minio-go/v7/pkg/credentials"
 
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 )
@@ -25,42 +23,6 @@ func init() {
 	)
 }
 
-// Config for s3 file uploader
-type Config struct {
-	EndpointURL string `json:"endpointURL" yaml:"endpointURL"`
-	Region      string `json:"region" yaml:"region"`
-
-	Bucket   string `json:"bucket" yaml:"bucket"`
-	BasePath string `json:"basePath" yaml:"basePath"`
-
-	AccessKeyID     string `json:"accessKeyID" yaml:"accessKeyID"`
-	AccessKeySecret string `json:"accessKeySecret" yaml:"accessKeySecret"`
-}
-
-func (c *Config) Create() (storage.Interface, error) {
-	eURL, err := url.Parse(c.EndpointURL)
-	if err != nil {
-		return nil, fmt.Errorf("invalid endpoint url: %w", err)
-	}
-
-	client, err := minio.New(eURL.Host, &minio.Options{
-		Creds:  credentials.NewStaticV4(c.AccessKeyID, c.AccessKeySecret, ""),
-		Secure: eURL.Scheme == "https",
-		Region: c.Region,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create s3 client: %w", err)
-	}
-
-	return &Driver{
-		client: client,
-
-		bucket:   c.Bucket,
-		region:   c.Region,
-		basePath: c.BasePath,
-	}, nil
-}
-
 var _ storage.Interface = (*Driver)(nil)
 
 type Driver struct {
@@ -71,15 +33,10 @@ type Driver struct {
 	basePath string
 }
 
-func (s *Driver) Name() string {
-	return Name
-}
+func (s *Driver) Name() string { return Name }
 
 func (s *Driver) Upload(
-	ctx context.Context,
-	filename string,
-	contentType string,
-	data []byte,
+	ctx context.Context, filename, contentType string, size int64, data io.Reader,
 ) (url string, err error) {
 	if len(s.bucket) != 0 {
 		hasBucket, err2 := s.client.BucketExists(ctx, s.bucket)
@@ -102,8 +59,8 @@ func (s *Driver) Upload(
 		ctx,
 		s.bucket,
 		objectKey,
-		bytes.NewReader(data),
-		int64(len(data)),
+		data,
+		size,
 		minio.PutObjectOptions{
 			ContentType: contentType,
 		},

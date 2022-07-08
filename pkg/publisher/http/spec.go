@@ -3,13 +3,17 @@ package http
 import (
 	"net/http"
 	"net/url"
+
+	"arhat.dev/rs"
 )
 
 type Spec struct {
-	Params []nameValuePair `json:"params" yaml:"params"`
+	rs.BaseField
+
+	Params []nameValuePair `yaml:"params"`
 
 	// base64 encoded request body
-	Body string `json:"body" yaml:"body"`
+	Body string `yaml:"body"`
 }
 
 type responseTemplateRequestData struct {

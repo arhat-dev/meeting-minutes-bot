@@ -2,24 +2,23 @@ package gotemplate
 
 import (
 	"embed"
-	"fmt"
-	htmltemplate "html/template"
+	htpl "html/template"
 	"io/fs"
-	texttemplate "text/template"
+	ttpl "text/template"
 )
 
-func newHTMLTemplate() templateExecutor {
-	return htmltemplate.New("")
+func newHTMLTemplate() tplExecutor {
+	return htpl.New("")
 }
 
-func newTextTemplate() templateExecutor {
-	return texttemplate.New("")
+func newTextTemplate() tplExecutor {
+	return ttpl.New("")
 }
 
 type templateLoadSpec struct {
 	name    string
 	fs      fs.FS
-	factory func() templateExecutor
+	factory func() tplExecutor
 }
 
 var (
@@ -36,34 +35,32 @@ var (
 	builtinHTTPRequestSpecTemplate embed.FS
 )
 
-var builtinTemplates = map[string]templateLoadSpec{
-	"text": {
+const (
+	builtinTpl_Text = iota
+	builtinTpl_Beancount
+	builtinTpl_Telegraph
+	builtinTpl_HttpRequestSpec
+)
+
+var builtinTemplates = [...]templateLoadSpec{
+	builtinTpl_Text: {
 		name:    "text",
 		fs:      &builtinTextTemplate,
 		factory: newTextTemplate,
 	},
-	"beancount": {
+	builtinTpl_Beancount: {
 		name:    "beancount",
 		fs:      &builtinBeancountTemplate,
 		factory: newTextTemplate,
 	},
-	"telegraph": {
+	builtinTpl_Telegraph: {
 		name:    "telegraph",
 		fs:      &builtinTelegraphTemplate,
 		factory: newHTMLTemplate,
 	},
-	"http-request-spec": {
+	builtinTpl_HttpRequestSpec: {
 		name:    "http-request-spec",
 		fs:      &builtinHTTPRequestSpecTemplate,
 		factory: newTextTemplate,
 	},
-}
-
-func init() {
-	for _, spec := range builtinTemplates {
-		_, err := loadTemplatesFromFS(spec.factory(), spec.fs)
-		if err != nil {
-			panic(fmt.Errorf("default %q templates not valid: %w", spec.name, err))
-		}
-	}
 }

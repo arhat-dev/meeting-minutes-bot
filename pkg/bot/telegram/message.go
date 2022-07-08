@@ -10,10 +10,12 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
-var _ message.Interface = (*telegramMessage)(nil)
+var _ message.Interface = (*Message)(nil)
 
-func newTelegramMessage(msg *api.Message, msgs *[]message.Interface) *telegramMessage {
-	return &telegramMessage{
+func newTelegramMessage(msg *api.Message, msgs *[]message.Interface) Message {
+	return Message{
+		ready: 0,
+
 		id: formatMessageID(msg.MessageId),
 
 		msg:  msg,
@@ -21,29 +23,28 @@ func newTelegramMessage(msg *api.Message, msgs *[]message.Interface) *telegramMe
 
 		entities: nil,
 
-		ready: 0,
-
 		mu: &sync.Mutex{},
 	}
 }
 
-type telegramMessage struct {
+// Message represents a single telegram message
+type Message struct {
+	ready uint32
+
 	id string
 
 	msg      *api.Message
 	entities []message.Entity
 	msgs     *[]message.Interface
 
-	ready uint32
-
 	mu *sync.Mutex
 }
 
-func (m *telegramMessage) ID() string {
+func (m *Message) ID() string {
 	return m.id
 }
 
-func (m *telegramMessage) MessageURL() string {
+func (m *Message) MessageURL() string {
 	url := m.ChatURL()
 	if len(url) == 0 {
 		return ""
@@ -52,11 +53,11 @@ func (m *telegramMessage) MessageURL() string {
 	return url + "/" + formatMessageID(m.msg.MessageId)
 }
 
-func (m *telegramMessage) Timestamp() time.Time {
+func (m *Message) Timestamp() time.Time {
 	return time.Unix(int64(m.msg.Date), 0).Local()
 }
 
-func (m *telegramMessage) ChatName() string {
+func (m *Message) ChatName() string {
 	var name string
 
 	if cfn := m.msg.Chat.FirstName; cfn != nil {
@@ -70,7 +71,7 @@ func (m *telegramMessage) ChatName() string {
 	return name
 }
 
-func (m *telegramMessage) ChatURL() string {
+func (m *Message) ChatURL() string {
 	if m.IsPrivateMessage() {
 		return ""
 	}
@@ -82,7 +83,7 @@ func (m *telegramMessage) ChatURL() string {
 	return ""
 }
 
-func (m *telegramMessage) Author() string {
+func (m *Message) Author() string {
 	if m.msg.From == nil {
 		return ""
 	}
@@ -95,7 +96,7 @@ func (m *telegramMessage) Author() string {
 	return name
 }
 
-func (m *telegramMessage) AuthorURL() string {
+func (m *Message) AuthorURL() string {
 	if m.msg.From == nil {
 		return ""
 	}
@@ -107,14 +108,14 @@ func (m *telegramMessage) AuthorURL() string {
 	return ""
 }
 
-func (m *telegramMessage) IsForwarded() bool {
+func (m *Message) IsForwarded() bool {
 	return m.msg.ForwardFrom != nil ||
 		m.msg.ForwardFromChat != nil ||
 		m.msg.ForwardSenderName != nil ||
 		m.msg.ForwardFromMessageId != nil
 }
 
-func (m *telegramMessage) OriginalMessageURL() string {
+func (m *Message) OriginalMessageURL() string {
 	chatURL := m.OriginalChatURL()
 	if len(chatURL) == 0 {
 		return ""
@@ -127,7 +128,7 @@ func (m *telegramMessage) OriginalMessageURL() string {
 	return ""
 }
 
-func (m *telegramMessage) OriginalChatName() string {
+func (m *Message) OriginalChatName() string {
 	if fc := m.msg.ForwardFromChat; fc != nil {
 		var name string
 		if fc.FirstName != nil {
@@ -144,7 +145,7 @@ func (m *telegramMessage) OriginalChatName() string {
 	return ""
 }
 
-func (m *telegramMessage) OriginalChatURL() string {
+func (m *Message) OriginalChatURL() string {
 	if fc := m.msg.ForwardFromChat; fc != nil && fc.Username != nil {
 		return "https://t.me/" + *fc.Username
 	}
@@ -152,7 +153,7 @@ func (m *telegramMessage) OriginalChatURL() string {
 	return ""
 }
 
-func (m *telegramMessage) OriginalAuthor() string {
+func (m *Message) OriginalAuthor() string {
 	if ff := m.msg.ForwardFrom; ff != nil {
 		name := ff.FirstName
 		if ff.LastName != nil {
@@ -165,7 +166,7 @@ func (m *telegramMessage) OriginalAuthor() string {
 	return ""
 }
 
-func (m *telegramMessage) OriginalAuthorURL() string {
+func (m *Message) OriginalAuthorURL() string {
 	if ff := m.msg.ForwardFrom; ff != nil && ff.Username != nil {
 		return "https://t.me/" + *m.msg.ForwardFrom.Username
 	}
@@ -173,15 +174,15 @@ func (m *telegramMessage) OriginalAuthorURL() string {
 	return ""
 }
 
-func (m *telegramMessage) IsPrivateMessage() bool {
+func (m *Message) IsPrivateMessage() bool {
 	return m.msg.Chat.Type == api.ChatTypePrivate
 }
 
-func (m *telegramMessage) IsReply() bool {
+func (m *Message) IsReply() bool {
 	return m.msg.ReplyToMessage != nil
 }
 
-func (m *telegramMessage) ReplyToMessageID() string {
+func (m *Message) ReplyToMessageID() string {
 	if m.msg.ReplyToMessage != nil {
 		return formatMessageID(m.msg.ReplyToMessage.MessageId)
 	}
@@ -189,11 +190,11 @@ func (m *telegramMessage) ReplyToMessageID() string {
 	return ""
 }
 
-func (m *telegramMessage) Entities() []message.Entity {
+func (m *Message) Entities() []message.Entity {
 	return m.entities
 }
 
-func (m *telegramMessage) Messages() []message.Interface {
+func (m *Message) Messages() []message.Interface {
 	if m.msgs != nil {
 		return *m.msgs
 	}
@@ -202,15 +203,15 @@ func (m *telegramMessage) Messages() []message.Interface {
 }
 
 // ready for content generation
-func (m *telegramMessage) Ready() bool {
+func (m *Message) Ready() bool {
 	return atomic.LoadUint32(&m.ready) == 1
 }
 
-func (m *telegramMessage) markReady() {
+func (m *Message) markReady() {
 	atomic.StoreUint32(&m.ready, 1)
 }
 
-func (m *telegramMessage) update(do func()) {
+func (m *Message) update(do func()) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

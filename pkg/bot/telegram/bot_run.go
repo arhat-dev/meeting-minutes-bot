@@ -21,64 +21,64 @@ import (
 
 func (c *telegramBot) Configure() error {
 	// get bot username
-	resp, err2 := c.client.PostGetMe(c.ctx)
-	if err2 != nil {
-		return fmt.Errorf("failed to get my own info: %w", err2)
+	resp, err := c.client.PostGetMe(c.Context())
+	if err != nil {
+		return fmt.Errorf("recognize self: %w", err)
 	}
 
-	mr, err2 := api.ParsePostGetMeResponse(resp)
+	mr, err := api.ParsePostGetMeResponse(resp)
 	_ = resp.Body.Close()
-	if err2 != nil {
-		return fmt.Errorf("failed to parse bot get info response: %w", err2)
+	if err != nil {
+		return fmt.Errorf("parse self info: %w", err)
 	}
 
 	if mr.JSON200 == nil || !mr.JSON200.Ok {
-		return fmt.Errorf("failed to get bot info: %s", mr.JSONDefault.Description)
+		return fmt.Errorf("get bot info: %s", mr.JSONDefault.Description)
 	}
 
 	if mr.JSON200.Result.Username == nil {
-		return fmt.Errorf("bot username not returned by server")
+		return fmt.Errorf("bot username not found")
 	}
 
 	c.botUsername = *mr.JSON200.Result.Username
-	c.logger.D("got bot username", log.String("username", c.botUsername))
+	c.Logger().D("got bot username", log.String("username", c.botUsername))
 
 	// everything working, set commands to keep them up to date (best effort)
 
 	var commands []api.BotCommand
 
-	for _, cmd := range constant.VisibleBotCommands {
-		newCmd, ok := c.oldToNew[cmd]
-		if !ok {
-			continue
-		}
+	for _, wf := range c.wfSet.Workflows {
+		for i, cmd := range wf.BotCommands.Commands {
+			if len(cmd) == 0 || len(wf.BotCommands.Descriptions[i]) == 0 {
+				continue
+			}
 
-		commands = append(commands, api.BotCommand{
-			Command:     strings.TrimPrefix(newCmd.As, "/"),
-			Description: newCmd.Description,
-		})
+			commands = append(commands, api.BotCommand{
+				Command:     strings.TrimPrefix(cmd, "/"),
+				Description: wf.BotCommands.Descriptions[i],
+			})
+		}
 	}
 
 	// set bot commands
-	resp, err := c.client.PostSetMyCommands(c.ctx, api.PostSetMyCommandsJSONRequestBody{
+	resp, err = c.client.PostSetMyCommands(c.Context(), api.PostSetMyCommandsJSONRequestBody{
 		Commands: commands,
 	})
 	if err != nil {
-		c.logger.E("failed to request set telegram bot commands", log.Error(err))
-	} else {
-		sr, err := api.ParsePostSetMyCommandsResponse(resp)
-		_ = resp.Body.Close()
-		if err != nil {
-			c.logger.E("failed to parse bot command set response", log.Error(err))
-		} else {
-			if sr.JSON200 == nil || !sr.JSON200.Ok {
-				c.logger.E("failed to set telegram bot commands", log.String("reason", sr.JSONDefault.Description))
-			} else {
-				c.logger.D("telegram bot command set", log.Any("commands", commands))
-			}
-		}
+		return fmt.Errorf("request set bot commands: %w", err)
 	}
 
+	sr, err := api.ParsePostSetMyCommandsResponse(resp)
+	_ = resp.Body.Close()
+	if err != nil {
+		return fmt.Errorf("parse bot command set response: %w", err)
+	}
+
+	if sr.JSON200 == nil || !sr.JSON200.Ok {
+		return fmt.Errorf("set telegram bot commands: %s", sr.JSONDefault.Description)
+	}
+
+	c.Logger().D("bot commands updated", log.Any("commands", commands))
 	return nil
 }
 
@@ -90,7 +90,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 		// "edited_message",
 	}
 
-	if c.opts.Webhook.Enabled && len(baseURL) != 0 {
+	if c.webhookConfig.Enabled && len(baseURL) != 0 {
 		// set webhook
 		base, err2 := url.Parse(baseURL)
 		if err2 != nil {
@@ -128,26 +128,26 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 				"https://%s%s%s",
 				base.Host,
 				port,
-				path.Join(base.RawPath, c.opts.Webhook.Path),
+				path.Join(base.RawPath, c.webhookConfig.Path),
 			),
 		)
 		if err2 != nil {
 			return fmt.Errorf("failed to set url: %w", err2)
 		}
 
-		if len(c.opts.Webhook.TLSPublicKey) != 0 {
+		if len(c.webhookConfig.TLSPublicKey) != 0 {
 			filePart, err3 := mw.CreateFormFile("certificate", "cert.pem")
 			if err3 != nil {
 				return fmt.Errorf("failed to create form file: %w", err3)
 			}
 
-			_, err3 = filePart.Write([]byte(c.opts.Webhook.TLSPublicKey))
+			_, err3 = filePart.Write([]byte(c.webhookConfig.TLSPublicKey))
 			if err3 != nil {
 				return fmt.Errorf("failed to write cert bytes: %w", err3)
 			}
 		}
 
-		_ = mw.WriteField("max_connections", strconv.FormatInt(int64(c.opts.Webhook.MaxConnections), 10))
+		_ = mw.WriteField("max_connections", strconv.FormatInt(int64(c.webhookConfig.MaxConnections), 10))
 		allowedUpdatesBytes, err2 := json.Marshal(allowedUpdates)
 		if err2 != nil {
 			return fmt.Errorf("failed to marshal allowed update types to json array: %w", err2)
@@ -158,7 +158,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 
 		_ = mw.Close()
 
-		resp, err2 := c.client.PostSetWebhookWithBody(c.ctx, mw.FormDataContentType(), body)
+		resp, err2 := c.client.PostSetWebhookWithBody(c.Context(), mw.FormDataContentType(), body)
 		if err2 != nil {
 			return fmt.Errorf("failed to request set webhook: %w", err2)
 		}
@@ -173,7 +173,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 			return fmt.Errorf("failed to set telegram webhook: %s", swr.JSONDefault.Description)
 		}
 
-		mux.HandleFunc(c.opts.Webhook.Path, func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc(c.webhookConfig.Path, func(w http.ResponseWriter, r *http.Request) {
 			dec := json.NewDecoder(r.Body)
 			defer func() { _ = r.Body.Close() }()
 
@@ -184,20 +184,20 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 
 			if err3 := dec.Decode(&dest); err3 != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				c.logger.E("failed to decode webhook payload", log.Error(err3))
+				c.Logger().E("failed to decode webhook payload", log.Error(err3))
 				return
 			}
 
 			_, err3 := c.onTelegramUpdate(dest.Result...)
 			if err3 != nil {
 				w.WriteHeader(http.StatusInternalServerError)
-				c.logger.E("failed to process telegram update", log.Error(err3))
+				c.Logger().E("failed to process telegram update", log.Error(err3))
 				return
 			}
 		})
 	} else {
 		// delete webhook if exists
-		resp, err2 := c.client.PostGetWebhookInfo(c.ctx)
+		resp, err2 := c.client.PostGetWebhookInfo(c.Context())
 		if err2 != nil {
 			return fmt.Errorf("failed to check bot webhook status: %w", err2)
 		}
@@ -216,7 +216,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 
 		if len(info.JSON200.Result.Url) != 0 {
 			// TODO: handle error
-			resp, err2 = c.client.PostDeleteWebhook(c.ctx, api.PostDeleteWebhookJSONRequestBody{
+			resp, err2 = c.client.PostDeleteWebhook(c.Context(), api.PostDeleteWebhookJSONRequestBody{
 				DropPendingUpdates: constant.False(),
 			})
 			if err2 != nil {
@@ -253,14 +253,14 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 
 					}()
 					resp, err3 := c.client.PostGetUpdates(
-						c.ctx,
+						c.Context(),
 						api.PostGetUpdatesJSONRequestBody{
 							AllowedUpdates: &allowedUpdates,
 							Offset:         offsetPtr,
 						},
 					)
 					if err3 != nil {
-						c.logger.I("failed to poll updates", log.Error(err3))
+						c.Logger().I("failed to poll updates", log.Error(err3))
 						continue
 					}
 
@@ -268,12 +268,12 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 					_ = resp.Body.Close()
 
 					if err3 != nil {
-						c.logger.I("failed to parse updates", log.Error(err3))
+						c.Logger().I("failed to parse updates", log.Error(err3))
 						continue
 					}
 
 					if updates.JSON200 == nil || !updates.JSON200.Ok {
-						c.logger.I(
+						c.Logger().I(
 							"telegram: get updates failed",
 							log.String("reason", updates.JSONDefault.Description),
 						)
@@ -281,7 +281,7 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 					}
 
 					if len(updates.JSON200.Result) == 0 {
-						c.logger.V("no message update got")
+						c.Logger().V("no message update got")
 						continue
 					}
 
@@ -290,28 +290,28 @@ func (c *telegramBot) Start(baseURL string, mux bot.Mux) error {
 					// 		with an offset higher than its update_id.
 					maxID, err3 := c.onTelegramUpdate(updates.JSON200.Result...)
 					if err3 != nil {
-						c.logger.I("failed to process telegram update", log.Error(err3))
+						c.Logger().I("failed to process telegram update", log.Error(err3))
 						continue
 					}
 					offset = maxID + 1
-				case <-c.ctx.Done():
+				case <-c.Context().Done():
 					return
 				}
 			}
 		}()
 	}
 
-	c.msgDelQ.Start(c.ctx.Done())
+	c.msgDelQ.Start(c.Context().Done())
 	msgDelCh := c.msgDelQ.TakeCh()
 	go func() {
 		for td := range msgDelCh {
 			// delete message with best effort
 			for i := 0; i < 5; i++ {
 				resp, err2 := c.client.PostDeleteMessage(
-					c.ctx,
+					c.Context(),
 					api.PostDeleteMessageJSONRequestBody{
 						ChatId:    td.Key.chatID,
-						MessageId: int(td.Key.messageID),
+						MessageId: int(td.Key.msgID),
 					},
 				)
 				if err2 != nil {

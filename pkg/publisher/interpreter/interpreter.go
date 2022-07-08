@@ -138,7 +138,7 @@ func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, err
 func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
 	return []message.Entity{
 		{
-			Kind: message.KindText,
+			Kind: message.KindPlainText,
 			Text: fmt.Sprintf("You are using %s interpreter.", d.bin),
 		},
 	}, nil

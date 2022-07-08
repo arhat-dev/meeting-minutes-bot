@@ -1,13 +1,14 @@
 package file
 
 import (
+	"bytes"
 	"encoding/hex"
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 
 	"arhat.dev/pkg/sha256helper"
+	"arhat.dev/rs"
 	"go.uber.org/multierr"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
@@ -27,6 +28,8 @@ func init() {
 }
 
 type Config struct {
+	rs.BaseField
+
 	Dir string `json:"dir" yaml:"dir"`
 }
 
@@ -46,19 +49,23 @@ func (d *Driver) RenderPageHeader() ([]byte, error) {
 	return nil, nil
 }
 
+// RenderPageBody saves all multi-media to local file, return filenames of them in bytes, separated by '\n'
+// one filename each line
+//
+// non multi-media entities (links and plain text) are not touched
 func (d *Driver) RenderPageBody(messages []message.Interface) (_ []byte, err error) {
 	err = os.MkdirAll(d.dir, 0750)
 	if err != nil && !os.IsExist(err) {
-		return nil, err
+		return
 	}
 
-	var files []string
+	var buf bytes.Buffer
 	for _, msg := range messages {
 		for _, e := range msg.Entities() {
-			switch e.Kind {
-			case message.KindAudio, message.KindVideo,
-				message.KindImage, message.KindFile:
-			default:
+			if e.Kind&(message.KindAudio|
+				message.KindVideo|
+				message.KindImage|
+				message.KindFile) == 0 {
 				continue
 			}
 
@@ -101,9 +108,10 @@ func (d *Driver) RenderPageBody(messages []message.Interface) (_ []byte, err err
 				err = multierr.Append(err, err2)
 			}
 
-			files = append(files, filename)
+			buf.WriteString(filename)
+			buf.WriteByte('\n')
 		}
 	}
 
-	return []byte(strings.Join(files, "\n")), err
+	return buf.Next(buf.Len()), err
 }

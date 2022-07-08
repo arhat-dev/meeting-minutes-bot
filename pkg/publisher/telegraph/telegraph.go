@@ -9,6 +9,7 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+	"arhat.dev/rs"
 )
 
 // nolint:revive
@@ -28,7 +29,9 @@ func init() {
 }
 
 type Config struct {
-	DefaultAccountShortName string `json:"defaultAccountShortName" yaml:"defaultAccountShortName"`
+	rs.BaseField
+
+	DefaultAccountShortName string `yaml:"defaultAccountShortName"`
 }
 
 func (c *Config) Create() (publisher.Interface, publisher.UserConfig, error) {
@@ -140,7 +143,7 @@ func (t *Driver) Retrieve(url string) ([]message.Entity, error) {
 				t.page = page
 				return []message.Entity{
 					{
-						Kind: message.KindText,
+						Kind: message.KindPlainText,
 						Text: "You can continue your session now.",
 					},
 				}, nil
@@ -174,7 +177,7 @@ func (t *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
 	t.page = page
 	return []message.Entity{
 		{
-			Kind: message.KindText,
+			Kind: message.KindPlainText,
 			Text: "The post for your session around ",
 		},
 		{
@@ -182,7 +185,7 @@ func (t *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
 			Text: fmt.Sprintf("%q", title),
 		},
 		{
-			Kind: message.KindText,
+			Kind: message.KindPlainText,
 			Text: " has been created ",
 		},
 		{
@@ -319,7 +322,7 @@ func (t *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, err
 
 	return []message.Entity{
 		{
-			Kind: message.KindText,
+			Kind: message.KindPlainText,
 			Text: "Your session around ",
 		},
 		{
@@ -327,8 +330,8 @@ func (t *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, err
 			Text: fmt.Sprintf("%q", updatedPage.Title),
 		},
 		{
-			Kind: message.KindText,
-			Text: " has been ended, view and edit your post ",
+			Kind: message.KindPlainText,
+			Text: " has been closed, view and edit your post ",
 		},
 		{
 			Kind: message.KindURL,

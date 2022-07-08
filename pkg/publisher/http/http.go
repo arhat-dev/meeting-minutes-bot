@@ -13,6 +13,7 @@ import (
 
 	"arhat.dev/pkg/textquery"
 	"arhat.dev/pkg/tlshelper"
+	"arhat.dev/rs"
 	"github.com/Masterminds/sprig/v3"
 	"gopkg.in/yaml.v3"
 
@@ -33,8 +34,10 @@ func init() {
 }
 
 type nameValuePair struct {
-	Name  string `json:"name" yaml:"name"`
-	Value string `json:"value" yaml:"value"`
+	rs.BaseField
+
+	Name  string `yaml:"name"`
+	Value string `yaml:"value"`
 }
 
 type nameValueTemplatePair struct {
@@ -43,31 +46,36 @@ type nameValueTemplatePair struct {
 }
 
 func (p *nameValueTemplatePair) render(data interface{}) (name, value string, err error) {
-	buf := &bytes.Buffer{}
-	err = p.nameTpl.Execute(buf, data)
+	var (
+		buf strings.Builder
+	)
+
+	err = p.nameTpl.Execute(&buf, data)
 	if err != nil {
 		return "", "", err
 	}
 	name = buf.String()
 
 	buf.Reset()
-	err = p.valueTpl.Execute(buf, data)
+	err = p.valueTpl.Execute(&buf, data)
 	if err != nil {
 		return "", "", err
 	}
 	value = buf.String()
 
-	return name, value, nil
+	return
 }
 
 type Config struct {
-	URL string              `json:"url" yaml:"url"`
-	TLS tlshelper.TLSConfig `json:"tls" yaml:"tls"`
+	rs.BaseField
 
-	Method  string          `json:"method" yaml:"method"`
-	Headers []nameValuePair `json:"headers" yaml:"headers"`
+	URL string              `yaml:"url"`
+	TLS tlshelper.TLSConfig `yaml:"tls"`
 
-	ResponseTemplate string `json:"responseTemplate" yaml:"responseTemplate"`
+	Method  string          `yaml:"method"`
+	Headers []nameValuePair `yaml:"headers"`
+
+	ResponseTemplate string `yaml:"responseTemplate"`
 }
 
 func (c *Config) Create() (publisher.Interface, publisher.UserConfig, error) {
@@ -269,7 +277,7 @@ func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Entity,
 func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
 	return []message.Entity{
 		{
-			Kind: message.KindText,
+			Kind: message.KindPlainText,
 			Text: "HTTP publisher ready",
 		},
 	}, nil

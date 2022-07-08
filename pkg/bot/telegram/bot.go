@@ -1,11 +1,8 @@
 package telegram
 
 import (
-	"context"
 	"encoding/base64"
 	"fmt"
-	"html/template"
-	"net/http"
 	"strings"
 	"time"
 	"unicode/utf16"
@@ -14,119 +11,38 @@ import (
 	"arhat.dev/pkg/queue"
 
 	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
-	"arhat.dev/meeting-minutes-bot/pkg/conf"
-	"arhat.dev/meeting-minutes-bot/pkg/constant"
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/manager"
-	"arhat.dev/meeting-minutes-bot/pkg/storage"
-	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
 
-type msgDeleteKey struct {
-	chatID    uint64
-	messageID uint64
-}
+type msgDeleteKey struct{ chatID, msgID uint64 }
 
 var _ bot.Interface = (*telegramBot)(nil)
 
 type telegramBot struct {
-	ctx    context.Context
-	logger log.Interface
-	client *telegram.Client
+	bot.BaseBot
 
-	botUsername string
+	botToken    string
+	botUsername string // set when Configure() called
 
-	*manager.SessionManager
+	client api.Client
 
-	oldToNew map[string]conf.BotCommandMappingConfig
-	newToOld map[string]string
+	manager.SessionManager
 
-	storage     storage.Interface
-	webArchiver webarchiver.Interface
-	generator   generator.Interface
+	wfSet         bot.WorkflowSet
+	webhookConfig webhookConfig
 
-	publisherName         string
-	publisherRequireLogin bool
-	createPublisher       bot.PublisherFactoryFunc
-
-	msgTpl *template.Template
-
-	opts *conf.TelegramConfig
-
-	msgDelQ *queue.TimeoutQueue[msgDeleteKey, struct{}]
-}
-
-func Create(
-	ctx context.Context,
-	logger log.Interface,
-	storage storage.Interface,
-	webArchiver webarchiver.Interface,
-	generator generator.Interface,
-	createPublisher bot.PublisherFactoryFunc,
-	oldToNew map[string]conf.BotCommandMappingConfig,
-	newToOld map[string]string,
-	opts *conf.TelegramConfig,
-) (bot.Interface, error) {
-	tgClient, err := telegram.NewClient(
-		fmt.Sprintf("https://%s/bot%s/", opts.Endpoint, opts.BotToken),
-		telegram.WithHTTPClient(&http.Client{}),
-		telegram.WithRequestEditorFn(func(ctx context.Context, req *http.Request) error {
-			return nil
-		}),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create bot client: %w", err)
-	}
-
-	pub, _, err := createPublisher()
-	if err != nil {
-		return nil, fmt.Errorf("failed to test publisher creation: %w", err)
-	}
-
-	msgTpl, err := template.New("").Parse(messageTemplate)
-	if err != nil {
-		return nil, fmt.Errorf("invalid message template: %w", err)
-	}
-
-	client := &telegramBot{
-		ctx:    ctx,
-		logger: logger,
-		client: tgClient,
-
-		opts: opts,
-
-		botUsername: "", // set in Configure()
-
-		SessionManager: manager.NewSessionManager(ctx),
-
-		oldToNew: oldToNew,
-		newToOld: newToOld,
-
-		webArchiver: webArchiver,
-		storage:     storage,
-		generator:   generator,
-
-		publisherName:         pub.Name(),
-		publisherRequireLogin: pub.RequireLogin(),
-		createPublisher:       createPublisher,
-
-		msgTpl: msgTpl,
-
-		msgDelQ: queue.NewTimeoutQueue[msgDeleteKey, struct{}](),
-	}
-
-	return client, nil
+	msgDelQ queue.TimeoutQueue[msgDeleteKey, struct{}]
 }
 
 // nolint:unparam
-func (c *telegramBot) onTelegramUpdate(updates ...telegram.Update) (maxID int, _ error) {
+func (c *telegramBot) onTelegramUpdate(updates ...api.Update) (maxID int, _ error) {
 	for _, update := range updates {
 		switch {
 		case update.Message != nil:
 			err := c.handleNewMessage(update.Message)
 			if err != nil {
-				c.logger.D("failed to handle new message", log.Error(err))
+				c.Logger().D("failed to handle new message", log.Error(err))
 				continue
 			}
 		case update.EditedMessage != nil:
@@ -142,7 +58,7 @@ func (c *telegramBot) onTelegramUpdate(updates ...telegram.Update) (maxID int, _
 }
 
 // nolint:gocyclo
-func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
+func (c *telegramBot) handleNewMessage(msg *api.Message) error {
 	from := "<unknown>"
 	if msg.From != nil && msg.From.Username != nil {
 		from = *msg.From.Username
@@ -152,7 +68,7 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 		from = *msg.Chat.Username
 	}
 
-	logger := c.logger.WithFields(log.String("from", from), log.String("chat", chat))
+	logger := c.Logger().WithFields(log.String("from", from), log.String("chat", chat))
 
 	switch {
 	case msg.Text != nil:
@@ -164,13 +80,12 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 		if msg.Entities != nil {
 			for _, e := range *msg.Entities {
 				// only check first command
-				if e.Type == telegram.MessageEntityTypeBotCommand {
+				if e.Type == api.MessageEntityTypeBotCommand {
 					isCmd = true
 					cmd = string(utf16.Decode(content[e.Offset : e.Offset+e.Length]))
 					content = content[e.Offset+e.Length:]
 
-					parts := strings.SplitN(cmd, "@", 2)
-					cmd = parts[0]
+					cmd, _, _ = strings.Cut(cmd, "@")
 
 					break
 				}
@@ -188,11 +103,13 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 		}
 
 		// filter private message for special replies to this bot
-		if msg.Chat.Type == telegram.ChatTypePrivate && msg.From != nil && msg.ReplyToMessage != nil {
-			userID := uint64(msg.From.Id)
-			chatID := uint64(msg.Chat.Id)
+		if msg.Chat.Type == api.ChatTypePrivate && msg.From != nil && msg.ReplyToMessage != nil {
+			var (
+				chatID = uint64(msg.Chat.Id)
+				userID = uint64(msg.From.Id)
+			)
 
-			for _, handle := range []tokenInputHandleFunc{
+			for _, handle := range [...]tokenInputHandleFunc{
 				c.tryToHandleInputForDiscussOrContinue,
 				c.tryToHandleInputForEditing,
 				c.tryToHandleInputForListing,
@@ -214,22 +131,22 @@ func (c *telegramBot) handleNewMessage(msg *telegram.Message) error {
 func (c *telegramBot) appendSessionMessage(
 	logger log.Interface,
 	chatID uint64,
-	msg *telegram.Message,
+	msg *api.Message,
 ) error {
-	currentSession, ok := c.GetActiveSession(chatID)
-	if !ok {
-		return nil
-	}
-
 	// ignore bot messages
 	if msg.From != nil && msg.From.IsBot {
 		return nil
 	}
 
-	logger.V("appending session meesage")
-	m := newTelegramMessage(msg, currentSession.RefMessages())
+	s, ok := c.GetActiveSession(chatID)
+	if !ok {
+		return nil
+	}
 
-	errCh, err := c.preProcess(m, c.webArchiver, c.storage)
+	logger.V("append session message")
+	m := newTelegramMessage(msg, s.RefMessages())
+
+	errCh, err := c.preProcess(s.Workflow(), &m)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
@@ -253,17 +170,18 @@ func (c *telegramBot) appendSessionMessage(
 		}()
 	}
 
-	currentSession.AppendMessage(m)
+	s.AppendMessage(&m)
 
 	return nil
 }
 
+// handleCmd handle single command with all params as a single string
 // nolint:gocyclo
 func (c *telegramBot) handleCmd(
 	logger log.Interface,
 	chatID uint64,
 	cmd, params string,
-	msg *telegram.Message,
+	msg *api.Message,
 ) error {
 	logger = logger.WithFields(log.String("cmd", cmd), log.String("params", params))
 
@@ -271,8 +189,9 @@ func (c *telegramBot) handleCmd(
 		// ignore
 		msgID, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			"Sorry, anonymous users are not allowed",
+			"Anonymous user not allowed",
 		)
+
 		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 		return err
 	}
@@ -282,18 +201,18 @@ func (c *telegramBot) handleCmd(
 
 	// ensure only group admin can start session
 	switch msg.Chat.Type {
-	case telegram.ChatTypeChannel:
+	case api.ChatTypeChannel:
 		_, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
 			"This bot doesn't work in channels",
 		)
 		return err
-	case telegram.ChatTypePrivate:
+	case api.ChatTypePrivate:
 		// direct message to bot, no permission check
 		isPrivateMessage = true
-	case telegram.ChatTypeGroup, telegram.ChatTypeSupergroup:
+	case api.ChatTypeGroup, api.ChatTypeSupergroup:
 		// ensure only admin can use this bot
-		resp, err := c.client.PostGetChatAdministrators(c.ctx, telegram.PostGetChatAdministratorsJSONRequestBody{
+		resp, err := c.client.PostGetChatAdministrators(c.Context(), api.PostGetChatAdministratorsJSONRequestBody{
 			ChatId: chatID,
 		})
 		if err != nil {
@@ -305,7 +224,7 @@ func (c *telegramBot) handleCmd(
 			return err
 		}
 
-		admins, err := telegram.ParsePostGetChatAdministratorsResponse(resp)
+		admins, err := api.ParsePostGetChatAdministratorsResponse(resp)
 		_ = resp.Body.Close()
 		if err != nil {
 			msgID, _ := c.sendTextMessage(
@@ -327,7 +246,7 @@ func (c *telegramBot) handleCmd(
 
 		isAdmin := false
 		for _, admin := range admins.JSON200.Result {
-			if uint64(admin.(telegram.ChatMemberAdministrator).User.Id) == userID {
+			if uint64(admin.(api.ChatMemberAdministrator).User.Id) == userID {
 				isAdmin = true
 				break
 			}
@@ -336,7 +255,7 @@ func (c *telegramBot) handleCmd(
 		if !isAdmin {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				"Sorry, only administrators can use this bot in group chat",
+				"Only administrators can use this bot in group chat",
 			)
 
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
@@ -344,15 +263,24 @@ func (c *telegramBot) handleCmd(
 		}
 	}
 
-	switch c.newToOld[cmd] {
-	case constant.CommandDiscuss, constant.CommandContinue:
+	wf, ok := c.wfSet.WorkflowFor(cmd)
+	if !ok {
+		msgID, _ := c.sendTextMessage(chatID, true, true, msg.MessageId, "unknown command")
+		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
+		err := fmt.Errorf("unkonwn command %q", cmd)
+		return err
+	}
+
+	switch bc := wf.BotCommands.Parse(cmd); bc {
+	case bot.BotCmd_Discuss, bot.BotCmd_Continue:
 		// mark this session as standby, wait for reply from bot private message
 		var topic, url, onInvalidCmdMsg string
-		switch c.newToOld[cmd] {
-		case constant.CommandDiscuss:
+
+		switch bc {
+		case bot.BotCmd_Discuss:
 			topic = params
 			onInvalidCmdMsg = fmt.Sprintf("Please specify a session topic, e.g. <code>%s foo</code>", cmd)
-		case constant.CommandContinue:
+		case bot.BotCmd_Continue:
 			url = params
 			// nolint:lll
 			onInvalidCmdMsg = fmt.Sprintf("Please specify the key of the session, e.g. <code>%s your-key</code>", cmd)
@@ -381,7 +309,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		if !c.MarkSessionStandby(userID, chatID, topic, url, 5*time.Minute) {
+		if !c.MarkSessionStandby(wf, userID, chatID, topic, url, 5*time.Minute) {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
 				"You have already started a session with no token replied, please end that first",
@@ -391,10 +319,10 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		if !c.publisherRequireLogin {
-			pub, _, _ := c.createPublisher()
+		if !wf.PublisherRequireLogin() {
+			pub, _, _ := wf.CreatePublisher()
 
-			_, err := c.ActivateSession(chatID, userID, pub)
+			_, err := c.ActivateSession(wf, chatID, userID, pub)
 			if err != nil {
 				msgID, _ := c.sendTextMessage(
 					chatID, true, true, msg.MessageId,
@@ -411,7 +339,7 @@ func (c *telegramBot) handleCmd(
 				}
 			}()
 
-			pageHeader, err := c.generator.RenderPageHeader()
+			pageHeader, err := wf.Generator.RenderPageHeader()
 			if err != nil {
 				return fmt.Errorf("failed to render page header: %w", err)
 			}
@@ -422,7 +350,7 @@ func (c *telegramBot) handleCmd(
 			}
 
 			if len(note) != 0 {
-				_, _ = c.sendTextMessage(chatID, true, true, 0, c.renderEntities(note))
+				_, _ = c.sendTextMessage(chatID, true, true, 0, renderEntities(note))
 			}
 
 			return nil
@@ -456,38 +384,38 @@ func (c *telegramBot) handleCmd(
 			)
 
 			var (
-				inlineKeyboard [1][]telegram.InlineKeyboardButton
+				inlineKeyboard [1][]api.InlineKeyboardButton
 				textPrompt     = ""
 			)
 
-			switch c.newToOld[cmd] {
-			case constant.CommandDiscuss:
+			switch bc {
+			case bot.BotCmd_Discuss:
 				textPrompt = "Create or enter your %s token for this session"
-				inlineKeyboard[0] = append(inlineKeyboard[0], telegram.InlineKeyboardButton{
+				inlineKeyboard[0] = append(inlineKeyboard[0], api.InlineKeyboardButton{
 					Text: "Create",
 					Url:  &urlForCreate,
 				})
-			case constant.CommandContinue:
+			case bot.BotCmd_Continue:
 				textPrompt = "Enter your %s token to continue this session"
 			}
 
-			inlineKeyboard[0] = append(inlineKeyboard[0], telegram.InlineKeyboardButton{
+			inlineKeyboard[0] = append(inlineKeyboard[0], api.InlineKeyboardButton{
 				Text: "Enter",
 				Url:  &urlForEnter,
 			})
 
 			_, err = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
-				fmt.Sprintf(textPrompt, c.publisherName),
-				telegram.InlineKeyboardMarkup{
+				fmt.Sprintf(textPrompt, wf.PublisherName()),
+				api.InlineKeyboardMarkup{
 					InlineKeyboard: inlineKeyboard[:],
 				},
 			)
 			return err
 		}()
-	case constant.CommandStart:
-		return c.handleStartCommand(logger, chatID, userID, isPrivateMessage, params, msg)
-	case constant.CommandCancel:
+	case bot.BotCmd_Start:
+		return c.handleStartCommand(wf, logger, chatID, userID, isPrivateMessage, params, msg)
+	case bot.BotCmd_Cancel:
 		prevReq, ok := c.ResolvePendingRequest(userID)
 		if ok {
 			// a pending request, no generator involved
@@ -505,7 +433,7 @@ func (c *telegramBot) handleCmd(
 				if sr.ChatID != chatID {
 					_, _ = c.sendTextMessage(
 						sr.ChatID, true, true, 0,
-						"Session was canceled by the initiator.",
+						"Session canceled by the initiator.",
 					)
 				}
 			}
@@ -519,7 +447,7 @@ func (c *telegramBot) handleCmd(
 		}
 
 		return nil
-	case constant.CommandEnd:
+	case bot.BotCmd_End:
 		currentSession, ok := c.GetActiveSession(chatID)
 		if !ok {
 			// TODO
@@ -534,7 +462,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		n, content, err := currentSession.GenerateContent(c.generator)
+		n, content, err := currentSession.GenerateContent(wf.Generator)
 		if err != nil {
 			logger.I("failed to generate post content", log.Error(err))
 			_, _ = c.sendTextMessage(
@@ -547,7 +475,7 @@ func (c *telegramBot) handleCmd(
 		}
 
 		pub := currentSession.GetPublisher()
-		note, err := pub.Append(c.ctx, content)
+		note, err := pub.Append(c.Context(), content)
 		if err != nil {
 			logger.I("failed to append content to post", log.Error(err))
 			_, _ = c.sendTextMessage(
@@ -571,10 +499,10 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		_, _ = c.sendTextMessage(chatID, false, false, 0, c.renderEntities(note))
+		_, _ = c.sendTextMessage(chatID, false, false, 0, renderEntities(note))
 
 		return nil
-	case constant.CommandInclude:
+	case bot.BotCmd_Include:
 		replyTo := msg.ReplyToMessage
 		if replyTo == nil {
 			logger.D("invalid command usage", log.String("reason", "not a reply"))
@@ -617,7 +545,7 @@ func (c *telegramBot) handleCmd(
 		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID))
 
 		return nil
-	case constant.CommandIgnore:
+	case bot.BotCmd_Ignore:
 		replyTo := msg.ReplyToMessage
 		if replyTo == nil {
 			logger.D("invalid command usage", log.String("reason", "not a reply"))
@@ -653,7 +581,7 @@ func (c *telegramBot) handleCmd(
 		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID))
 
 		return nil
-	case constant.CommandEdit:
+	case bot.BotCmd_Edit:
 		if !isPrivateMessage {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -664,7 +592,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		prevCmd, ok := c.MarkPendingEditing(userID, 5*time.Minute)
+		prevCmd, ok := c.MarkPendingEditing(wf, userID, 5*time.Minute)
 		if !ok {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -687,9 +615,9 @@ func (c *telegramBot) handleCmd(
 
 		_, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("Enter your %s token to edit", c.publisherName),
-			telegram.InlineKeyboardMarkup{
-				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
+			fmt.Sprintf("Enter your %s token to edit", wf.PublisherName()),
+			api.InlineKeyboardMarkup{
+				InlineKeyboard: [][]api.InlineKeyboardButton{{{
 					Text: "Enter",
 					Url:  &urlForEdit,
 				}}},
@@ -697,7 +625,7 @@ func (c *telegramBot) handleCmd(
 		)
 
 		return err
-	case constant.CommandDelete:
+	case bot.BotCmd_Delete:
 		if !isPrivateMessage {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -712,14 +640,14 @@ func (c *telegramBot) handleCmd(
 			logger.D("invalid command usage", log.String("reason", "missing param"))
 			msgID, _ := c.sendTextMessage(
 				chatID, false, false, msg.MessageId,
-				fmt.Sprintf("Please specify the url(s) of the %s post(s) to be deleted", c.publisherName),
+				fmt.Sprintf("Please specify the url(s) of the %s post(s) to be deleted", wf.PublisherName()),
 			)
 			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
 
 			return nil
 		}
 
-		prevCmd, ok := c.MarkPendingDeleting(userID, strings.Split(params, " "), 5*time.Minute)
+		prevCmd, ok := c.MarkPendingDeleting(wf, userID, strings.Split(params, " "), 5*time.Minute)
 		if !ok {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -742,9 +670,9 @@ func (c *telegramBot) handleCmd(
 
 		_, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("Enter your %s token to delete the post", c.publisherName),
-			telegram.InlineKeyboardMarkup{
-				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
+			fmt.Sprintf("Enter your %s token to delete the post", wf.PublisherName()),
+			api.InlineKeyboardMarkup{
+				InlineKeyboard: [][]api.InlineKeyboardButton{{{
 					Text: "Enter",
 					Url:  &urlForDelete,
 				}}},
@@ -752,7 +680,7 @@ func (c *telegramBot) handleCmd(
 		)
 
 		return err
-	case constant.CommandList:
+	case bot.BotCmd_List:
 		if !isPrivateMessage {
 			msgID, _ := c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -763,7 +691,7 @@ func (c *telegramBot) handleCmd(
 			return nil
 		}
 
-		prevCmd, ok := c.MarkPendingListing(userID, 5*time.Minute)
+		prevCmd, ok := c.MarkPendingListing(wf, userID, 5*time.Minute)
 		if !ok {
 			_, _ = c.sendTextMessage(
 				chatID, true, true, msg.MessageId,
@@ -786,9 +714,9 @@ func (c *telegramBot) handleCmd(
 
 		_, err := c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
-			fmt.Sprintf("Enter your %s token to list your posts", c.publisherName),
-			telegram.InlineKeyboardMarkup{
-				InlineKeyboard: [][]telegram.InlineKeyboardButton{{{
+			fmt.Sprintf("Enter your %s token to list your posts", wf.PublisherName()),
+			api.InlineKeyboardMarkup{
+				InlineKeyboard: [][]api.InlineKeyboardButton{{{
 					Text: "Enter",
 					Url:  &urlForList,
 				}}},
@@ -796,19 +724,25 @@ func (c *telegramBot) handleCmd(
 		)
 
 		return err
-	case constant.CommandHelp:
-		body := ""
+	case bot.BotCmd_Help:
+		var body strings.Builder
 
-		for _, cmd := range constant.VisibleBotCommands {
-			spec, ok := c.oldToNew[cmd]
-			if !ok {
+		body.WriteString("Usage:\n\n")
+		for i, cmd := range wf.BotCommands.Commands {
+			if len(cmd) == 0 || len(wf.BotCommands.Descriptions[i]) == 0 {
 				continue
 			}
 
-			body += "<pre>" + spec.As + "</pre> - " + spec.Description + "\n"
+			body.WriteString("<pre>")
+			body.WriteString(cmd)
+			body.WriteString("</pre> - ")
+			body.WriteString(wf.BotCommands.Descriptions[i])
+			body.WriteString("\n")
 		}
 
-		_, _ = c.sendTextMessage(chatID, true, true, 0, fmt.Sprintf("Usage:\n\n%s\n", body))
+		body.WriteString("\n")
+
+		_, _ = c.sendTextMessage(chatID, true, true, 0, body.String())
 		return nil
 	default:
 		logger.D("unknown command")

@@ -8,15 +8,16 @@ import (
 
 	"arhat.dev/pkg/log"
 
+	"arhat.dev/meeting-minutes-bot/pkg/bot"
 	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
 	"arhat.dev/meeting-minutes-bot/pkg/manager"
 )
 
 func (c *telegramBot) handleStartCommand(
+	wf *bot.Workflow,
 	logger log.Interface,
-	chatID uint64,
-	userID uint64,
+	chatID, userID uint64,
 	isPrivateMessage bool,
 	params string,
 	msg *api.Message,
@@ -38,12 +39,14 @@ func (c *telegramBot) handleStartCommand(
 
 	createOrEnter, err := base64.URLEncoding.DecodeString(params)
 	if err != nil {
+		// this is just a notice for bad /start params
 		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "I am alive.")
 		return nil
 	}
 
 	parts := strings.SplitN(string(createOrEnter), ":", 3)
 	if len(parts) != 3 {
+		// this is just a notice for bad /start params
 		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Told you, I'm alive.")
 		return nil
 	}
@@ -101,7 +104,7 @@ func (c *telegramBot) handleStartCommand(
 
 	switch action {
 	case "create":
-		pub, userConfig, err2 := c.createPublisher()
+		pub, userConfig, err2 := wf.CreatePublisher()
 		defer func() {
 			if err2 != nil {
 				_, _ = c.ResolvePendingRequest(userID)
@@ -153,7 +156,7 @@ func (c *telegramBot) handleStartCommand(
 			return err2
 		}
 
-		content, err2 := c.generator.RenderPageHeader()
+		content, err2 := wf.Generator.RenderPageHeader()
 		if err2 != nil {
 			return fmt.Errorf("failed to generate initial page: %w", err2)
 		}
@@ -167,7 +170,7 @@ func (c *telegramBot) handleStartCommand(
 			return err2
 		}
 
-		_, err2 = c.ActivateSession(standbySession.ChatID, userID, pub)
+		_, err2 = c.ActivateSession(wf, standbySession.ChatID, userID, pub)
 		if err2 != nil {
 			logger.D("invalid usage of discuss", log.String("reason", err2.Error()))
 			_, _ = c.sendTextMessage(
@@ -185,12 +188,12 @@ func (c *telegramBot) handleStartCommand(
 		}()
 
 		// error checked by `defer` section
-		_, err2 = c.sendTextMessage(standbySession.ChatID, true, true, 0, c.renderEntities(note))
+		_, err2 = c.sendTextMessage(standbySession.ChatID, true, true, 0, renderEntities(note))
 
 		return nil
 	case "enter":
 		msgID, err2 := c.sendTextMessage(chatID, false, true, 0,
-			fmt.Sprintf("Enter your %s token as a reply to this message", c.publisherName),
+			fmt.Sprintf("Enter your %s token as a reply to this message", wf.PublisherName()),
 			api.ForceReply{
 				ForceReply: true,
 				Selective:  constant.True(),
@@ -216,7 +219,7 @@ func (c *telegramBot) handleStartCommand(
 	case "edit", "delete", "list":
 		msgID, err2 := c.sendTextMessage(
 			chatID, true, true, 0,
-			fmt.Sprintf("Enter your %s token as a reply to this message", c.publisherName),
+			fmt.Sprintf("Enter your %s token as a reply to this message", wf.PublisherName()),
 			api.ForceReply{
 				ForceReply: true,
 				Selective:  constant.True(),

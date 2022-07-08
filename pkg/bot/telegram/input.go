@@ -9,7 +9,7 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
 
-type tokenInputHandleFunc func(chatID uint64, userID uint64, msg *api.Message) (bool, error)
+type tokenInputHandleFunc = func(chatID, userID uint64, msg *api.Message) (bool, error)
 
 func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 	chatID uint64,
@@ -27,7 +27,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		return false, nil
 	}
 
-	pub, userConfig, err := c.createPublisher()
+	pub, userConfig, err := standbySession.Workflow().CreatePublisher()
 	defer func() {
 		if err != nil {
 			_, _ = c.ResolvePendingRequest(userID)
@@ -73,7 +73,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 	switch {
 	case len(standbySession.Topic) != 0:
 		// is /discuss, create a new post
-		content, err2 := c.generator.RenderPageHeader()
+		content, err2 := standbySession.Workflow().Generator.RenderPageHeader()
 		if err2 != nil {
 			return true, fmt.Errorf("failed to generate initial page: %w", err2)
 		}
@@ -102,7 +102,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		}
 	}
 
-	_, err = c.ActivateSession(standbySession.ChatID, userID, pub)
+	_, err = c.ActivateSession(standbySession.Workflow(), standbySession.ChatID, userID, pub)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			chatID, true, true, msg.MessageId,
@@ -129,7 +129,7 @@ func (c *telegramBot) tryToHandleInputForDiscussOrContinue(
 		msgIDShouldReplyTo,
 	)
 
-	_, err = c.sendTextMessage(standbySession.ChatID, true, true, 0, c.renderEntities(note))
+	_, err = c.sendTextMessage(standbySession.ChatID, true, true, 0, renderEntities(note))
 	if err != nil {
 		return true, nil
 	}
@@ -154,7 +154,7 @@ func (c *telegramBot) tryToHandleInputForEditing(
 		return false, nil
 	}
 
-	pub, userConfig, err := c.createPublisher()
+	pub, userConfig, err := req.Workflow().CreatePublisher()
 	defer func() {
 		if err != nil {
 			c.ResolvePendingRequest(userID)
@@ -238,7 +238,7 @@ func (c *telegramBot) tryToHandleInputForListing(
 		return false, nil
 	}
 
-	pub, userConfig, err := c.createPublisher()
+	pub, userConfig, err := req.Workflow().CreatePublisher()
 	defer func() {
 		if err != nil {
 			c.ResolvePendingRequest(userID)
@@ -327,7 +327,7 @@ func (c *telegramBot) tryToHandleInputForDeleting(
 		return false, nil
 	}
 
-	pub, userConfig, err := c.createPublisher()
+	pub, userConfig, err := req.Workflow().CreatePublisher()
 	defer func() {
 		if err != nil {
 			c.ResolvePendingRequest(userID)

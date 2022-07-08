@@ -51,7 +51,7 @@
     </figcaption></figure>
   {{- end -}}
 
-  {{- if .IsDocument -}}
+  {{- if .IsFile -}}
     {{- $url := index .Params "url" -}}
     {{- if $url -}}
       {{- $filename := index .Params "filename" -}}
@@ -127,7 +127,7 @@
     </figcaption></figure>
   {{- end -}}
 
-  {{- if .IsDocument -}}
+  {{- if .IsFile -}}
     {{- $url := index .Params "url" -}}
     {{- if $url -}}
       {{- $filename := index .Params "filename" -}}

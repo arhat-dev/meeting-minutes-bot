@@ -4,19 +4,17 @@ go 1.18
 
 require (
 	arhat.dev/pkg v0.9.1-0.20220527160521-12b7b771a58b
+	arhat.dev/rs v0.9.0
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/chromedp/chromedp v0.8.2
-	github.com/h2non/filetype v1.1.3
 	github.com/minio/minio-go/v7 v7.0.30
 	github.com/spf13/cobra v1.5.0
-	github.com/spf13/pflag v1.0.5
 	gitlab.com/toby3d/telegraph v1.2.1
 	go.uber.org/multierr v1.8.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
-	arhat.dev/rs v0.9.0 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.1.1 // indirect
 	github.com/andybalholm/brotli v1.0.2 // indirect
@@ -49,6 +47,7 @@ require (
 	github.com/shopspring/decimal v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
+	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.24.0 // indirect
 	go.uber.org/atomic v1.7.0 // indirect

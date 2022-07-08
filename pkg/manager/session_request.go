@@ -3,7 +3,7 @@ package manager
 import (
 	"sync/atomic"
 
-	"arhat.dev/meeting-minutes-bot/pkg/constant"
+	"arhat.dev/meeting-minutes-bot/pkg/bot"
 )
 
 type Request interface {
@@ -13,7 +13,11 @@ type Request interface {
 
 type BaseRequest struct {
 	msgIDShouldReplyTo uint64
+
+	wf *bot.Workflow
 }
+
+func (b *BaseRequest) Workflow() *bot.Workflow { return b.wf }
 
 func (b *BaseRequest) GetMessageIDShouldReplyTo() (uint64, bool) {
 	msgID := atomic.LoadUint64(&b.msgIDShouldReplyTo)
@@ -30,7 +34,7 @@ type (
 
 		ChatID uint64
 
-		// only one of topic and url shall be specified
+		// Topic and URL are mutually exclusive
 		Topic string
 		URL   string
 	}
@@ -50,21 +54,21 @@ type DeleteRequest struct {
 	URLs []string
 }
 
-func GetCommandFromRequest(req interface{}) string {
+func GetCommandFromRequest(req interface{}) bot.BotCmd {
 	switch r := req.(type) {
 	case *DeleteRequest:
-		return constant.CommandDelete
+		return bot.BotCmd_Delete
 	case *ListRequest:
-		return constant.CommandList
+		return bot.BotCmd_List
 	case *EditRequest:
-		return constant.CommandEdit
+		return bot.BotCmd_Edit
 	case *SessionRequest:
 		if len(r.Topic) != 0 {
-			return constant.CommandDiscuss
+			return bot.BotCmd_Discuss
 		}
 
-		return constant.CommandContinue
+		return bot.BotCmd_Continue
+	default:
+		return bot.BotCmd_Unknown
 	}
-
-	return ""
 }

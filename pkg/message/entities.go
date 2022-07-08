@@ -2,13 +2,7 @@ package message
 
 import (
 	"context"
-	"encoding/hex"
-	"fmt"
 	"sync"
-
-	"arhat.dev/pkg/sha256helper"
-	"github.com/h2non/filetype"
-	"go.uber.org/multierr"
 
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
@@ -23,21 +17,28 @@ func NewMessageEntities(entities []Entity, urlsToArchive map[string][]int) *Enti
 		urlsToArchive: urlsToArchive,
 		entities:      entities,
 
-		mu: &sync.Mutex{},
+		mu: &sync.RWMutex{},
 	}
 }
 
 type Entities struct {
-	// url -> index of the related entry in `m.entities`
+	// key: url
+	// value: index of the related entry in `m.entities`
 	urlsToArchive map[string][]int
 	entities      []Entity
 
-	mu *sync.Mutex
+	mu *sync.RWMutex
+}
+
+func (me *Entities) Init() {
+	if me.mu == nil {
+		me.mu = &sync.RWMutex{}
+	}
 }
 
 func (me *Entities) Get() []Entity {
-	me.mu.Lock()
-	defer me.mu.Unlock()
+	me.mu.RLock()
+	defer me.mu.RUnlock()
 
 	return me.entities
 }
@@ -56,8 +57,8 @@ func (me *Entities) Append(e Entity) {
 }
 
 func (me *Entities) NeedPreProcess() bool {
-	me.mu.Lock()
-	defer me.mu.Unlock()
+	me.mu.RLock()
+	defer me.mu.RUnlock()
 
 	return len(me.urlsToArchive) != 0
 }
@@ -71,46 +72,46 @@ func (me *Entities) PreProcess(ctx context.Context, w webarchiver.Interface, u s
 	// url -> screen shot url
 	screenshotURLs := make(map[string]string)
 
-	var err error
+	// var err error
 	for url, indexes := range me.urlsToArchive {
 		if indexes == nil {
 			me.urlsToArchive[url] = make([]int, 0, 1)
 		}
 
-		archiveURL, screenshot, err2 := w.Archive(ctx, url)
-		if err2 != nil {
-			err = multierr.Append(err, fmt.Errorf("unable to archive web page %s: %w", url, err2))
-			continue
-		}
+		// result, err2 := w.Archive(ctx, url)
+		// if err2 != nil {
+		// 	err = multierr.Append(err, fmt.Errorf("unable to archive web page %s: %w", url, err2))
+		// 	continue
+		// }
 
-		archiveURLs[url] = archiveURL
-
-		if len(screenshot) == 0 {
-			// no screenshot
-			continue
-		}
-
-		var (
-			contentType string
-			fileExt     string
-		)
-		t, err2 := filetype.Match(screenshot)
-		if err2 == nil {
-			if len(t.Extension) != 0 {
-				fileExt = "." + t.Extension
-			}
-
-			contentType = t.MIME.Value
-		}
-
-		filename := hex.EncodeToString(sha256helper.Sum(screenshot)) + fileExt
-		screenshotURL, err2 := u.Upload(ctx, filename, contentType, screenshot)
-		if err2 != nil {
-			err = multierr.Append(err, fmt.Errorf("unable to upload web page screenshot: %w", err2))
-			continue
-		}
-
-		screenshotURLs[url] = screenshotURL
+		// 		archiveURLs[url] = archiveURL
+		//
+		// 		if szScreenshot == 0 {
+		// 			// no screenshot
+		// 			continue
+		// 		}
+		//
+		// 		var (
+		// 			contentType string
+		// 			fileExt     string
+		// 		)
+		// 		t, err2 := filetype.Match(screenshot)
+		// 		if err2 == nil {
+		// 			if len(t.Extension) != 0 {
+		// 				fileExt = "." + t.Extension
+		// 			}
+		//
+		// 			contentType = t.MIME.Value
+		// 		}
+		//
+		// 		filename := hex.EncodeToString(sha256helper.Sum(screenshot)) + fileExt
+		// 		screenshotURL, err2 := u.Upload(ctx, filename, contentType, szScreenshot, screenshot)
+		// 		if err2 != nil {
+		// 			err = multierr.Append(err, fmt.Errorf("unable to upload web page screenshot: %w", err2))
+		// 			continue
+		// 		}
+		//
+		// 		screenshotURLs[url] = screenshotURL
 	}
 
 	for url, idxes := range me.urlsToArchive {

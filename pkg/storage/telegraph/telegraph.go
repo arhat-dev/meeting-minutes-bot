@@ -10,26 +10,9 @@ import (
 	"net/http"
 	"net/textproto"
 	"strings"
-
-	"arhat.dev/meeting-minutes-bot/pkg/storage"
 )
 
-const Name = "telegraph"
-
-func init() {
-	storage.Register(
-		Name,
-		func() storage.Config { return &Config{} },
-	)
-}
-
-type Config struct{}
-
-func (Config) Create() (storage.Interface, error) { return &Driver{}, nil }
-
-type Driver struct {
-	client http.Client
-}
+type Driver struct{ client http.Client }
 
 func (d *Driver) Name() string { return Name }
 
@@ -40,15 +23,14 @@ func unescapeQuotes(s string) string {
 }
 
 func (d *Driver) Upload(
-	ctx context.Context,
-	filename string,
-	contentType string,
-	data []byte,
+	ctx context.Context, filename, contentType string, size int64, data io.Reader,
 ) (url string, err error) {
-	_ = filename
+	var (
+		body bytes.Buffer
+	)
 
-	body := &bytes.Buffer{}
-	mw := multipart.NewWriter(body)
+	_ = filename
+	mw := multipart.NewWriter(&body)
 
 	h := make(textproto.MIMEHeader)
 	h.Set("Content-Disposition", `form-data; name="file"; filename="blob"`)
@@ -58,7 +40,7 @@ func (d *Driver) Upload(
 		return "", fmt.Errorf("failed to prepare file write: %w", err)
 	}
 
-	_, err = filePart.Write(data)
+	_, err = io.Copy(filePart, data)
 	if err != nil {
 		return "", fmt.Errorf("failed to buffer request body: %w", err)
 	}
@@ -68,7 +50,7 @@ func (d *Driver) Upload(
 		return "", fmt.Errorf("multipart form closed with error: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://telegra.ph/upload", body)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://telegra.ph/upload", &body)
 	if err != nil {
 		return "", fmt.Errorf("failed to create upload request: %w", err)
 	}
@@ -82,9 +64,9 @@ func (d *Driver) Upload(
 	if err != nil {
 		return "", fmt.Errorf("failed to request file upload: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
 
 	respBody, err := io.ReadAll(resp.Body)
+	_ = resp.Body.Close()
 	if err != nil {
 		return "", fmt.Errorf("failed to read response body: %w", err)
 	}
@@ -97,10 +79,10 @@ func (d *Driver) Upload(
 		SRC string `json:"src"`
 	}
 
-	result := []uploadResp{}
+	var result []uploadResp
 	err = json.Unmarshal(respBody, &result)
 	if err != nil {
-		return "", fmt.Errorf("failed to parse upload response %q: %w", string(respBody), err)
+		return "", fmt.Errorf("parse upload response %q: %w", string(respBody), err)
 	}
 
 	if len(result) == 0 {

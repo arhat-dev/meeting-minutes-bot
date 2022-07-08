@@ -4,13 +4,16 @@ import (
 	"sync"
 	"time"
 
+	"arhat.dev/meeting-minutes-bot/pkg/bot"
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
-func newSession(p publisher.Interface) *Session {
+func newSession(wf *bot.Workflow, p publisher.Interface) *Session {
 	return &Session{
+		wf: wf,
+
 		msgs: make([]message.Interface, 0, 16),
 
 		publisher: p,
@@ -20,12 +23,18 @@ func newSession(p publisher.Interface) *Session {
 }
 
 type Session struct {
+	// immutable
+	wf *bot.Workflow
+
 	msgs []message.Interface
 
 	publisher publisher.Interface
 	msgIdx    map[string]int
-	mu        *sync.RWMutex
+
+	mu *sync.RWMutex
 }
+
+func (s *Session) Workflow() *bot.Workflow { return s.wf }
 
 func (s *Session) GetPublisher() publisher.Interface {
 	s.mu.RLock()

@@ -2,6 +2,7 @@ package publisher
 
 import (
 	"context"
+	"fmt"
 
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 )
@@ -20,8 +21,11 @@ type Config interface {
 }
 
 type Interface interface {
+	// Name of the publisher
 	Name() string
 
+	// RequireLogin return true when the publisher requires login, if false
+	// there will be no login process presented to user
 	RequireLogin() bool
 
 	// Login to platform
@@ -53,4 +57,35 @@ type PostInfo struct {
 
 type UserConfig interface {
 	SetAuthToken(token string)
+}
+
+// Result serves as type handle for arhat.dev/rs
+type Result interface {
+	// TODO: add methods
+}
+
+type configFactoryFunc = func() Config
+
+var (
+	supportedDrivers = map[string]configFactoryFunc{
+		"": func() Config { return &nopConfig{} },
+	}
+)
+
+func Register(name string, cf configFactoryFunc) {
+	// reserve empty name
+	if name == "" {
+		return
+	}
+
+	supportedDrivers[name] = cf
+}
+
+func NewConfig(name string) (interface{}, error) {
+	cf, ok := supportedDrivers[name]
+	if !ok {
+		return nil, fmt.Errorf("unknown publisher driver %q", name)
+	}
+
+	return cf(), nil
 }

@@ -12,15 +12,7 @@ var _ webarchiver.Interface = (*Driver)(nil)
 
 type Driver struct{}
 
-func (d *Driver) Archive(
-	ctx context.Context,
-	url string,
-) (
-	archiveURL string,
-	screenshot []byte,
-	err error,
-) {
+func (d *Driver) Archive(ctx context.Context, url string) (webarchiver.Result, error) {
 	chromedp.NewContext(ctx)
-
-	return "", nil, nil
+	return nil, nil
 }

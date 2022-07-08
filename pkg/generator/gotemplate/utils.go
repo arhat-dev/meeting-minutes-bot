@@ -2,11 +2,11 @@ package gotemplate
 
 import (
 	"fmt"
-	htmltemplate "html/template"
+	htpl "html/template"
 	"io"
 	"io/fs"
 	"path"
-	texttemplate "text/template"
+	ttpl "text/template"
 
 	"arhat.dev/pkg/textquery"
 	"github.com/Masterminds/sprig/v3"
@@ -14,11 +14,11 @@ import (
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
 )
 
-type templateExecutor interface {
+type tplExecutor interface {
 	ExecuteTemplate(wr io.Writer, name string, data interface{}) error
 }
 
-func loadTemplatesFromFS(base templateExecutor, dirFS fs.FS) (templateExecutor, error) {
+func loadTemplatesFromFS(base tplExecutor, dirFS fs.FS) (tplExecutor, error) {
 	entries, err := fs.ReadDir(dirFS, ".")
 	if err != nil {
 		return nil, fmt.Errorf("load template: %w", err)
@@ -36,16 +36,16 @@ func loadTemplatesFromFS(base templateExecutor, dirFS fs.FS) (templateExecutor, 
 	}
 
 	switch t := base.(type) {
-	case *htmltemplate.Template:
+	case *htpl.Template:
 		return t.
 			Funcs(sprig.HtmlFuncMap()).
-			Funcs(htmltemplate.FuncMap(generator.CreateFuncMap())).
+			Funcs(htpl.FuncMap(generator.CreateFuncMap())).
 			Funcs(customFuncMap).
 			ParseFS(dirFS, pattern)
-	case *texttemplate.Template:
+	case *ttpl.Template:
 		return t.
 			Funcs(sprig.TxtFuncMap()).
-			Funcs(texttemplate.FuncMap(generator.CreateFuncMap())).
+			Funcs(ttpl.FuncMap(generator.CreateFuncMap())).
 			Funcs(customFuncMap).
 			ParseFS(dirFS, pattern)
 	default:

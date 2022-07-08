@@ -18,8 +18,6 @@ package cmd
 
 import (
 	"context"
-	"fmt"
-	"reflect"
 
 	"arhat.dev/pkg/log"
 	"arhat.dev/rs"
@@ -27,36 +25,8 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/conf"
 	"arhat.dev/meeting-minutes-bot/pkg/constant"
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 	"arhat.dev/meeting-minutes-bot/pkg/server"
-	"arhat.dev/meeting-minutes-bot/pkg/storage"
-	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
 )
-
-var (
-	generatorConfigType   = reflect.TypeOf((*generator.Config)(nil)).Elem()
-	publisherConfigType   = reflect.TypeOf((*publisher.Config)(nil)).Elem()
-	storageConfigType     = reflect.TypeOf((*storage.Config)(nil)).Elem()
-	webarchiverConfigType = reflect.TypeOf((*webarchiver.Config)(nil)).Elem()
-)
-
-type globalInterfaceTypeHandler struct{}
-
-func (globalInterfaceTypeHandler) Create(typ reflect.Type, yamlKey string) (interface{}, error) {
-	switch typ {
-	case generatorConfigType:
-		return generator.NewConfig(yamlKey)
-	case publisherConfigType:
-		return publisher.NewConfig(yamlKey)
-	case storageConfigType:
-		return storage.NewConfig(yamlKey)
-	case webarchiverConfigType:
-		return webarchiver.NewConfig(yamlKey)
-	default:
-		return nil, fmt.Errorf("unknown config type %s (key: %s)", typ.String(), yamlKey)
-	}
-}
 
 func NewRootCmd() *cobra.Command {
 	var (
@@ -67,7 +37,7 @@ func NewRootCmd() *cobra.Command {
 	)
 
 	rs.Init(&config, &rs.Options{
-		InterfaceTypeHandler: globalInterfaceTypeHandler{},
+		InterfaceTypeHandler: configIfaceHandler{},
 	})
 
 	rootCmd := &cobra.Command{
@@ -96,12 +66,10 @@ func NewRootCmd() *cobra.Command {
 
 	flags.StringVarP(&configFile, "config", "c", constant.DefaultConfigFile,
 		"path to the config file")
-	flags.AddFlagSet(conf.FlagsForAppConfig("", &config.App))
-	flags.AddFlagSet(conf.FlagsForBotsConfig("", &config.Bots))
 
 	return rootCmd
 }
 
 func run(appCtx context.Context, config *conf.Config) error {
-	return server.Run(appCtx, &config.App, &config.Bots)
+	return server.Run(appCtx, config)
 }
