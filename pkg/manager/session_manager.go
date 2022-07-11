@@ -9,10 +9,11 @@ import (
 	"arhat.dev/pkg/queue"
 
 	"arhat.dev/meeting-minutes-bot/pkg/bot"
+	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
-func NewSessionManager(ctx context.Context) SessionManager {
+func NewSessionManager[M message.Interface](ctx context.Context) SessionManager[M] {
 	tq := queue.NewTimeoutQueue[uint64, struct{}]()
 	tq.Start(ctx.Done())
 
@@ -24,7 +25,7 @@ func NewSessionManager(ctx context.Context) SessionManager {
 		}
 	}()
 
-	return SessionManager{
+	return SessionManager[M]{
 		pendingRequests: pendingRequests,
 		activeSessions:  &sync.Map{},
 
@@ -34,7 +35,7 @@ func NewSessionManager(ctx context.Context) SessionManager {
 	}
 }
 
-type SessionManager struct {
+type SessionManager[M message.Interface] struct {
 	// key: user_id
 	// value: request
 	pendingRequests *sync.Map
@@ -48,11 +49,11 @@ type SessionManager struct {
 	mu *sync.Mutex
 }
 
-func (c *SessionManager) scheduleDeleteTimeout(userID uint64, timeout time.Duration) {
+func (c *SessionManager[M]) scheduleDeleteTimeout(userID uint64, timeout time.Duration) {
 	_ = c.tq.OfferWithDelay(userID, struct{}{}, timeout)
 }
 
-func (c *SessionManager) MarkPendingEditing(
+func (c *SessionManager[M]) MarkPendingEditing(
 	wf *bot.Workflow,
 	userID uint64,
 	timeout time.Duration,
@@ -67,7 +68,7 @@ func (c *SessionManager) MarkPendingEditing(
 	return GetCommandFromRequest(pVal), !loaded
 }
 
-func (c *SessionManager) GetPendingEditing(userID uint64) (*EditRequest, bool) {
+func (c *SessionManager[M]) GetPendingEditing(userID uint64) (*EditRequest, bool) {
 	pVal, ok := c.pendingRequests.Load(userID)
 	if ok {
 		ret, isEditReq := pVal.(*EditRequest)
@@ -76,7 +77,7 @@ func (c *SessionManager) GetPendingEditing(userID uint64) (*EditRequest, bool) {
 	return nil, false
 }
 
-func (c *SessionManager) MarkPendingListing(
+func (c *SessionManager[M]) MarkPendingListing(
 	wf *bot.Workflow,
 	userID uint64,
 	timeout time.Duration,
@@ -91,7 +92,7 @@ func (c *SessionManager) MarkPendingListing(
 	return GetCommandFromRequest(pVal), !loaded
 }
 
-func (c *SessionManager) GetPendingListing(userID uint64) (*ListRequest, bool) {
+func (c *SessionManager[M]) GetPendingListing(userID uint64) (*ListRequest, bool) {
 	pVal, ok := c.pendingRequests.Load(userID)
 	if ok {
 		ret, isListReq := pVal.(*ListRequest)
@@ -101,7 +102,7 @@ func (c *SessionManager) GetPendingListing(userID uint64) (*ListRequest, bool) {
 }
 
 // MarkPendingDeleting marks current session related to userID as DeleteRequest
-func (c *SessionManager) MarkPendingDeleting(
+func (c *SessionManager[M]) MarkPendingDeleting(
 	wf *bot.Workflow,
 	userID uint64,
 	urls []string,
@@ -121,7 +122,7 @@ func (c *SessionManager) MarkPendingDeleting(
 	return GetCommandFromRequest(pVal), !loaded
 }
 
-func (c *SessionManager) GetPendingDeleting(userID uint64) (*DeleteRequest, bool) {
+func (c *SessionManager[M]) GetPendingDeleting(userID uint64) (*DeleteRequest, bool) {
 	pVal, ok := c.pendingRequests.Load(userID)
 	if ok {
 		ret, isDeleteReq := pVal.(*DeleteRequest)
@@ -130,14 +131,15 @@ func (c *SessionManager) GetPendingDeleting(userID uint64) (*DeleteRequest, bool
 	return nil, false
 }
 
-func (c *SessionManager) ResolvePendingRequest(userID uint64) (interface{}, bool) {
+func (c *SessionManager[M]) ResolvePendingRequest(userID uint64) (interface{}, bool) {
 	c.tq.Remove(userID)
 
 	pVal, loaded := c.pendingRequests.LoadAndDelete(userID)
 	return pVal, loaded
 }
 
-func (c *SessionManager) MarkSessionStandby(
+// MarkSessionStandby prepare a new session
+func (c *SessionManager[M]) MarkSessionStandby(
 	wf *bot.Workflow,
 	userID, chatID uint64,
 	topic, url string,
@@ -159,7 +161,7 @@ func (c *SessionManager) MarkSessionStandby(
 	return !loaded
 }
 
-func (c *SessionManager) GetStandbySession(userID uint64) (*SessionRequest, bool) {
+func (c *SessionManager[M]) GetStandbySession(userID uint64) (*SessionRequest, bool) {
 	pVal, ok := c.pendingRequests.Load(userID)
 	if !ok {
 		return nil, false
@@ -173,7 +175,7 @@ func (c *SessionManager) GetStandbySession(userID uint64) (*SessionRequest, bool
 	return sr, true
 }
 
-func (c *SessionManager) MarkRequestExpectingInput(userID, shouldReplyToMsgID uint64) bool {
+func (c *SessionManager[M]) MarkRequestExpectingInput(userID, shouldReplyToMsgID uint64) bool {
 	reqVal, ok := c.pendingRequests.Load(userID)
 	if !ok {
 		return false
@@ -182,18 +184,19 @@ func (c *SessionManager) MarkRequestExpectingInput(userID, shouldReplyToMsgID ui
 	return reqVal.(Request).SetMessageIDShouldReplyTo(shouldReplyToMsgID)
 }
 
-func (c *SessionManager) GetActiveSession(chatID uint64) (*Session, bool) {
+func (c *SessionManager[M]) GetActiveSession(chatID uint64) (ret *Session[M], ok bool) {
 	sVal, ok := c.activeSessions.Load(chatID)
 	if !ok {
-		return nil, false
+		return
 	}
 
-	return sVal.(*Session), true
+	ret = sVal.(*Session[M])
+	return
 }
 
-func (c *SessionManager) ActivateSession(
+func (c *SessionManager[M]) ActivateSession(
 	wf *bot.Workflow, chatID, userID uint64, p publisher.Interface,
-) (_ *Session, err error) {
+) (_ *Session[M], err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -211,19 +214,19 @@ func (c *SessionManager) ActivateSession(
 		return nil, fmt.Errorf("chat not match")
 	}
 
-	newS := newSession(wf, p)
+	newS := newSession[M](wf, p)
 	sVal, loaded := c.activeSessions.LoadOrStore(chatID, newS)
 	if loaded {
-		return sVal.(*Session), fmt.Errorf("already exists")
+		return sVal.(*Session[M]), fmt.Errorf("already exists")
 	}
 
 	return newS, nil
 }
 
-func (c *SessionManager) DeactivateSession(chatID uint64) (_ *Session, ok bool) {
+func (c *SessionManager[M]) DeactivateSession(chatID uint64) (_ *Session[M], ok bool) {
 	sVal, loaded := c.activeSessions.LoadAndDelete(chatID)
 	if loaded {
-		return sVal.(*Session), true
+		return sVal.(*Session[M]), true
 	}
 
 	return nil, false

@@ -2,394 +2,349 @@ package telegram
 
 import (
 	"fmt"
-	"net/http"
-	"path"
+	"io"
 	"sync"
+	"time"
 
 	"arhat.dev/pkg/log"
+	"github.com/gotd/td/telegram/downloader"
+	"github.com/gotd/td/tg"
+	"github.com/h2non/filetype"
+	"github.com/h2non/filetype/types"
 
 	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 // errCh can be nil when there is no background pre-process worker
 // nolint:gocyclo
-func (c *telegramBot) preProcess(
-	wf *bot.Workflow,
-	m *Message,
-) (errCh chan error, err error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
+func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *Message, msg *tg.Message) (errCh chan error, err error) {
 	var (
-		requestFileID          string
-		requestFileName        string // can be empty
-		requestFileContentType string
+		nonText    message.Span
+		doDownload func() (rt.CacheReader, string, int64, error)
 	)
 
-	switch {
-	case m.msg.Text != nil:
-		me := parseTelegramEntities(*m.msg.Text, m.msg.Entities)
+	media, ok := msg.GetMedia()
+	if !ok {
+		return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
+	}
 
-		if !me.NeedPreProcess() {
-			m.entities = me.Get()
-
-			m.markReady()
-
+	switch t := media.(type) {
+	case *tg.MessageMediaPhoto:
+		photo, ok := t.GetPhoto()
+		if !ok {
 			return nil, nil
 		}
 
-		errCh = make(chan error, 1)
-		go func() {
-			defer func() {
-				close(errCh)
+		switch p := photo.(type) {
+		case *tg.Photo:
+			var (
+				maxSizeName string
+				maxSize     int
+			)
+			psizes := p.GetSizes()
 
-				m.markReady()
-			}()
-
-			err2 := me.PreProcess(c.Context(), wf.WebArchiver, wf.Storage)
-			if err2 != nil {
-				select {
-				case errCh <- fmt.Errorf("Message pre-process error: %w", err2):
-				case <-c.Context().Done():
+			for _, psz := range psizes {
+				switch s := psz.(type) {
+				case *tg.PhotoSizeEmpty:
+					if maxSize == 0 {
+						maxSizeName = s.GetType()
+					}
+				case *tg.PhotoSize:
+					if sz := s.GetSize(); sz > maxSize {
+						maxSize = s.GetSize()
+						maxSizeName = s.GetType()
+					}
+				case *tg.PhotoCachedSize:
+					if sz := len(s.GetBytes()); sz > maxSize {
+						maxSize = sz
+						maxSizeName = s.GetType()
+					}
+				case *tg.PhotoStrippedSize:
+					if sz := len(s.GetBytes()); sz > maxSize {
+						maxSize = sz
+						maxSizeName = s.GetType()
+					}
+				case *tg.PhotoSizeProgressive:
+					msizes := s.GetSizes()
+					for _, ms := range msizes {
+						if ms > maxSize {
+							maxSize = ms
+							maxSizeName = s.GetType()
+						}
+					}
+				case *tg.PhotoPathSize:
+					if sz := len(s.GetBytes()); sz > maxSize {
+						maxSize = sz
+						maxSizeName = s.GetType()
+					}
 				}
 			}
 
-			m.update(func() {
-				m.entities = me.Get()
-			})
+			fileLoc := &tg.InputPhotoFileLocation{
+				ID:            p.GetID(),
+				AccessHash:    p.GetAccessHash(),
+				FileReference: p.GetFileReference(),
+				ThumbSize:     maxSizeName,
+			}
+
+			doDownload = func() (rt.CacheReader, string, int64, error) {
+				return c.download(
+					c.downloader.Download(c.client.API(), fileLoc).WithVerify(true),
+					maxSize,
+					"",
+				)
+			}
+		default:
+			return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
+		}
+	case *tg.MessageMediaDocument:
+		doc, ok := t.GetDocument()
+		if !ok {
+			return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
+		}
+
+		switch d := doc.(type) {
+		case *tg.Document:
+			sz := d.GetSize()
+			fileLoc := d.AsInputDocumentFileLocation()
+			ct := d.GetMimeType()
+
+			attrs := d.GetAttributes()
+			for _, attr := range attrs {
+				switch a := attr.(type) {
+				case *tg.DocumentAttributeImageSize:
+				case *tg.DocumentAttributeAnimated:
+				case *tg.DocumentAttributeSticker:
+				case *tg.DocumentAttributeVideo:
+					nonText.Duration.Set(time.Duration(a.GetDuration()) * time.Second)
+				case *tg.DocumentAttributeAudio:
+					nonText.Duration.Set(time.Duration(a.GetDuration()) * time.Second)
+				case *tg.DocumentAttributeFilename:
+					nonText.Filename.Set(a.GetFileName())
+				case *tg.DocumentAttributeHasStickers:
+				}
+			}
+
+			doDownload = func() (rt.CacheReader, string, int64, error) {
+				return c.download(
+					c.downloader.Download(c.client.API(), fileLoc).WithVerify(true),
+					sz,
+					ct,
+				)
+			}
+		default:
+			return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
+		}
+
+	// case *tg.MessageMediaGeo:
+	// case *tg.MessageMediaContact:
+	// case *tg.MessageMediaUnsupported:
+	// case *tg.MessageMediaWebPage:
+	// case *tg.MessageMediaVenue:
+	// case *tg.MessageMediaGame:
+	// case *tg.MessageMediaInvoice:
+	// case *tg.MessageMediaGeoLive:
+	// case *tg.MessageMediaPoll:
+	// case *tg.MessageMediaDice:
+	default:
+		c.Logger().I("unhandled telegram message", log.Any("msg", msg))
+		m.markReady()
+		return nil, nil
+	}
+
+	var wg sync.WaitGroup
+
+	if len(msg.GetMessage()) != 0 {
+		errCh, err = c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, &wg)
+		if err != nil {
+			return
+		}
+	}
+
+	wg.Add(1) // add for the goroutine spawned at last
+
+	noBgTextProcessing := errCh == nil
+	if noBgTextProcessing { // no background job for text processing
+		errCh = make(chan error, 1)
+	} else {
+		// goroutine to wait file downloading and caption handling
+		go func() {
+			wg.Wait()
+			close(errCh)
+			m.markReady()
+		}()
+	}
+
+	go func() {
+		defer func() {
+			wg.Done()
+
+			if noBgTextProcessing {
+				close(errCh)
+				m.markReady()
+			}
 		}()
 
-		return
-	case m.msg.Audio != nil:
-		audio := m.msg.Audio
-
-		requestFileID = audio.FileId
-		if audio.FileName != nil {
-			requestFileName = *audio.FileName
+		cacheRD, contentType, sz, err := doDownload()
+		if err != nil {
+			c.Logger().I("failed to download file", log.Error(err))
+			c.sendErrorf(errCh, "unable to download: %w", err)
+			return
 		}
 
-		if audio.MimeType != nil {
-			requestFileContentType = *audio.MimeType
+		storageURL, err := wf.Storage.Upload(c.Context(), cacheRD.Name(), contentType, sz, cacheRD)
+		if err != nil {
+			c.Logger().I("failed to upload file", log.Error(err))
+			c.sendErrorf(errCh, "unable to upload file: %w", err)
+			return
 		}
 
-		m.entities = append(m.entities, message.Entity{
-			Kind: message.KindAudio,
-			Text: "",
-			Params: map[message.EntityParamKey]interface{}{
-				message.EntityParamURL:     "",
-				message.EntityParamCaption: nil,
-			},
-		})
-	case m.msg.Document != nil:
-		doc := m.msg.Document
-
-		requestFileID = doc.FileId
-		if doc.FileName != nil {
-			requestFileName = *doc.FileName
+		// seek to start to reuse this cache file
+		//
+		// NOTE: here we do not close the cache reader to keep it available (avoid unexpected file deletion)
+		_, err = cacheRD.Seek(0, io.SeekStart)
+		if err != nil {
+			c.Logger().E("failed to reuse cached data", log.Error(err))
+			c.sendErrorf(errCh, "bad cache reuse")
+			return
 		}
 
-		if doc.MimeType != nil {
-			requestFileContentType = *doc.MimeType
-		}
+		nonText.URL.Set(storageURL)
+		nonText.Data = cacheRD
+		if len(contentType) == 0 {
+			var (
+				buf [32]byte
+				ft  types.Type
+			)
 
-		m.entities = append(m.entities, message.Entity{
-			Kind: message.KindFile,
-			Text: "",
-			Params: map[message.EntityParamKey]interface{}{
-				message.EntityParamURL:     "",
-				message.EntityParamCaption: nil,
-			},
-		})
-	case m.msg.Photo != nil:
-		var (
-			maxSize int
-			id      string
-		)
+			n, _ := cacheRD.Read(buf[:])
+			_, err = cacheRD.Seek(0, io.SeekStart)
+			if err != nil {
+				c.Logger().E("failed to seek to start", log.Error(err))
+				c.sendErrorf(errCh, "bad cache reuse")
+				return
+			}
 
-		for _, photo := range *m.msg.Photo {
-			if size := photo.FileSize; size != nil {
-				if *size > maxSize {
-					id = photo.FileId
-				}
+			ft, err = filetype.Match(buf[:n])
+			if err == nil {
+				contentType = ft.MIME.Value
 			}
 		}
 
-		requestFileID = id
-
-		m.entities = append(m.entities, message.Entity{
-			Kind: message.KindImage,
-			Text: "",
-			Params: map[message.EntityParamKey]interface{}{
-				message.EntityParamURL:     "",
-				message.EntityParamCaption: nil,
-			},
-		})
-	case m.msg.Video != nil:
-		video := m.msg.Video
-
-		requestFileID = video.FileId
-		if video.FileName != nil {
-			requestFileName = *video.FileName
+		if len(contentType) != 0 {
+			nonText.ContentType = contentType
+		} else {
+			// provide default mime type for storage driver
+			nonText.ContentType = "application/octet-stream"
 		}
 
-		if video.MimeType != nil {
-			requestFileContentType = *video.MimeType
+		m.nonTextEntity.Set(nonText)
+	}()
+
+	return errCh, nil
+}
+
+func (c *tgBot) sendErrorf(errCh chan<- error, format string, args ...any) {
+	select {
+	case errCh <- fmt.Errorf(format, args...):
+	case <-c.Context().Done():
+	}
+}
+
+// preprocessText
+//
+// when wg is not nil, there is other worker working on the same message
+func (c *tgBot) preprocessText(
+	wf *bot.Workflow,
+	m *Message,
+	text string,
+	entities []tg.MessageEntityClass,
+	wg *sync.WaitGroup,
+) (errCh chan error, err error) {
+	mEntities := parseTextEntities(text, entities)
+
+	if !mEntities.NeedPreProcess() {
+		m.entities = mEntities
+
+		if wg == nil {
+			m.markReady()
 		}
 
-		m.entities = append(m.entities, message.Entity{
-			Kind: message.KindVideo,
-			Text: "",
-			Params: map[message.EntityParamKey]interface{}{
-				message.EntityParamURL:     "",
-				message.EntityParamCaption: nil,
-			},
-		})
-	case m.msg.Voice != nil:
-		// TODO: sound to text
-		voice := m.msg.Voice
-		requestFileID = voice.FileId
-
-		if voice.MimeType != nil {
-			requestFileContentType = *voice.MimeType
-		}
-
-		m.entities = append(m.entities, message.Entity{
-			Kind: message.KindVideo,
-			Text: "",
-			Params: map[message.EntityParamKey]interface{}{
-				message.EntityParamURL:     "",
-				message.EntityParamCaption: nil,
-			},
-		})
-	case m.msg.VideoNote != nil:
-		// TODO
-		m.markReady()
-		return nil, nil
-	case m.msg.Animation != nil:
-		m.markReady()
-		return nil, nil
-	case m.msg.Sticker != nil,
-		m.msg.Dice != nil,
-		m.msg.Game != nil:
-		// TODO: currently we just ignore them
-		m.markReady()
-		return nil, nil
-	case m.msg.Poll != nil:
-		// TODO
-		m.markReady()
-		return nil, nil
-	case m.msg.Venue != nil:
-		// TODO
-		m.markReady()
-		return nil, nil
-	case m.msg.Location != nil:
-		// TODO
-		m.markReady()
-		return nil, nil
-	default:
-		c.Logger().E("unhandled telegram message", log.Any("msg", m.msg))
-		m.markReady()
 		return nil, nil
 	}
 
 	errCh = make(chan error, 1)
-	var wg sync.WaitGroup
-
-	if m.msg.Caption != nil {
-		cme := parseTelegramEntities(*m.msg.Caption, m.msg.CaptionEntities)
-
+	if wg != nil {
 		wg.Add(1)
-		if cme.NeedPreProcess() {
-			go func() {
-				defer wg.Done()
-
-				err2 := cme.PreProcess(c.Context(), wf.WebArchiver, wf.Storage)
-				if err2 != nil {
-					select {
-					case errCh <- fmt.Errorf("Caption pre-process error: %w", err2):
-					case <-c.Context().Done():
-					}
-				}
-
-				m.update(func() {
-					m.entities[0].Params[message.EntityParamCaption] = cme.Get()
-				})
-			}()
-		}
 	}
 
-	wg.Add(1)
-
 	go func() {
-		wg.Wait()
+		defer func() {
+			if wg == nil {
+				close(errCh)
+				m.markReady()
+			} else {
+				wg.Done()
+			}
+		}()
 
-		close(errCh)
+		err2 := bot.PreprocessText(&c.RTContext, wf, mEntities)
+		if err2 != nil {
+			c.sendErrorf(errCh, "Message pre-process error: %w", err2)
+		}
 
-		m.markReady()
+		m.textEntities = mEntities
 	}()
 
-	go func() {
-		defer wg.Done()
+	return
+}
 
-		logger := c.Logger().WithFields(
-			log.String("filename", requestFileName),
-			log.String("id", requestFileID),
-		)
+func (c *tgBot) download(
+	b *downloader.Builder, sz int, suggestContentType string,
+) (cacheRD rt.CacheReader, contentType string, actualSize int64, err error) {
+	cacheRD, actualSize, err = bot.Download(c.Cache(), func(cacheWR rt.CacheWriter) (err2 error) {
+		var resp tg.StorageFileTypeClass
+		switch {
+		case sz < 5*1024*1024: // < 5MB
+			resp, err2 = b.Stream(c.Context(), cacheWR)
+		default:
+			// 3 threads is optimal for downloading
+			resp, err2 = b.WithThreads(3).Parallel(c.Context(), cacheWR)
+		}
 
-		logger.V("requesting file info")
-		resp, err := c.client.PostGetFile(c.Context(), api.PostGetFileJSONRequestBody{
-			FileId: requestFileID,
-		})
-		if err != nil {
-			logger.I("failed to request get file", log.Error(err))
-
-			select {
-			case errCh <- fmt.Errorf("failed to request file: %w", err):
-			case <-c.Context().Done():
-			}
-
+		if err2 != nil {
 			return
 		}
 
-		f, err := api.ParsePostGetFileResponse(resp)
-		_ = resp.Body.Close()
-		if err != nil {
-			logger.I("failed to parse get file response", log.Error(err))
-
-			select {
-			case errCh <- fmt.Errorf("failed to parse file response: %w", err):
-			case <-c.Context().Done():
-			}
-
-			return
+		switch resp.TypeID() {
+		case tg.StorageFileJpegTypeID:
+			contentType = "image/jpeg"
+		case tg.StorageFileGifTypeID:
+			contentType = "image/gif"
+		case tg.StorageFilePngTypeID:
+			contentType = "image/png"
+		case tg.StorageFilePdfTypeID:
+			contentType = "application/pdf"
+		case tg.StorageFileMp3TypeID:
+			contentType = "audio/mpeg"
+		case tg.StorageFileMovTypeID:
+			contentType = "video/quicktime"
+		case tg.StorageFileMp4TypeID:
+			contentType = "video/mp4"
+		case tg.StorageFileWebpTypeID:
+			contentType = "image/webp"
+		case tg.StorageFileUnknownTypeID:
+			fallthrough
+		case tg.StorageFilePartialTypeID:
+			fallthrough
+		default:
+			contentType = suggestContentType
 		}
 
-		if f.JSON200 == nil || !f.JSON200.Ok {
-			logger.I("telegram get file error", log.String("reason", f.JSONDefault.Description))
+		return
+	})
 
-			select {
-			case errCh <- fmt.Errorf("failed to request file: telegram: %s", f.JSONDefault.Description):
-			case <-c.Context().Done():
-			}
-
-			return
-		}
-
-		if f.JSON200.Result.FilePath == nil {
-			logger.I("telegram file path not found")
-
-			select {
-			case errCh <- fmt.Errorf("Invalid empty path for telegram file downloading"):
-			case <-c.Context().Done():
-			}
-
-			return
-		}
-
-		downloadURL := fmt.Sprintf(
-			"https://api.telegram.org/file/bot%s/%s",
-			c.botToken, *f.JSON200.Result.FilePath,
-		)
-
-		req, err := http.NewRequest(http.MethodGet, downloadURL, nil)
-		if err != nil {
-			logger.I("failed to create bot file download request", log.Error(err))
-
-			select {
-			case errCh <- fmt.Errorf("Internal bot error: %w", err):
-			case <-c.Context().Done():
-			}
-
-			return
-		}
-
-		resp, err = c.client.Client.Do(req)
-		if err != nil {
-			logger.I("failed to request file download", log.Error(err))
-
-			select {
-			case errCh <- fmt.Errorf("Internal bot error: %w", err):
-			case <-c.Context().Done():
-			}
-
-			return
-		}
-		defer func() { _ = resp.Body.Close() }()
-
-		// TODO: add cache layer
-		// 		var cacheFile *os.File
-		// 		cacheFile, err = os.OpenFile("", os.O_WRONLY, 0400)
-		// 		if err != nil {
-		//
-		// 		}
-
-		// fileContent, err := io.ReadAll(resp.Body)
-		if err != nil {
-			logger.I("failed to download file", log.Error(err))
-
-			select {
-			case errCh <- fmt.Errorf("Internal bot error: failed to read file body: %w", err):
-			case <-c.Context().Done():
-			}
-
-			return
-		}
-
-		var (
-			fileExt     string
-			contentType string
-		)
-
-		// filename := hex.EncodeToString(sha256helper.Sum(fileContent))
-
-		// get file extension name
-		if len(requestFileName) != 0 {
-			fileExt = path.Ext(requestFileName)
-		}
-
-		if len(fileExt) == 0 {
-			// 			t, err2 := filetype.Match(fileContent)
-			// 			if err2 == nil {
-			// 				if len(t.Extension) != 0 {
-			// 					fileExt = "." + t.Extension
-			// 				}
-			//
-			// 				contentType = t.MIME.Value
-			// 			}
-		}
-
-		// get content type
-		if len(contentType) == 0 && len(requestFileContentType) != 0 {
-			contentType = requestFileContentType
-		}
-
-		// filename += fileExt
-		logger.V("uploading file",
-			// log.String("upload_name", filename),
-			// log.Int("size", len(fileContent)),
-			log.String("content_type", contentType),
-		)
-
-		// fileURL, err := c.storage.Upload(c.Context(), filename, contentType, resp.Body)
-		if err != nil {
-			select {
-			case errCh <- fmt.Errorf("failed to upload file: %w", err):
-			case <-c.Context().Done():
-			}
-
-			return
-		}
-
-		// logger.V("file uploaded", log.String("url", fileURL))
-
-		m.update(func() {
-			// m.entities[0].Params[message.EntityParamURL] = fileURL
-			m.entities[0].Params[message.EntityParamFilename] = requestFileName
-			// m.entities[0].Params[message.EntityParamData] = fileContent
-		})
-	}()
-
-	return errCh, nil
+	return
 }

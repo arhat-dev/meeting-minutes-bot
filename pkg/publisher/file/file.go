@@ -79,7 +79,7 @@ func (d *Driver) AuthURL() (string, error) {
 	return "", fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Retrieve(key string) ([]message.Entity, error) {
+func (d *Driver) Retrieve(key string) ([]message.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
@@ -117,23 +117,23 @@ func (d *Driver) Delete(keys ...string) error {
 	return err
 }
 
-func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
+func (d *Driver) Publish(title string, body []byte) ([]message.Span, error) {
 	filename := normalizeFilename(title)
 	d.currentFilename.Store(filename)
 
-	return []message.Entity{
+	return []message.Span{
 		{
-			Kind: message.KindPlainText,
-			Text: "Your messages will be rendered into ",
+			SpanFlags: message.SpanFlags_PlainText,
+			Text:      "Your messages will be rendered into ",
 		},
 		{
-			Kind: message.KindPre,
-			Text: filename,
+			SpanFlags: message.SpanFlags_Pre,
+			Text:      filename,
 		},
 	}, os.WriteFile(filepath.Join(d.dir, filename), body, 0640)
 }
 
-func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, error) {
+func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Span, error) {
 	filename := normalizeFilename(d.currentFilename.Load().(string))
 	f, err := os.OpenFile(filepath.Join(d.dir, filename), os.O_APPEND|os.O_WRONLY, 0640)
 	if err != nil {
@@ -147,14 +147,14 @@ func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, err
 		return nil, err
 	}
 
-	return []message.Entity{
+	return []message.Span{
 		{
-			Kind: message.KindPlainText,
-			Text: "Your messages have been rendered into ",
+			SpanFlags: message.SpanFlags_PlainText,
+			Text:      "Your messages have been rendered into ",
 		},
 		{
-			Kind: message.KindPre,
-			Text: filename,
+			SpanFlags: message.SpanFlags_Pre,
+			Text:      filename,
 		},
 	}, nil
 }

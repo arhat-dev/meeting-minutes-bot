@@ -9,6 +9,7 @@ import (
 
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 	"arhat.dev/rs"
 )
 
@@ -115,7 +116,7 @@ func (t *Driver) AuthURL() (string, error) {
 	return t.account.AuthURL, nil
 }
 
-func (t *Driver) Retrieve(url string) ([]message.Entity, error) {
+func (t *Driver) Retrieve(url string) ([]message.Span, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -141,10 +142,10 @@ func (t *Driver) Retrieve(url string) ([]message.Entity, error) {
 				}
 
 				t.page = page
-				return []message.Entity{
+				return []message.Span{
 					{
-						Kind: message.KindPlainText,
-						Text: "You can continue your session now.",
+						SpanFlags: message.SpanFlags_PlainText,
+						Text:      "You can continue your session now.",
 					},
 				}, nil
 			}
@@ -154,7 +155,7 @@ func (t *Driver) Retrieve(url string) ([]message.Entity, error) {
 	return nil, fmt.Errorf("not found")
 }
 
-func (t *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
+func (t *Driver) Publish(title string, body []byte) ([]message.Span, error) {
 	content, err := telegraph.ContentFormat(body)
 	if err != nil {
 		return nil, err
@@ -175,25 +176,23 @@ func (t *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
 	}
 
 	t.page = page
-	return []message.Entity{
+	return []message.Span{
 		{
-			Kind: message.KindPlainText,
-			Text: "The post for your session around ",
+			SpanFlags: message.SpanFlags_PlainText,
+			Text:      "The post for your session around ",
 		},
 		{
-			Kind: message.KindBold,
-			Text: fmt.Sprintf("%q", title),
+			SpanFlags: message.SpanFlags_Bold,
+			Text:      fmt.Sprintf("%q", title),
 		},
 		{
-			Kind: message.KindPlainText,
-			Text: " has been created ",
+			SpanFlags: message.SpanFlags_PlainText,
+			Text:      " has been created ",
 		},
 		{
-			Kind: message.KindURL,
-			Text: "here",
-			Params: map[message.EntityParamKey]interface{}{
-				message.EntityParamURL: page.URL,
-			},
+			SpanFlags: message.SpanFlags_URL,
+			Text:      "here",
+			URL:       rt.NewOptionalValue(page.URL),
 		},
 	}, nil
 }
@@ -290,7 +289,7 @@ func (t *Driver) Delete(urls ...string) error {
 	return nil
 }
 
-func (t *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, error) {
+func (t *Driver) Append(ctx context.Context, body []byte) ([]message.Span, error) {
 	content, err := telegraph.ContentFormat(body)
 	if err != nil {
 		return nil, err
@@ -320,25 +319,23 @@ func (t *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, err
 
 	t.page = updatedPage
 
-	return []message.Entity{
+	return []message.Span{
 		{
-			Kind: message.KindPlainText,
-			Text: "Your session around ",
+			SpanFlags: message.SpanFlags_PlainText,
+			Text:      "Your session around ",
 		},
 		{
-			Kind: message.KindBold,
-			Text: fmt.Sprintf("%q", updatedPage.Title),
+			SpanFlags: message.SpanFlags_Bold,
+			Text:      fmt.Sprintf("%q", updatedPage.Title),
 		},
 		{
-			Kind: message.KindPlainText,
-			Text: " has been closed, view and edit your post ",
+			SpanFlags: message.SpanFlags_PlainText,
+			Text:      " has been closed, view and edit your post ",
 		},
 		{
-			Kind: message.KindURL,
-			Text: "here",
-			Params: map[message.EntityParamKey]interface{}{
-				message.EntityParamURL: updatedPage.URL,
-			},
+			SpanFlags: message.SpanFlags_URL,
+			Text:      "here",
+			URL:       rt.NewOptionalValue(updatedPage.URL),
 		},
 	}, nil
 }

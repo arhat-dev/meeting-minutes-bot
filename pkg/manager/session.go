@@ -1,112 +1,55 @@
 package manager
 
 import (
-	"sync"
-	"time"
-
 	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
 )
 
-func newSession(wf *bot.Workflow, p publisher.Interface) *Session {
-	return &Session{
-		wf: wf,
-
-		msgs: make([]message.Interface, 0, 16),
-
+func newSession[M message.Interface](wf *bot.Workflow, p publisher.Interface) *Session[M] {
+	return &Session[M]{
+		wf:        wf,
 		publisher: p,
-		msgIdx:    make(map[string]int),
-		mu:        &sync.RWMutex{},
+
+		msgs: make([]M, 0, 16),
 	}
 }
 
-type Session struct {
-	// immutable
-	wf *bot.Workflow
-
-	msgs []message.Interface
-
+type Session[M message.Interface] struct {
+	// immutable fileds
+	wf        *bot.Workflow
 	publisher publisher.Interface
-	msgIdx    map[string]int
 
-	mu *sync.RWMutex
+	msgs []M
 }
 
-func (s *Session) Workflow() *bot.Workflow { return s.wf }
+func (s *Session[M]) Workflow() *bot.Workflow           { return s.wf }
+func (s *Session[M]) GetPublisher() publisher.Interface { return s.publisher }
+func (s *Session[M]) RefMessages() *[]M                 { return &s.msgs }
 
-func (s *Session) GetPublisher() publisher.Interface {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return s.publisher
-}
-
-func (s *Session) RefMessages() *[]message.Interface {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	return &s.msgs
-}
-
-func (s *Session) AppendMessage(msg message.Interface) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
+func (s *Session[M]) AppendMessage(msg M) {
 	s.msgs = append(s.msgs, msg)
-	s.msgIdx[msg.ID()] = len(s.msgs) - 1
 }
 
-func (s *Session) DeleteMessage(msgID string) bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	idx, ok := s.msgIdx[msgID]
-	if !ok {
-		// no such id, ignore
-		return false
+func (s *Session[M]) DeleteMessage(msgID uint64) bool {
+	// there won't be many messages
+	for i := range s.msgs {
+		if s.msgs[i].ID() == msgID {
+			s.msgs = append(s.msgs[:i], s.msgs[i+1:]...)
+			return true
+		}
 	}
 
-	delete(s.msgIdx, msgID)
-	s.msgs = append(s.msgs[:idx], s.msgs[idx+1:]...)
-	return true
+	return false
 }
 
-func (s *Session) DeleteFirstNMessage(n int) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if n < len(s.msgs) {
-		for _, msg := range s.msgs[:n] {
-			delete(s.msgIdx, msg.ID())
-		}
-
-		s.msgs = s.msgs[n:]
+func (s *Session[M]) TruncMessages(n int) {
+	if sz := len(s.msgs); n < sz {
+		copy(s.msgs, s.msgs[n:])
+		s.msgs = s.msgs[:sz-n]
 	} else {
-		s.msgs = make([]message.Interface, 0, 16)
-		s.msgIdx = make(map[string]int)
+		s.msgs = s.msgs[:]
 	}
 }
 
-func (s *Session) GenerateContent(gen generator.Interface) (msgOutCount int, _ []byte, _ error) {
-	s.mu.RLock()
-	msgOutCount = len(s.msgs)
-
-	msgCopy := make([]message.Interface, msgOutCount)
-	_ = copy(msgCopy, s.msgs)
-
-	s.mu.RUnlock()
-
-	// ensure every message is ready
-	for _, m := range msgCopy {
-		if !m.Ready() {
-			// TODO: log output
-			time.Sleep(1 * time.Second)
-		}
-	}
-
-	result, err := gen.RenderPageBody(msgCopy)
-
-	return msgOutCount, result, err
-}
+func (s *Session[M]) GetMessages() []M { return s.msgs }

@@ -4,10 +4,13 @@ import (
 	"time"
 )
 
-// Interface defines the set of public methods for a message
+// Interface defines a message
 type Interface interface {
-	ID() string
-	MessageURL() string
+	// ID of the message
+	ID() uint64
+
+	// MessageLink is a link to this message
+	MessageLink() string
 
 	// Timestamp when the message sent
 	Timestamp() time.Time
@@ -15,32 +18,38 @@ type Interface interface {
 	// ChatName is the titile of the chat room/session
 	ChatName() string
 
-	// ChatURL is the url to the chat room/session
-	ChatURL() string
+	// ChatLink is the url to the chat room/session
+	ChatLink() string
 
 	// Author is the sender of the message
 	Author() string
 
-	// AuthorURL is the link to the sender, usually a url (e.g. https://t.me/joe)
-	AuthorURL() string
+	// AuthorLink is the link to the sender, usually a url (e.g. https://t.me/joe)
+	AuthorLink() string
 
 	// when the message was forwarded by the sender, following info describes the original sender
 	IsForwarded() bool
 	OriginalChatName() string
-	OriginalChatURL() string
+	OriginalChatLink() string
 	OriginalAuthor() string
-	OriginalAuthorURL() string
-	OriginalMessageURL() string
+	OriginalAuthorLink() string
+	OriginalMessageLink() string
 
 	IsPrivateMessage() bool
 
 	IsReply() bool
-	ReplyToMessageID() string
+	ReplyToMessageID() uint64
 
-	Entities() []Entity
+	Entities() []Span
 
-	// Ready returns true if the message has been pre-processed
+	// Ready returns true if the message is ready for content generation
 	Ready() bool
 
-	Messages() []Interface
+	// Wait returns true until this message is ready, false when canceled
+	Wait(cancel <-chan struct{}) (done bool)
+
+	// Dispose this message
+	//
+	// - close cache file (if any)
+	Dispose()
 }

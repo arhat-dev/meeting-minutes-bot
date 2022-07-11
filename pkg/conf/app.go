@@ -38,6 +38,9 @@ type Config struct {
 type AppConfig struct {
 	rs.BaseField
 
+	// CacheDir to store multi-media/files received from chat
+	CacheDir string `yaml:"cacheDir"`
+
 	Log log.ConfigSet `yaml:"log"`
 
 	PublicBaseURL string `yaml:"publicBaseURL"`

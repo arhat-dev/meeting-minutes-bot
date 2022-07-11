@@ -2,52 +2,54 @@ package telegram
 
 import (
 	"encoding/base64"
-	"fmt"
 	"strings"
 	"time"
 
 	"arhat.dev/pkg/log"
+	"github.com/gotd/td/telegram/message/styling"
+	"github.com/gotd/td/tg"
 
 	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
-	"arhat.dev/meeting-minutes-bot/pkg/constant"
 	"arhat.dev/meeting-minutes-bot/pkg/manager"
 )
 
-func (c *telegramBot) handleStartCommand(
-	wf *bot.Workflow,
+func (c *tgBot) handleStartCommand(
 	logger log.Interface,
-	chatID, userID uint64,
-	isPrivateMessage bool,
+	wf *bot.Workflow,
+	src *messageSource,
 	params string,
-	msg *api.Message,
+	msg *tg.Message,
 ) error {
-	if !isPrivateMessage {
-		msgID, _ := c.sendTextMessage(
-			chatID, true, true, msg.MessageId,
-			"You cannot <code>/start</code> this bot in groups",
-		)
-
-		c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msg.MessageId))
-		return nil
-	}
-
 	if len(params) == 0 {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Welcome, need some <code>/help</code> ?")
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Plain("Welcome, need some help? send command "),
+			styling.Code(wf.BotCommands.TextOf(bot.BotCmd_Help)),
+			styling.Plain(" to show all commands."),
+		)
 		return nil
 	}
+
+	chatID := uint64(src.Chat.ID())
+	userID := uint64(src.From.GetPtr().ID())
 
 	createOrEnter, err := base64.URLEncoding.DecodeString(params)
 	if err != nil {
 		// this is just a notice for bad /start params
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "I am alive.")
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Spoiler("I am alive."),
+		)
 		return nil
 	}
 
 	parts := strings.SplitN(string(createOrEnter), ":", 3)
 	if len(parts) != 3 {
 		// this is just a notice for bad /start params
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Told you, I'm alive.")
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Spoiler("Told you, I'm alive."),
+		)
 		return nil
 	}
 
@@ -55,19 +57,30 @@ func (c *telegramBot) handleStartCommand(
 
 	originalUserID, err := decodeUint64Hex(parts[1])
 	if err != nil {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, fmt.Sprintf("Internal bot error: %s", err))
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Plain("Bad start params: "),
+			styling.Bold(err.Error()),
+		)
 		return nil
 	}
 
 	// ensure same user
 	if originalUserID != userID {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "The link is not for you :(")
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Bold("The link is not for you :("),
+		)
 		return nil
 	}
 
 	originalChatID, err := decodeUint64Hex(parts[2])
 	if err != nil {
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, fmt.Sprintf("Internal bot error: %s", err))
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Plain("Internal bot error: "),
+			styling.Bold(err.Error()),
+		)
 		return nil
 	}
 
@@ -81,7 +94,10 @@ func (c *telegramBot) handleStartCommand(
 		var ok bool
 		standbySession, ok = c.GetStandbySession(userID)
 		if !ok {
-			_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "No session requested")
+			_, _ = c.sendTextMessage(
+				c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+				styling.Plain("No session requested"),
+			)
 			return nil
 		}
 
@@ -89,17 +105,33 @@ func (c *telegramBot) handleStartCommand(
 	case "edit", "delete", "list":
 		expectedOriginalChatID = chatID
 	default:
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Unknown action")
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Plain("Unknown action"),
+		)
 		return nil
 	}
 
 	// delete `/start` message
-	c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msg.MessageId))
+	c.scheduleMessageDelete(&src.Chat, 5*time.Second, uint64(msg.GetID()))
 
 	if expectedOriginalChatID != originalChatID {
 		// should not happen, defensive check
-		_, _ = c.sendTextMessage(chatID, true, true, msg.MessageId, "Unexpected chat id not match")
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Plain("Unexpected chat id not match"),
+		)
 		return nil
+	}
+
+	origPeer := src.Chat.InputPeer()
+	if chatID != expectedOriginalChatID {
+		cs, err := c.getChatByID(int64(expectedOriginalChatID))
+		if err != nil {
+			return err
+		}
+
+		origPeer = cs.InputPeer()
 	}
 
 	switch action {
@@ -111,14 +143,15 @@ func (c *telegramBot) handleStartCommand(
 
 				// best effort
 				_, _ = c.sendTextMessage(
-					chatID, true, true, 0,
-					fmt.Sprintf("The session was canceled due to error, please retry later: %v", err2),
+					c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent(),
+					styling.Plain("The session was canceled due to error, please retry later: "),
+					styling.Bold(err2.Error()),
 				)
 
 				if standbySession.ChatID != chatID {
 					_, _ = c.sendTextMessage(
-						standbySession.ChatID, true, true, 0,
-						"The session was canceled due to error, please retry later",
+						c.sender.To(origPeer).NoForwards().NoWebpage().Silent(),
+						styling.Plain("The session was canceled due to error, please retry later"),
 					)
 				}
 			}
@@ -126,8 +159,9 @@ func (c *telegramBot) handleStartCommand(
 
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("Internal bot error: %v", err2),
+				c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+				styling.Plain("Internal bot error: "),
+				styling.Bold(err2.Error()),
 			)
 			return err2
 		}
@@ -135,48 +169,63 @@ func (c *telegramBot) handleStartCommand(
 		token, err2 := pub.Login(userConfig)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("%s login failed: %v", pub.Name(), err2),
+				c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+				styling.Bold(pub.Name()),
+				styling.Plain(" login failed: "),
+				styling.Bold(err2.Error()),
 			)
 			return err2
 		}
 
 		_, err2 = c.sendTextMessage(
-			chatID, false, true, 0,
-			fmt.Sprintf(
-				"Here is your %s token, keep it on your own for later use:\n\n<pre>%s</pre>",
-				pub.Name(), token,
-			),
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage(),
+			styling.Plain("Here is your "),
+			styling.Bold(pub.Name()),
+			styling.Plain(" token, keep it on your own for later use:\n\n"),
+			styling.Code(token),
 		)
 		if err2 != nil {
+			// best effort
 			_, _ = c.sendTextMessage(
-				chatID, false, true, msg.MessageId,
-				fmt.Sprintf("Internal bot error: unable to send %s token: %v", pub.Name(), err2),
+				c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Reply(msg.GetID()),
+				styling.Plain("Internal bot error: "),
+				styling.Bold("unable to send auth token"),
 			)
 			return err2
 		}
 
 		content, err2 := wf.Generator.RenderPageHeader()
 		if err2 != nil {
-			return fmt.Errorf("failed to generate initial page: %w", err2)
+			_, _ = c.sendTextMessage(
+				c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Reply(msg.GetID()),
+				styling.Plain("Internal bot error: failed to render page header"),
+				styling.Bold(err2.Error()),
+			)
+
+			return err2
 		}
 
 		note, err2 := pub.Publish(standbySession.Topic, content)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
-				chatID, true, true, msg.MessageId,
-				fmt.Sprintf("%s pre-publish failed: %v", pub.Name(), err2),
+				c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+				styling.Bold(pub.Name()),
+				styling.Plain(" publishing not working: "),
+				styling.Bold(err2.Error()),
 			)
+
 			return err2
 		}
 
 		_, err2 = c.ActivateSession(wf, standbySession.ChatID, userID, pub)
 		if err2 != nil {
-			logger.D("invalid usage of discuss", log.String("reason", err2.Error()))
+			logger.I("session activation error", log.Error(err2))
 			_, _ = c.sendTextMessage(
-				standbySession.ChatID, true, true, 0,
-				fmt.Sprintf("Could not activate the session: %v", err2),
+				c.sender.To(origPeer).NoForwards().NoWebpage().Silent(),
+				styling.Plain("Session not activated: "),
+				styling.Bold(err2.Error()),
 			)
+
 			return err2
 		}
 
@@ -188,16 +237,22 @@ func (c *telegramBot) handleStartCommand(
 		}()
 
 		// error checked by `defer` section
-		_, err2 = c.sendTextMessage(standbySession.ChatID, true, true, 0, renderEntities(note))
+		_, err2 = c.sendTextMessage(
+			c.sender.To(origPeer).NoForwards().NoWebpage().Silent(),
+			translateEntities(note)...,
+		)
 
 		return nil
 	case "enter":
-		msgID, err2 := c.sendTextMessage(chatID, false, true, 0,
-			fmt.Sprintf("Enter your %s token as a reply to this message", wf.PublisherName()),
-			api.ForceReply{
-				ForceReply: true,
-				Selective:  constant.True(),
-			},
+		msgID, err2 := c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Markup(&tg.ReplyKeyboardForceReply{
+				SingleUse:   true,
+				Selective:   true,
+				Placeholder: wf.PublisherName() + " token",
+			}),
+			styling.Plain("Enter your "),
+			styling.Bold(wf.PublisherName()),
+			styling.Plain(" token as a reply to this message"),
 		)
 		if err2 != nil {
 			// this message must be sent to user, this error will trigger message redelivery
@@ -206,11 +261,11 @@ func (c *telegramBot) handleStartCommand(
 
 		if !c.MarkRequestExpectingInput(userID, uint64(msgID)) {
 			msgID2, _ := c.sendTextMessage(
-				chatID, false, true, msg.MessageId,
-				"The session is not expecting any input",
+				c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Reply(msg.GetID()),
+				styling.Plain("The session is not expecting any input"),
 			)
 
-			c.scheduleMessageDelete(chatID, 5*time.Second, uint64(msgID), uint64(msgID2))
+			c.scheduleMessageDelete(&src.Chat, 5*time.Second, uint64(msgID), uint64(msgID2))
 
 			return nil
 		}
@@ -218,21 +273,25 @@ func (c *telegramBot) handleStartCommand(
 		return nil
 	case "edit", "delete", "list":
 		msgID, err2 := c.sendTextMessage(
-			chatID, true, true, 0,
-			fmt.Sprintf("Enter your %s token as a reply to this message", wf.PublisherName()),
-			api.ForceReply{
-				ForceReply: true,
-				Selective:  constant.True(),
-			},
+			c.sender.To(src.Chat.InputPeer()).NoForwards().
+				NoWebpage().Markup(&tg.ReplyKeyboardForceReply{
+				SingleUse:   true,
+				Selective:   true,
+				Placeholder: wf.PublisherName() + " token",
+			}),
+			styling.Plain("Enter your "),
+			styling.Bold(wf.PublisherName()),
+			styling.Plain(" token as a reply to this message"),
 		)
 
 		if !c.MarkRequestExpectingInput(userID, uint64(msgID)) {
 			_, _ = c.sendTextMessage(
-				chatID, true, true, 0,
-				"Internal bot error: could not find your pending request",
+				c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent(),
+				styling.Plain("Internal bot error: "),
+				styling.Bold("could not find your pending request"),
 			)
 
-			c.scheduleMessageDelete(chatID, 100*time.Millisecond, uint64(msgID))
+			c.scheduleMessageDelete(&src.Chat, 100*time.Millisecond, uint64(msgID))
 
 			return nil
 		}
@@ -242,8 +301,8 @@ func (c *telegramBot) handleStartCommand(
 		return err2
 	default:
 		_, _ = c.sendTextMessage(
-			chatID, true, true, msg.MessageId,
-			"Nice try!",
+			c.sender.To(src.Chat.InputPeer()).NoForwards().NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Spoiler("Nice try!"),
 		)
 
 		return nil

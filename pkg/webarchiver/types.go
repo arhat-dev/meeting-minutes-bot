@@ -2,7 +2,8 @@ package webarchiver
 
 import (
 	"context"
-	"io"
+
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 type Config interface {
@@ -21,8 +22,8 @@ type Result interface {
 	// WARC get archived .warc file
 	//
 	// ref: https://en.wikipedia.org/wiki/Web_ARChive
-	WARC() (data io.ReadSeekCloser, size int64)
+	WARC() (data rt.CacheReader, size int64)
 
 	// Screenshot get archived bitmap data
-	Screenshot() (data io.ReadSeekCloser, size int64)
+	Screenshot() (data rt.CacheReader, size int64)
 }

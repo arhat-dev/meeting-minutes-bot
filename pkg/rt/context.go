@@ -6,17 +6,20 @@ import (
 	"arhat.dev/pkg/log"
 )
 
-func NewContext(ctx context.Context, logger log.Interface) RTContext {
+func NewContext(ctx context.Context, logger log.Interface, cache Cache) RTContext {
 	return RTContext{
 		ctx:    ctx,
 		logger: logger,
+		cache:  cache,
 	}
 }
 
 type RTContext struct {
 	ctx    context.Context
 	logger log.Interface
+	cache  Cache
 }
 
-func (c *RTContext) Context() context.Context { return c.ctx }
-func (c *RTContext) Logger() log.Interface    { return c.logger }
+func (r *RTContext) Context() context.Context { return r.ctx }
+func (r *RTContext) Logger() log.Interface    { return r.logger }
+func (r *RTContext) Cache() Cache             { return r.cache }

@@ -25,7 +25,7 @@ type TemplateData struct {
 	Messages []message.Interface
 }
 
-type FuncMap map[string]interface{}
+type FuncMap = map[string]any
 
 // Result serves as type handle for arhat.dev/rs
 type Result interface {

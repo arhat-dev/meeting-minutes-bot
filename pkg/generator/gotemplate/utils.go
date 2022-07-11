@@ -8,17 +8,38 @@ import (
 	"path"
 	ttpl "text/template"
 
-	"arhat.dev/pkg/textquery"
 	"github.com/Masterminds/sprig/v3"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
 )
 
 type tplExecutor interface {
-	ExecuteTemplate(wr io.Writer, name string, data interface{}) error
+	ExecuteTemplate(wr io.Writer, name string, data *generator.TemplateData) error
 }
 
-func loadTemplatesFromFS(base tplExecutor, dirFS fs.FS) (tplExecutor, error) {
+type hTemplate struct{ htpl.Template }
+
+func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *generator.TemplateData) error {
+	clone, err := ht.Template.Clone()
+	if err != nil {
+		return err
+	}
+
+	return clone.Funcs(generator.CreateFuncMap(data)).ExecuteTemplate(wr, name, data)
+}
+
+type tTemplate struct{ ttpl.Template }
+
+func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *generator.TemplateData) error {
+	clone, err := tt.Template.Clone()
+	if err != nil {
+		return err
+	}
+
+	return clone.Funcs(generator.CreateFuncMap(data)).ExecuteTemplate(wr, name, data)
+}
+
+func loadTemplatesFromFS(base any, dirFS fs.FS) (tplExecutor, error) {
 	entries, err := fs.ReadDir(dirFS, ".")
 	if err != nil {
 		return nil, fmt.Errorf("load template: %w", err)
@@ -37,23 +58,24 @@ func loadTemplatesFromFS(base tplExecutor, dirFS fs.FS) (tplExecutor, error) {
 
 	switch t := base.(type) {
 	case *htpl.Template:
-		return t.
-			Funcs(sprig.HtmlFuncMap()).
-			Funcs(htpl.FuncMap(generator.CreateFuncMap())).
-			Funcs(customFuncMap).
+		ht, err := t.Funcs(sprig.HtmlFuncMap()).
+			Funcs(htpl.FuncMap(generator.FakeFuncMap())).
 			ParseFS(dirFS, pattern)
-	case *ttpl.Template:
-		return t.
-			Funcs(sprig.TxtFuncMap()).
-			Funcs(ttpl.FuncMap(generator.CreateFuncMap())).
-			Funcs(customFuncMap).
-			ParseFS(dirFS, pattern)
-	default:
-		return nil, fmt.Errorf("unexpected no base template: %T", base)
-	}
-}
+		if err != nil {
+			return nil, err
+		}
 
-var customFuncMap = map[string]interface{}{
-	"jq":      textquery.JQ[byte, string],
-	"jqBytes": textquery.JQ[byte, []byte],
+		return &hTemplate{*ht}, nil
+	case *ttpl.Template:
+		tt, err := t.Funcs(sprig.TxtFuncMap()).
+			Funcs(ttpl.FuncMap(generator.FakeFuncMap())).
+			ParseFS(dirFS, pattern)
+		if err != nil {
+			return nil, err
+		}
+
+		return &tTemplate{*tt}, nil
+	default:
+		return nil, fmt.Errorf("unknown template type %T", base)
+	}
 }

@@ -82,7 +82,7 @@ func (d *Driver) AuthURL() (string, error) {
 	return "", fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Retrieve(key string) ([]message.Entity, error) {
+func (d *Driver) Retrieve(key string) ([]message.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
@@ -94,7 +94,7 @@ func (d *Driver) Delete(urls ...string) error {
 	return fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, error) {
+func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Span, error) {
 	var args []string
 	buf := &bytes.Buffer{}
 	for i, tpl := range d.argTpls {
@@ -111,35 +111,35 @@ func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Entity, err
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if len(output) != 0 {
-			return []message.Entity{
+			return []message.Span{
 				{
-					Kind: message.KindPre,
-					Text: fmt.Sprintf("%s\n%v", output, err),
+					SpanFlags: message.SpanFlags_Pre,
+					Text:      fmt.Sprintf("%s\n%v", output, err),
 				},
 			}, nil
 		}
 
-		return []message.Entity{
+		return []message.Span{
 			{
-				Kind: message.KindPre,
-				Text: err.Error(),
+				SpanFlags: message.SpanFlags_Pre,
+				Text:      err.Error(),
 			},
 		}, nil
 	}
 
-	return []message.Entity{
+	return []message.Span{
 		{
-			Kind: message.KindPre,
-			Text: string(output),
+			SpanFlags: message.SpanFlags_Pre,
+			Text:      string(output),
 		},
 	}, nil
 }
 
-func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
-	return []message.Entity{
+func (d *Driver) Publish(title string, body []byte) ([]message.Span, error) {
+	return []message.Span{
 		{
-			Kind: message.KindPlainText,
-			Text: fmt.Sprintf("You are using %s interpreter.", d.bin),
+			SpanFlags: message.SpanFlags_PlainText,
+			Text:      fmt.Sprintf("You are using %s interpreter.", d.bin),
 		},
 	}, nil
 }

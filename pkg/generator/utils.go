@@ -1,14 +1,36 @@
 package generator
 
 import (
+	"fmt"
+
 	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/pkg/textquery"
 )
 
-func CreateFuncMap() FuncMap {
+// FakeFuncMap creates a set of fake funcs with same function definitions as actual funcs
+func FakeFuncMap() FuncMap {
 	return map[string]any{
-		"findMessage": func(messages []message.Interface, id string) message.Interface {
-			// TODO: binary search?
-			for _, m := range messages {
+		"jq":          func(query string, data any) (string, error) { return "", nil },
+		"findMessage": func(id uint64) message.Interface { return nil },
+	}
+}
+
+// CreateFuncMap creates actual funcs for templates
+func CreateFuncMap(data *TemplateData) FuncMap {
+	return map[string]any{
+		"jq": func(query string, data any) (string, error) {
+			switch t := data.(type) {
+			case []byte:
+				return textquery.JQ[byte](query, t)
+			case string:
+				return textquery.JQ[byte](query, t)
+			default:
+				return "", fmt.Errorf("unexpected non bytes nor string data %T", t)
+			}
+		},
+
+		"findMessage": func(id uint64) message.Interface {
+			for _, m := range data.Messages {
 				if m.ID() == id {
 					return m
 				}

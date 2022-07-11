@@ -7,18 +7,13 @@ import (
 	ttpl "text/template"
 )
 
-func newHTMLTemplate() tplExecutor {
-	return htpl.New("")
-}
-
-func newTextTemplate() tplExecutor {
-	return ttpl.New("")
-}
+func newHTMLTemplate() any { return htpl.New("") }
+func newTextTemplate() any { return ttpl.New("") }
 
 type templateLoadSpec struct {
 	name    string
 	fs      fs.FS
-	factory func() tplExecutor
+	factory func() any
 }
 
 var (

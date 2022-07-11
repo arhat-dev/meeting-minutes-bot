@@ -39,15 +39,15 @@ func (nop) AuthURL() (string, error) {
 	return "", fmt.Errorf("unimplemented")
 }
 
-func (nop) Retrieve(url string) ([]message.Entity, error) {
+func (nop) Retrieve(url string) ([]message.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (nop) Publish(title string, body []byte) ([]message.Entity, error) {
+func (nop) Publish(title string, body []byte) ([]message.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (nop) Append(ctx context.Context, body []byte) ([]message.Entity, error) {
+func (nop) Append(ctx context.Context, body []byte) ([]message.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 

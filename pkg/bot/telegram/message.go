@@ -1,219 +1,224 @@
 package telegram
 
 import (
-	"strconv"
-	"sync"
+	"strings"
 	"sync/atomic"
 	"time"
 
-	api "arhat.dev/meeting-minutes-bot/pkg/botapis/telegram"
 	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"github.com/gotd/td/tg"
 )
 
 var _ message.Interface = (*Message)(nil)
 
-func newTelegramMessage(msg *api.Message, msgs *[]message.Interface) Message {
-	return Message{
-		ready: 0,
+type msgFlag uint32
 
-		id: formatMessageID(msg.MessageId),
+const (
+	msgFlag_Private = 1 << iota
+	msgFlag_Reply
+	msgFlag_Fwd
+)
 
-		msg:  msg,
-		msgs: msgs,
+func (m msgFlag) IsPrivateMessage() bool { return m&msgFlag_Private != 0 }
+func (m msgFlag) IsReply() bool          { return m&msgFlag_Reply != 0 }
+func (m msgFlag) IsForwarded() bool      { return m&msgFlag_Fwd != 0 }
 
-		entities: nil,
+func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*Message) (ret Message) {
+	var (
+		buf strings.Builder
+	)
 
-		mu: &sync.Mutex{},
+	ret.id = uint64(msg.GetID())
+	// TODO: set tz by user location
+	ret.timestamp = time.Unix(int64(msg.GetDate()), 0).Local()
+	ret.msgs = msgs
+
+	if src.Chat.IsPrivateChat() {
+		ret.msgFlag |= msgFlag_Private
 	}
+
+	if replyTo, ok := msg.GetReplyTo(); ok {
+		ret.msgFlag |= msgFlag_Reply
+		ret.replyToMessageID = uint64(replyTo.GetReplyToMsgID())
+	}
+
+	if !src.FwdFrom.IsNil() {
+		ret.msgFlag |= msgFlag_Fwd
+
+		ret.origAuthor = src.FwdFrom.GetPtr().Title()
+		if len(ret.origAuthor) == 0 {
+			buf.Reset()
+			buf.WriteString(src.FwdFrom.GetPtr().Firstname())
+			if buf.Len() != 0 {
+				buf.WriteString(" ")
+			}
+			buf.WriteString(src.FwdFrom.GetPtr().Lastname())
+			ret.origAuthor = buf.String()
+		}
+
+		if len(src.FwdFrom.GetPtr().Username()) != 0 {
+			buf.Reset()
+			buf.WriteString("https://t.me/")
+			buf.WriteString(src.FwdFrom.GetPtr().Username())
+			ret.origAuthorLink = buf.String()
+		}
+	}
+
+	ret.chatName = src.Chat.Title()
+	if len(ret.chatName) == 0 {
+		buf.Reset()
+		buf.WriteString(src.Chat.Firstname())
+		if buf.Len() != 0 {
+			buf.WriteString(" ")
+		}
+		buf.WriteString(src.Chat.Lastname())
+
+		ret.chatName = buf.String()
+	}
+
+	if !ret.IsPrivateMessage() && len(src.Chat.Username()) != 0 {
+		buf.Reset()
+		buf.WriteString("https://t.me/")
+		buf.WriteString(src.Chat.Username())
+		ret.chatURL = buf.String()
+
+		buf.WriteString("/")
+		buf.WriteString(formatMessageID(ret.id))
+		ret.msgURL = buf.String()
+	}
+
+	if !src.From.IsNil() {
+		ret.author = src.From.GetPtr().Title()
+
+		if len(ret.author) != 0 {
+			buf.Reset()
+			buf.WriteString(src.From.GetPtr().Firstname())
+			if buf.Len() != 0 {
+				buf.WriteString(" ")
+			}
+			buf.WriteString(src.From.GetPtr().Lastname())
+			ret.author = buf.String()
+		}
+	}
+
+	if !src.From.IsNil() && len(src.From.GetPtr().Username()) != 0 {
+		buf.Reset()
+		buf.WriteString("https://t.me/")
+		buf.WriteString(src.From.GetPtr().Username())
+		ret.authorURL = buf.String()
+	}
+
+	if !src.FwdChat.IsNil() {
+		ret.origChatName = src.FwdChat.GetPtr().Title()
+		if len(ret.origChatName) == 0 {
+			buf.Reset()
+			buf.WriteString(src.FwdChat.GetPtr().Firstname())
+			if buf.Len() != 0 {
+				buf.WriteString(" ")
+			}
+			buf.WriteString(src.FwdChat.GetPtr().Lastname())
+			ret.origChatName = buf.String()
+		}
+
+		if len(src.FwdChat.GetPtr().Username()) != 0 {
+			buf.Reset()
+			buf.WriteString("https://t.me/")
+			buf.WriteString(src.FwdChat.GetPtr().Username())
+			ret.origChatLink = buf.String()
+
+			if fwdHdr, ok := msg.GetFwdFrom(); ok {
+				fwdMsgID, ok := fwdHdr.GetSavedFromMsgID()
+				if ok {
+					buf.WriteString("/")
+					buf.WriteString(formatMessageID(fwdMsgID))
+					ret.origMsgURL = buf.String()
+				}
+			}
+		}
+	}
+
+	return
 }
 
 // Message represents a single telegram message
 type Message struct {
 	ready uint32
+	msgFlag
 
-	id string
+	id               uint64
+	replyToMessageID uint64
 
-	msg      *api.Message
-	entities []message.Entity
-	msgs     *[]message.Interface
+	chatName, chatURL string
+	author, authorURL string
+	msgURL            string
 
-	mu *sync.Mutex
+	origChatName, origChatLink string
+	origAuthor, origAuthorLink string
+	origMsgURL                 string
+
+	timestamp time.Time
+
+	// temporary buffer for background worker, merged into entities when markReady() called
+	nonTextEntity rt.Optional[message.Span]
+	textEntities  []message.Span
+
+	entities []message.Span
+
+	msgs *[]*Message
+
+	cancelBgJob func()
+	wait        chan struct{}
 }
 
-func (m *Message) ID() string {
-	return m.id
+func (m *Message) ID() uint64           { return m.id }
+func (m *Message) Timestamp() time.Time { return m.timestamp }
+
+func (m *Message) ChatName() string    { return m.chatName }
+func (m *Message) ChatLink() string    { return m.chatURL }
+func (m *Message) MessageLink() string { return m.msgURL }
+func (m *Message) Author() string      { return m.author }
+func (m *Message) AuthorLink() string  { return m.authorURL }
+
+func (m *Message) OriginalChatName() string    { return m.origChatName }
+func (m *Message) OriginalChatLink() string    { return m.origChatLink }
+func (m *Message) OriginalMessageLink() string { return m.origMsgURL }
+func (m *Message) OriginalAuthor() string      { return m.origAuthor }
+func (m *Message) OriginalAuthorLink() string  { return m.origAuthorLink }
+
+func (m *Message) ReplyToMessageID() uint64 { return m.replyToMessageID }
+
+func (m *Message) Entities() []message.Span { return m.entities }
+
+func (m *Message) Ready() bool { return atomic.LoadUint32(&m.ready) == 2 }
+
+func (m *Message) Wait(cancel <-chan struct{}) (done bool) {
+	select {
+	case <-cancel:
+		m.cancelBgJob()
+		return false
+	case <-m.wait:
+		return true
+	}
 }
 
-func (m *Message) MessageURL() string {
-	url := m.ChatURL()
-	if len(url) == 0 {
-		return ""
-	}
-
-	return url + "/" + formatMessageID(m.msg.MessageId)
-}
-
-func (m *Message) Timestamp() time.Time {
-	return time.Unix(int64(m.msg.Date), 0).Local()
-}
-
-func (m *Message) ChatName() string {
-	var name string
-
-	if cfn := m.msg.Chat.FirstName; cfn != nil {
-		name = *cfn
-	}
-
-	if cln := m.msg.Chat.LastName; cln != nil {
-		name += " " + *cln
-	}
-
-	return name
-}
-
-func (m *Message) ChatURL() string {
-	if m.IsPrivateMessage() {
-		return ""
-	}
-
-	if cu := m.msg.Chat.Username; cu != nil {
-		return "https://t.me/" + *cu
-	}
-
-	return ""
-}
-
-func (m *Message) Author() string {
-	if m.msg.From == nil {
-		return ""
-	}
-
-	name := m.msg.From.FirstName
-	if fln := m.msg.From.LastName; fln != nil {
-		name += " " + *fln
-	}
-
-	return name
-}
-
-func (m *Message) AuthorURL() string {
-	if m.msg.From == nil {
-		return ""
-	}
-
-	if fu := m.msg.From.Username; fu != nil {
-		return "https://t.me/" + *fu
-	}
-
-	return ""
-}
-
-func (m *Message) IsForwarded() bool {
-	return m.msg.ForwardFrom != nil ||
-		m.msg.ForwardFromChat != nil ||
-		m.msg.ForwardSenderName != nil ||
-		m.msg.ForwardFromMessageId != nil
-}
-
-func (m *Message) OriginalMessageURL() string {
-	chatURL := m.OriginalChatURL()
-	if len(chatURL) == 0 {
-		return ""
-	}
-
-	if ffmi := m.msg.ForwardFromMessageId; ffmi != nil {
-		return chatURL + "/" + strconv.FormatInt(int64(*ffmi), 10)
-	}
-
-	return ""
-}
-
-func (m *Message) OriginalChatName() string {
-	if fc := m.msg.ForwardFromChat; fc != nil {
-		var name string
-		if fc.FirstName != nil {
-			name += *fc.FirstName
+func (m *Message) Dispose() {
+	for i := range m.entities {
+		if m.entities[i].Data != nil {
+			_ = m.entities[i].Data.Close()
 		}
-
-		if fc.LastName != nil {
-			name += " " + *fc.LastName
-		}
-
-		return name
 	}
-
-	return ""
-}
-
-func (m *Message) OriginalChatURL() string {
-	if fc := m.msg.ForwardFromChat; fc != nil && fc.Username != nil {
-		return "https://t.me/" + *fc.Username
-	}
-
-	return ""
-}
-
-func (m *Message) OriginalAuthor() string {
-	if ff := m.msg.ForwardFrom; ff != nil {
-		name := ff.FirstName
-		if ff.LastName != nil {
-			name += " " + *ff.LastName
-		}
-
-		return name
-	}
-
-	return ""
-}
-
-func (m *Message) OriginalAuthorURL() string {
-	if ff := m.msg.ForwardFrom; ff != nil && ff.Username != nil {
-		return "https://t.me/" + *m.msg.ForwardFrom.Username
-	}
-
-	return ""
-}
-
-func (m *Message) IsPrivateMessage() bool {
-	return m.msg.Chat.Type == api.ChatTypePrivate
-}
-
-func (m *Message) IsReply() bool {
-	return m.msg.ReplyToMessage != nil
-}
-
-func (m *Message) ReplyToMessageID() string {
-	if m.msg.ReplyToMessage != nil {
-		return formatMessageID(m.msg.ReplyToMessage.MessageId)
-	}
-
-	return ""
-}
-
-func (m *Message) Entities() []message.Entity {
-	return m.entities
-}
-
-func (m *Message) Messages() []message.Interface {
-	if m.msgs != nil {
-		return *m.msgs
-	}
-
-	return nil
-}
-
-// ready for content generation
-func (m *Message) Ready() bool {
-	return atomic.LoadUint32(&m.ready) == 1
 }
 
 func (m *Message) markReady() {
-	atomic.StoreUint32(&m.ready, 1)
-}
+	if atomic.CompareAndSwapUint32(&m.ready, 0, 1) {
+		if m.nonTextEntity.IsNil() {
+			m.entities = m.textEntities
+		} else {
+			m.entities = append(m.textEntities, m.nonTextEntity.Get())
+		}
 
-func (m *Message) update(do func()) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	do()
+		m.textEntities = nil
+		atomic.StoreUint32(&m.ready, 2)
+	}
 }

@@ -17,16 +17,16 @@
 {{- end -}}
 
 {{- if .IsReply -}}
-  {{- $msg_replied := findMessage .Messages .ReplyToMessageID -}}
+  {{- $msg_replied := findMessage .ReplyToMessageID -}}
   {{- if $msg_replied -}}
     {{- nindent 0 "" -}}
     {{- /* I will delete spaces :) */ -}}
     (in reply to
       {{- indent 1 "" -}}
       {{- template "message.author.link" $msg_replied -}}
-      {{- if $msg_replied.MessageURL -}}
+      {{- if $msg_replied.MessageLink -}}
         {{- indent 1 "" -}}
-        <a href="{{- $msg_replied.MessageURL -}}">[Message]</a>
+        <a href="{{- $msg_replied.MessageLink -}}">[Message]</a>
       {{- end -}}
     )
     {{- /* I will delete spaces :) */ -}}

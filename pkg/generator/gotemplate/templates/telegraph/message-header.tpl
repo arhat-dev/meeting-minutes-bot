@@ -1,41 +1,41 @@
 {{- define "message.author.link" -}}
-  {{- if .AuthorURL -}}
-    {{- if .MessageURL -}}{{- indent 1 "" -}}{{- end -}}
-    <a href="{{- .AuthorURL -}}">
+  {{- if .AuthorLink -}}
+    {{- if .MessageLink -}}{{- indent 1 "" -}}{{- end -}}
+    <a href="{{- .AuthorLink -}}">
   {{- end -}}
   {{- .Author -}}
-  {{- if .AuthorURL -}}</a>{{- end -}}
+  {{- if .AuthorLink -}}</a>{{- end -}}
 
   {{- if .ChatName -}}
     {{- indent 1 "" -}}@{{- indent 1 "" -}}
-    {{- if .ChatURL -}}
-      <a href="{{- .ChatURL -}}">
+    {{- if .ChatLink -}}
+      <a href="{{- .ChatLink -}}">
     {{- end -}}
 
       {{- .ChatName -}}
 
-    {{- if .ChatURL -}}
+    {{- if .ChatLink -}}
       </a>
     {{- end -}}
   {{- end -}}
 
   {{- if and .IsForwarded (gt (len .OriginalAuthor) 0) -}}
     {{- indent 1 "" -}}From{{- indent 1 "" -}}
-    {{- if .OriginalAuthorURL -}}
-      <a href="{{- .OriginalAuthorURL -}}">
+    {{- if .OriginalAuthorLink -}}
+      <a href="{{- .OriginalAuthorLink -}}">
     {{- end -}}
       {{- .OriginalAuthor -}}
-    {{- if .OriginalAuthorURL -}}
+    {{- if .OriginalAuthorLink -}}
       </a>
     {{- end -}}
 
     {{- if .OriginalChatName -}}
       @{{- indent 1 "" -}}
-      {{- if .OriginalChatURL -}}
-        <a href="{{- .OriginalChatURL -}}">
+      {{- if .OriginalChatLink -}}
+        <a href="{{- .OriginalChatLink -}}">
       {{- end -}}
         {{- .OriginalChatName -}}
-      {{- if .OriginalChatURL -}}
+      {{- if .OriginalChatLink -}}
         </a>
       {{- end -}}
     {{- end -}}
@@ -47,8 +47,8 @@
 <p>
   {{- /* Message Link */ -}}
 
-  {{- if .MessageURL -}}
-    <a href="{{- .MessageURL -}}">[Message]</a>
+  {{- if .MessageLink -}}
+    <a href="{{- .MessageLink -}}">[Message]</a>
   {{- end -}}
 
   {{- /* Message Author Info */ -}}

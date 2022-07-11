@@ -158,7 +158,7 @@ func (d *Driver) AuthURL() (string, error) {
 	return "", fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Retrieve(key string) ([]message.Entity, error) {
+func (d *Driver) Retrieve(key string) ([]message.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
@@ -170,7 +170,7 @@ func (d *Driver) Delete(urls ...string) error {
 	return fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Entity, error) {
+func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Span, error) {
 	client := &http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -258,27 +258,27 @@ func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Entity,
 			return nil, err
 		}
 
-		return []message.Entity{
+		return []message.Span{
 			{
-				Kind: message.KindPre,
-				Text: buf.String(),
+				SpanFlags: message.SpanFlags_Pre,
+				Text:      buf.String(),
 			},
 		}, nil
 	}
 
-	return []message.Entity{
+	return []message.Span{
 		{
-			Kind: message.KindPre,
-			Text: string(data),
+			SpanFlags: message.SpanFlags_Pre,
+			Text:      string(data),
 		},
 	}, nil
 }
 
-func (d *Driver) Publish(title string, body []byte) ([]message.Entity, error) {
-	return []message.Entity{
+func (d *Driver) Publish(title string, body []byte) ([]message.Span, error) {
+	return []message.Span{
 		{
-			Kind: message.KindPlainText,
-			Text: "HTTP publisher ready",
+			SpanFlags: message.SpanFlags_PlainText,
+			Text:      "HTTP publisher ready",
 		},
 	}, nil
 }
