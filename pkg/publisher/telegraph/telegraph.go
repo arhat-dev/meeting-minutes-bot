@@ -3,6 +3,8 @@ package telegraph
 import (
 	"context"
 	"fmt"
+	urlpkg "net/url"
+	"strings"
 	"sync"
 
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
@@ -83,7 +85,14 @@ func (t *Driver) AuthURL() (string, error) {
 	return t.account.AuthURL, nil
 }
 
-func (t *Driver) Retrieve(url string) ([]rt.Span, error) {
+func (t *Driver) Retrieve(url string) (_ []rt.Span, err error) {
+	u, err := urlpkg.Parse(url)
+	if err != nil {
+		return
+	}
+
+	path := strings.TrimLeft(u.Path, "/")
+
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -108,7 +117,7 @@ func (t *Driver) Retrieve(url string) ([]rt.Span, error) {
 		max = list.TotalCount
 
 		for _, p := range list.Pages {
-			if p.URL == url {
+			if path == p.Path {
 				page, err2 := t.client.GetPage(p.Path)
 				if err2 != nil {
 					return nil, err2

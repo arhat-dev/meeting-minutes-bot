@@ -26,11 +26,11 @@ var _ bot.Interface = (*tgBot)(nil)
 type tgBot struct {
 	bot.BaseBot
 
-	isBotAccount bool
-	botToken     string
-	username     string // set when Configure() called
+	isBot    bool
+	botToken string
+	username string // set when Configure() called
 
-	client     telegram.Client
+	client     *telegram.Client
 	dispatcher tg.UpdateDispatcher
 	sender     message.Sender
 	downloader downloader.Downloader
@@ -131,9 +131,6 @@ func (c *tgBot) appendSessionMessage(
 
 	if errCh != nil {
 		go func(msgID int) {
-			defer func() {
-
-			}()
 			for errProcessing := range errCh {
 				// best effort, no error check
 				_, _ = c.sendTextMessage(
@@ -160,6 +157,15 @@ func (c *tgBot) handleBotCmd(
 ) error {
 	logger.V("handle bot command", log.String("cmd", cmd))
 
+	if !src.From.IsUser() {
+		_, _ = c.sendTextMessage(
+			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			styling.Plain("Only non-anonymous users can use this bot"),
+		)
+
+		return nil
+	}
+
 	chatID := src.Chat.ID()
 	userID := src.From.ID()
 
@@ -167,8 +173,7 @@ func (c *tgBot) handleBotCmd(
 	if !src.Chat.IsPrivateChat() {
 		// ensure only admin can use this bot in group
 
-		if src.Chat.IsGroupChat() {
-			// TODO: support group chat?
+		if src.Chat.IsLegacyGroupChat() {
 			_, _ = c.sendTextMessage(
 				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
 				styling.Plain("Unsupported chat type: please consider upgrading this chat to supergroup."),
@@ -195,21 +200,10 @@ func (c *tgBot) handleBotCmd(
 			return err
 		}
 
-		var isAdmin bool
-		switch p := pt.GetParticipant().(type) {
+		switch pt.GetParticipant().(type) {
 		case *tg.ChannelParticipantCreator:
-			isAdmin = true
-			_ = p
 		case *tg.ChannelParticipantAdmin:
-			isAdmin = true
-			_ = p
-		case *tg.ChannelParticipant:
-		case *tg.ChannelParticipantSelf:
-		case *tg.ChannelParticipantBanned:
-		case *tg.ChannelParticipantLeft:
-		}
-
-		if !isAdmin {
+		default:
 			msgID, _ := c.sendTextMessage(
 				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
 				styling.Plain("Only administrators can use this bot in group chat"),
@@ -548,40 +542,26 @@ func (c *tgBot) handleBotCmd(
 			err     error
 		)
 
-		if c.isBotAccount {
-			if src.Chat.IsPrivateChat() {
+		if c.isBot {
+			if src.Chat.IsPrivateChat() || src.Chat.IsLegacyGroupChat() {
 				history, err = c.client.API().MessagesGetMessages(c.Context(), []tg.InputMessageClass{
 					&tg.InputMessageID{
 						ID: replyTo.GetReplyToMsgID(),
 					},
 				})
 			} else {
-				switch peer := src.Chat.InputPeer().(type) {
-				case *tg.InputPeerChannel:
-					history, err = c.client.API().ChannelsGetMessages(c.Context(), &tg.ChannelsGetMessagesRequest{
-						Channel: &tg.InputChannel{
-							ChannelID:  peer.ChannelID,
-							AccessHash: peer.AccessHash,
+				peer := src.Chat.InputPeer().(*tg.InputPeerChannel)
+				history, err = c.client.API().ChannelsGetMessages(c.Context(), &tg.ChannelsGetMessagesRequest{
+					Channel: &tg.InputChannel{
+						ChannelID:  peer.ChannelID,
+						AccessHash: peer.AccessHash,
+					},
+					ID: []tg.InputMessageClass{
+						&tg.InputMessageID{
+							ID: replyTo.GetReplyToMsgID(),
 						},
-						ID: []tg.InputMessageClass{
-							&tg.InputMessageID{
-								ID: replyTo.GetReplyToMsgID(),
-							},
-						},
-					})
-				case *tg.InputPeerChat:
-					// TODO: find workaround
-					c.Logger().I("unhandled group chat")
-					msgID, _ := c.sendTextMessage(
-						c.sender.To(src.Chat.InputPeer()).Silent().Reply(msg.GetID()),
-						styling.Plain("Internal bot error: "),
-						styling.Bold("operation not supported in this chat."),
-					)
-					c.scheduleMessageDelete(&src.Chat, 5*time.Second, msgID)
-
-					return nil
-				default:
-				}
+					},
+				})
 			}
 		} else {
 			// message.getHistory is not allowed for bot user

@@ -188,6 +188,7 @@ func extractMsgID(upd tg.UpdateClass) (msgID rt.MessageID, hasMsgID bool) {
 	}
 }
 
+// getChannelCreator get creator of the channel, requires being channel admin
 func (c *tgBot) getChannelCreator(ch *tg.InputChannel) (ret *tg.User, err error) {
 	const (
 		BATCH_COUNT = 10

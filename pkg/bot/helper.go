@@ -30,26 +30,28 @@ func PreprocessText(ctx *rt.RTContext, wf *Workflow, spans []rt.Span) error {
 			continue
 		}
 
-		pageArchive, err := wf.WebArchiver.Archive(ctx.Context(), spans[i].URL)
-		if err != nil {
-			continue
-		}
-
-		data, sz := pageArchive.WARC()
-		if sz > 0 {
-			input = rt.NewInput(sz, data)
-			url, err2 := wf.Storage.Upload(ctx.Context(), "", rt.NewMIME("application/warc"), &input)
-			if err2 == nil {
-				spans[i].WebArchiveURL = url
+		if wf.WebArchiver != nil {
+			pageArchive, err := wf.WebArchiver.Archive(ctx.Context(), spans[i].URL)
+			if err != nil {
+				continue
 			}
-		}
 
-		data, sz = pageArchive.Screenshot()
-		if sz > 0 {
-			input = rt.NewInput(sz, data)
-			url, err2 := wf.Storage.Upload(ctx.Context(), "", rt.NewMIME("image/png"), &input)
-			if err2 == nil {
-				spans[i].WebArchiveScreenshotURL = url
+			data, sz := pageArchive.WARC()
+			if sz > 0 {
+				input = rt.NewInput(sz, data)
+				url, err2 := wf.Storage.Upload(ctx.Context(), "", rt.NewMIME("application/warc"), &input)
+				if err2 == nil {
+					spans[i].WebArchiveURL = url
+				}
+			}
+
+			data, sz = pageArchive.Screenshot()
+			if sz > 0 {
+				input = rt.NewInput(sz, data)
+				url, err2 := wf.Storage.Upload(ctx.Context(), "", rt.NewMIME("image/png"), &input)
+				if err2 == nil {
+					spans[i].WebArchiveScreenshotURL = url
+				}
 			}
 		}
 	}

@@ -21,19 +21,22 @@ const (
 	// one on one private message
 	chatFlag_PM chatFlag = 1 << iota
 
-	// group chat
+	// megagroup, supergroup
 	chatFlag_Group
 
-	// channel messages
+	// channel
 	chatFlag_Channel
+
+	chatFlag_LegacyGroup
 )
 
-func (f chatFlag) IsPrivateChat() bool { return f&chatFlag_PM != 0 }
-func (f chatFlag) IsChannelChat() bool { return f&chatFlag_Channel != 0 }
-func (f chatFlag) IsGroupChat() bool   { return f&chatFlag_Group != 0 }
+func (f chatFlag) IsPrivateChat() bool     { return f&chatFlag_PM != 0 }
+func (f chatFlag) IsChannelChat() bool     { return f&chatFlag_Channel != 0 }
+func (f chatFlag) IsGroupChat() bool       { return f&chatFlag_Group != 0 }
+func (f chatFlag) IsLegacyGroupChat() bool { return f&chatFlag_LegacyGroup != 0 }
 
-type commonSpec struct {
-	id uint64
+type commonSpec[ID rt.UserID | rt.ChatID] struct {
+	id ID
 
 	firstname, lastname string
 	titile              string
@@ -43,25 +46,24 @@ type commonSpec struct {
 	username string
 }
 
-func (cs *commonSpec) Username() string  { return cs.username }
-func (cs *commonSpec) Title() string     { return cs.titile }
-func (cs *commonSpec) Firstname() string { return cs.firstname }
-func (cs *commonSpec) Lastname() string  { return cs.lastname }
+func (cs *commonSpec[ID]) ID() ID            { return cs.id }
+func (cs *commonSpec[ID]) Username() string  { return cs.username }
+func (cs *commonSpec[ID]) Title() string     { return cs.titile }
+func (cs *commonSpec[ID]) Firstname() string { return cs.firstname }
+func (cs *commonSpec[ID]) Lastname() string  { return cs.lastname }
 
 type chatSpec struct {
-	id rt.ChatID
 	chatFlag
 
-	commonSpec
+	commonSpec[rt.ChatID]
 
 	peer tg.InputPeerClass
 }
 
-func (cs *chatSpec) ID() rt.ChatID                { return cs.id }
 func (cs *chatSpec) InputPeer() tg.InputPeerClass { return cs.peer }
 
-func resolveChatSpec(chat any) (ret chatSpec) {
-	switch c := chat.(type) {
+func resolveChatSpec(chatPeer any) (ret chatSpec) {
+	switch c := chatPeer.(type) {
 	case *tg.User:
 		ret.id = rt.ChatID(c.GetID())
 
@@ -75,7 +77,12 @@ func resolveChatSpec(chat any) (ret chatSpec) {
 	case *tg.Channel:
 		ret.id = rt.ChatID(c.GetID())
 
-		ret.chatFlag |= chatFlag_Channel
+		if c.GetBroadcast() {
+			ret.chatFlag |= chatFlag_Channel
+		} else {
+			ret.chatFlag |= chatFlag_Group
+		}
+
 		ret.titile = c.GetTitle()
 		ret.username, _ = c.GetUsername()
 
@@ -83,7 +90,7 @@ func resolveChatSpec(chat any) (ret chatSpec) {
 	case *tg.Chat:
 		ret.id = rt.ChatID(c.GetID())
 
-		ret.chatFlag |= chatFlag_Group
+		ret.chatFlag |= chatFlag_LegacyGroup
 		ret.titile = c.GetTitle()
 		ret.peer = c.AsInputPeer()
 	default:
@@ -96,55 +103,67 @@ func resolveChatSpec(chat any) (ret chatSpec) {
 type authorFlag uint32
 
 const (
-	authorFlag_User authorFlag = 1 << iota
-	authorFlag_Channel
-	authorFlag_Group
+	authorFlag_User    authorFlag = 1 << iota
+	authorFlag_Channel            // broadcast channel
+	authorFlag_Group              // megagroup supergroup
 	authorFlag_Bot
+	authorFlag_Verified
 )
 
+func (f authorFlag) IsUser() bool { return f&authorFlag_User != 0 }
+
 type authorSpec struct {
-	id rt.UserID
 	authorFlag
 
-	commonSpec
+	commonSpec[rt.UserID]
 
 	user *tg.InputUser
 }
 
-func (cs *authorSpec) ID() rt.UserID            { return cs.id }
 func (as *authorSpec) InputUser() *tg.InputUser { return as.user }
 
-func (c *tgBot) resolveAuthorSpec(from any) (ret authorSpec, err error) {
-	var user *tg.User
-
-	switch f := from.(type) {
+func resolveAuthorSpec(peerFrom any) (ret authorSpec, err error) {
+	switch p := peerFrom.(type) {
 	case *tg.User:
-		user = f
-	case *tg.Channel:
-		user, err = c.getChannelCreator(f.AsInput())
-		if err != nil {
-			return
+		ret.id = rt.UserID(p.GetID())
+
+		ret.authorFlag |= authorFlag_User
+		if p.GetBot() {
+			ret.authorFlag |= authorFlag_Bot
 		}
+
+		if p.GetVerified() {
+			ret.authorFlag |= authorFlag_Verified
+		}
+
+		ret.username, _ = p.GetUsername()
+		ret.firstname, _ = p.GetFirstName()
+		ret.lastname, _ = p.GetLastName()
+
+		ret.user = p.AsInput()
+	case *tg.Channel:
+		ret.id = rt.UserID(p.GetID())
+
+		if p.GetBroadcast() {
+			ret.authorFlag |= authorFlag_Channel
+		} else {
+			ret.authorFlag |= authorFlag_Group
+		}
+
+		if p.GetVerified() {
+			ret.authorFlag |= authorFlag_Verified
+		}
+
+		ret.titile = p.GetTitle()
+		ret.username, _ = p.GetUsername()
 	case *tg.Chat: // TODO: is it possible?
 		err = fmt.Errorf("unsupported chat as author")
 		return
 	default:
-		err = fmt.Errorf("unknown type %T", f)
+		err = fmt.Errorf("unknown type %T", p)
 		return
 	}
 
-	ret.id = rt.UserID(user.GetID())
-
-	ret.authorFlag |= authorFlag_User
-	if user.GetBot() {
-		ret.authorFlag |= authorFlag_Bot
-	}
-
-	ret.username, _ = user.GetUsername()
-	ret.firstname, _ = user.GetFirstName()
-	ret.lastname, _ = user.GetLastName()
-
-	ret.user = user.AsInput()
 	return
 }
 

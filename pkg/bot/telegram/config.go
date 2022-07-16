@@ -13,7 +13,6 @@ import (
 	tds "github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/dcs"
-	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
@@ -97,7 +96,7 @@ func (c *Config) Create(name string, rtCtx rt.RTContext, bctx *bot.Context) (bot
 	tb.dispatcher.OnNewChannelMessage(tb.onNewChannelMessage)
 	tb.dispatcher.OnNewEncryptedMessage(tb.onNewEncryptedMessage)
 
-	tb.client = *telegram.NewClient(c.AppID, strings.TrimSpace(c.AppHash), telegram.Options{
+	tb.client = telegram.NewClient(c.AppID, strings.TrimSpace(c.AppHash), telegram.Options{
 		UpdateHandler:  tb.dispatcher,
 		DC:             c.DC,
 		DCList:         dcList,
@@ -108,7 +107,7 @@ func (c *Config) Create(name string, rtCtx rt.RTContext, bctx *bot.Context) (bot
 	})
 
 	tb.sender = *message.NewSender(tb.client.API())
-	tb.downloader = *downloader.NewDownloader()
+	_ = tb.downloader.WithPartSize(512 * 1024)
 	tb.uploader = *uploader.NewUploader(tb.client.API())
 
 	return tb, nil

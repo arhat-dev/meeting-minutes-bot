@@ -25,24 +25,36 @@ func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*rt.Message
 		ret.ReplyToMessageID = rt.MessageID(replyTo.GetReplyToMsgID())
 	}
 
-	if !src.FwdFrom.IsNil() {
+	if !src.FwdChat.IsNil() {
 		ret.IsForwarded = true
-		ret.OriginalAuthor = src.FwdFrom.GetPtr().Title()
-		if len(ret.OriginalAuthor) == 0 {
+
+		fwdChat := src.FwdChat.GetPtr()
+
+		ret.OriginalChatName = fwdChat.Title()
+		if len(ret.OriginalChatName) == 0 {
 			buf.Reset()
-			buf.WriteString(src.FwdFrom.GetPtr().Firstname())
+			buf.WriteString(fwdChat.Firstname())
 			if buf.Len() != 0 {
 				buf.WriteString(" ")
 			}
-			buf.WriteString(src.FwdFrom.GetPtr().Lastname())
-			ret.OriginalAuthor = buf.String()
+			buf.WriteString(fwdChat.Lastname())
+			ret.OriginalChatName = buf.String()
 		}
 
-		if len(src.FwdFrom.GetPtr().Username()) != 0 {
+		if len(fwdChat.Username()) != 0 {
 			buf.Reset()
 			buf.WriteString("https://t.me/")
-			buf.WriteString(src.FwdFrom.GetPtr().Username())
-			ret.OriginalAuthorLink = buf.String()
+			buf.WriteString(fwdChat.Username())
+			ret.OriginalChatLink = buf.String()
+
+			if fwdHdr, ok := msg.GetFwdFrom(); ok {
+				fwdMsgID, ok := fwdHdr.GetChannelPost()
+				if ok {
+					buf.WriteString("/")
+					buf.WriteString(formatMessageID(rt.MessageID(fwdMsgID)))
+					ret.OriginalMessageLink = buf.String()
+				}
+			}
 		}
 	}
 
@@ -87,32 +99,25 @@ func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*rt.Message
 		ret.AuthorLink = buf.String()
 	}
 
-	if !src.FwdChat.IsNil() {
-		ret.OriginalChatName = src.FwdChat.GetPtr().Title()
-		if len(ret.OriginalChatName) == 0 {
+	if !src.FwdFrom.IsNil() {
+		fwdFrom := src.FwdFrom.GetPtr()
+
+		ret.OriginalAuthor = fwdFrom.Title()
+		if len(ret.OriginalAuthor) == 0 {
 			buf.Reset()
-			buf.WriteString(src.FwdChat.GetPtr().Firstname())
+			buf.WriteString(fwdFrom.Firstname())
 			if buf.Len() != 0 {
 				buf.WriteString(" ")
 			}
-			buf.WriteString(src.FwdChat.GetPtr().Lastname())
-			ret.OriginalChatName = buf.String()
+			buf.WriteString(fwdFrom.Lastname())
+			ret.OriginalAuthor = buf.String()
 		}
 
-		if len(src.FwdChat.GetPtr().Username()) != 0 {
+		if len(fwdFrom.Username()) != 0 {
 			buf.Reset()
 			buf.WriteString("https://t.me/")
-			buf.WriteString(src.FwdChat.GetPtr().Username())
-			ret.OriginalChatLink = buf.String()
-
-			if fwdHdr, ok := msg.GetFwdFrom(); ok {
-				fwdMsgID, ok := fwdHdr.GetSavedFromMsgID()
-				if ok {
-					buf.WriteString("/")
-					buf.WriteString(formatMessageID(rt.MessageID(fwdMsgID)))
-					ret.OriginalMessageLink = buf.String()
-				}
-			}
+			buf.WriteString(fwdFrom.Username())
+			ret.OriginalAuthorLink = buf.String()
 		}
 	}
 
