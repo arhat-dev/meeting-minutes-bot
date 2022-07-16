@@ -6,7 +6,11 @@
 [![GoReportCard](https://goreportcard.com/badge/arhat.dev/mbot)](https://goreportcard.com/report/arhat.dev/mbot)
 [![codecov](https://codecov.io/gh/arhat-dev/mbot/branch/master/graph/badge.svg)](https://codecov.io/gh/arhat-dev/mbot)
 
-Build your chat bot with mbot
+Build your chat bot declaratively.
+
+## What?
+
+`mbot` (previously `meeting-minutes-bot`) was a bot built for recording discussions on specifiec topics, after the initial implementation and usage, we came to aware almost all existing bots can be derived from this bot due to its ability to record meeting minutes.
 
 ## Features
 
@@ -57,111 +61,19 @@ Build your chat bot with mbot
 
 __NOTE:__ You have to manage `POST_KEY`s for your `TOPIC`s
 
-## Build
+## State Machine
 
-```bash
-make mbot
+```mermaid
+<!-- TODO -->
 ```
-
-You can find `mbot` in `./build`
-
-## Config
-
-```yaml
-app:
-  log:
-  - level: verbose
-    file: stderr
-
-  # public facing base url for bots webhooks
-  publicBaseURL: https://bot.example.com/base/path
-
-  # tcp listen address for webhooks
-  listen: :8080
-
-  # tls settings for webhook (not tested)
-  tls:
-    enabled: false
-
-  storage:
-    # driver name, one of [s3, telegraph]
-  - telegraph:
-      # max data size for uploading, size limit in bytes
-      #
-      # defaults to 0, no size limit
-      maxUploadSize: 5242880 # 5MB
-      # mime type match (regex), only matched data will use this storage driver
-      #
-      # defaults to "", match all
-      mimeMatch: image/.*
-      # read ./docs/storage/{DRIVER}.md to find out config options
-      config: {}
-  - s3:
-      maxUploadSize: 0 # no limit
-      mimeMatch: "" # match all
-      config: {}
-
-  # currently not supported
-  # webarchiver:
-  #   cdp: {}
-
-  # post generator
-  # read ./docs/generator/{DRIVER}.md to find out config options
-  generator:
-    # one of [gotemplate, file]
-    gotemplate: {}
-
-  # post publisher
-  # read ./docs/publisher/{DRIVER}.md to find out config options
-  publisher:
-    # one of [telegraph, file, interpreter, http]
-    interpreter: {}
-
-bots:
-  # rename default commands
-  globalCommandsMapping:
-    /discuss:
-      as: /prepare
-      description: prepare script for interpreter
-    /end:
-      as: /run
-      description: run the prepared script
-    # keep `/cancel` command as is
-    #/cancel: {}
-
-    # disable commands with emtpy body (DO NOT use null)
-
-    /edit: {}
-    /list: {}
-    /delete: {}
-    /start: {}
-    /continue: {}
-    /ignore: {}
-    /include: {}
-
-  telegram:
-    # telegram api endpoint, NOT a URL
-    endpoint: api.telegram.org
-    # the bot token provided by the @BotFather
-    botToken@env: ${MY_TELEGRAM_BOT_TOKEN}
-
-    # currently not tested, feel free to file issues if you find it not working
-    webhook:
-      enabled: false
-      # the final webhook url is `$.app.publicBaseURL` + `$.bots.telegram.webhook.path`
-      path: /telegram
-      maxConnections: 100
-      # required to provide tls public key when using self-signed certificate
-      # tlsPublicKey@file: path/to/tls.pub
-```
-
-__NOTE:__ You can reference environment variables in config file (e.g. `${FOO}`, `$BAR`)
 
 ## Run
 
 ```bash
-/path/to/built/mbot -c /path/to/your/config.yaml
+/path/to/mbot -c /path/to/config.yaml
 ```
+
+see [cicd/test/config.yml](./cicd/test/config.yml) for config example
 
 ## LICENSE
 
