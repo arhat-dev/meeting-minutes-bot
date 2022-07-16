@@ -147,8 +147,6 @@ type Driver struct {
 	respTpl *template.Template
 }
 
-func (d *Driver) Name() string { return Name }
-
 func (d *Driver) RequireLogin() bool { return false }
 
 func (d *Driver) Login(config publisher.UserConfig) (token string, _ error) {

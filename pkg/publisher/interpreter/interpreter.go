@@ -63,10 +63,6 @@ type Driver struct {
 	argTpls []*template.Template
 }
 
-func (d *Driver) Name() string {
-	return Name
-}
-
 func (d *Driver) RequireLogin() bool {
 	return false
 }

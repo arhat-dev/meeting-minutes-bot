@@ -479,7 +479,7 @@ func (c *tgBot) handleBotCmd(
 			logger.I("failed to append content to post", log.Error(err))
 			_, _ = c.sendTextMessage(
 				c.sender.To(src.Chat.InputPeer()).Silent().Reply(msg.GetID()),
-				styling.Bold(pub.Name()),
+				styling.Bold(currentSession.Workflow().PublisherName()),
 				styling.Plain(" post update error: "),
 				styling.Bold(err.Error()),
 			)

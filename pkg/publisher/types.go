@@ -21,9 +21,6 @@ type Config interface {
 }
 
 type Interface interface {
-	// Name of the publisher
-	Name() string
-
 	// RequireLogin return true when the publisher requires login, if false
 	// there will be no login process presented to user
 	RequireLogin() bool

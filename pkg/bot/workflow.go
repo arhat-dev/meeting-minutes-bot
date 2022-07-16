@@ -2,6 +2,7 @@ package bot
 
 import (
 	"fmt"
+	"strings"
 
 	"arhat.dev/rs"
 
@@ -92,10 +93,11 @@ func (wfc *WorkflowConfig) Resolve(bctx *Context) (ret Workflow, err error) {
 		WebArchiver: wa,
 		Generator:   gn,
 
-		pbName:         _pb.Name(),
 		pbRequireLogin: _pb.RequireLogin(),
 		pbFactoryFunc:  pbConf.Create,
 	}
+
+	ret.pbName, _, _ = strings.Cut(wfc.Publisher, ":")
 
 	return
 }

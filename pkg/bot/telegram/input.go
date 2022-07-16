@@ -74,7 +74,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-			styling.Bold(pub.Name()),
+			styling.Bold(standbySession.Workflow().PublisherName()),
 			styling.Plain(" auth error: "),
 			styling.Bold(err.Error()),
 		)
@@ -105,7 +105,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-				styling.Bold(pub.Name()),
+				styling.Bold(standbySession.Workflow().PublisherName()),
 				styling.Plain(" pre-publish failed: "),
 				styling.Bold(err2.Error()),
 			)
@@ -119,7 +119,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 			_, _ = c.sendTextMessage(
 				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
 				styling.Plain("Retrieve "),
-				styling.Bold(pub.Name()),
+				styling.Bold(standbySession.Workflow().PublisherName()),
 				styling.Plain(" post failed: "),
 				styling.Bold(err.Error()),
 			)
@@ -219,7 +219,7 @@ func (c *tgBot) tryToHandleInputForEditing(
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-			styling.Bold(pub.Name()),
+			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" auth error: "),
 			styling.Bold(err.Error()),
 		)
@@ -232,7 +232,7 @@ func (c *tgBot) tryToHandleInputForEditing(
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-			styling.Bold(pub.Name()),
+			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" unable to get auth url: "),
 			styling.Bold(err.Error()),
 		)
@@ -309,7 +309,7 @@ func (c *tgBot) tryToHandleInputForListing(
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-			styling.Bold(pub.Name()),
+			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" auth error: "),
 			styling.Bold(err.Error()),
 		)
@@ -322,7 +322,7 @@ func (c *tgBot) tryToHandleInputForListing(
 	if err != nil && len(posts) == 0 {
 		_, _ = c.sendTextMessage(
 			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-			styling.Bold(pub.Name()),
+			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" unable to list posts: "),
 			styling.Bold(err.Error()),
 		)
@@ -403,7 +403,7 @@ func (c *tgBot) tryToHandleInputForDeleting(
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-			styling.Bold(pub.Name()),
+			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" auth error: "),
 			styling.Bold(err.Error()),
 		)
@@ -416,7 +416,7 @@ func (c *tgBot) tryToHandleInputForDeleting(
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-			styling.Bold(pub.Name()),
+			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(": "),
 			styling.Plain(err.Error()),
 		)

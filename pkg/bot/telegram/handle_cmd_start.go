@@ -179,7 +179,7 @@ func (c *tgBot) handleStartCommand(
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-				styling.Bold(pub.Name()),
+				styling.Bold(wf.PublisherName()),
 				styling.Plain(" login failed: "),
 				styling.Bold(err2.Error()),
 			)
@@ -189,7 +189,7 @@ func (c *tgBot) handleStartCommand(
 		_, err2 = c.sendTextMessage(
 			c.sender.To(src.Chat.InputPeer()).NoWebpage(),
 			styling.Plain("Here is your "),
-			styling.Bold(pub.Name()),
+			styling.Bold(wf.PublisherName()),
 			styling.Plain(" token, keep it for future use:\n\n"),
 			styling.Code(token),
 		)
@@ -225,7 +225,7 @@ func (c *tgBot) handleStartCommand(
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
-				styling.Bold(pub.Name()),
+				styling.Bold(wf.PublisherName()),
 				styling.Plain(" publishing not working: "),
 				styling.Bold(err2.Error()),
 			)
