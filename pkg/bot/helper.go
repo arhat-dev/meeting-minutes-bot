@@ -1,7 +1,6 @@
 package bot
 
 import (
-	"sync"
 	"time"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
@@ -82,28 +81,6 @@ func Download(cache rt.Cache, doDownload func(rt.CacheWriter) error) (cacheRD rt
 	}
 
 	return
-}
-
-var msgIfacePool = &sync.Pool{
-	New: func() any {
-		return make([]rt.Message, 0, 16)
-	},
-}
-
-func getMsgIface(sz int) (ret []rt.Message) {
-	ret = msgIfacePool.Get().([]rt.Message)
-	if cap(ret) < sz {
-		msgIfacePool.Put(ret)
-		ret = make([]rt.Message, sz)
-		return
-	} else {
-		ret = ret[:sz]
-		return
-	}
-}
-
-func putMsgIface(s []rt.Message) {
-	msgIfacePool.Put(s)
 }
 
 func GenerateContent(gen generator.Interface, msgs []*rt.Message) (result []byte, err error) {

@@ -7,10 +7,12 @@ import (
 
 // Reader is like a io.MultiReader but concats all parts with text boundaries
 type Reader struct {
-	cur    int
-	offset int // initial value = -2: "--" + boundary + "\r\n"
+	cur int
+	// initial value = -2: "--" + boundary + "\r\n"
+	// after finished writing first part, set to -4: "\r\n--" + boundary + "\r\n"
+	offset int
 
-	boundary string // size (4, 74]
+	boundary string
 	parts    []Part
 }
 
