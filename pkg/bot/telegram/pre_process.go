@@ -12,6 +12,7 @@ import (
 	"github.com/h2non/filetype"
 	"github.com/h2non/filetype/types"
 
+	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/bot"
 	"arhat.dev/mbot/pkg/rt"
 )
@@ -255,7 +256,7 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *rt.Message, msg *tg.Messa
 		)
 
 		input := rt.NewInput(sz, cacheRD)
-		storageURL, err := wf.Storage.Upload(c.Context(), filename, rt.NewMIME(contentType), &input)
+		storageURL, err := wf.Storage.Upload(c.Context(), filename, mime.New(contentType), &input)
 		if err != nil {
 			c.Logger().I("failed to upload file", log.Error(err))
 			c.sendErrorf(errCh, "unable to upload file: %w", err)

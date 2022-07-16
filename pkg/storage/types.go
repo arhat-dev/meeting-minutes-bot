@@ -4,17 +4,14 @@ import (
 	"context"
 	"fmt"
 
+	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/rt"
-	"arhat.dev/rs"
 )
 
 type Interface interface {
-	// Name of the storage backend
-	Name() string
-
 	// Upload content to the storage
 	Upload(
-		ctx context.Context, filename string, contentType rt.MIME, in *rt.Input,
+		ctx context.Context, filename string, contentType mime.MIME, in *rt.Input,
 	) (url string, err error)
 }
 
@@ -27,16 +24,6 @@ type Result interface {
 type Config interface {
 	// Create storage based on this config
 	Create() (Interface, error)
-
-	MIMEMatch() string
-	MaxSize() int64
-}
-
-type CommonConfig struct {
-	rs.BaseField
-
-	MIMEMatch string `yaml:"mimeMatch"`
-	MaxSize   int64  `yaml:"maxSize"`
 }
 
 type configFactoryFunc = func() Config

@@ -25,26 +25,6 @@ import (
 	"arhat.dev/pkg/versionhelper"
 
 	"arhat.dev/mbot/pkg/cmd"
-
-	// storage drivers
-	_ "arhat.dev/mbot/pkg/storage/s3"
-	_ "arhat.dev/mbot/pkg/storage/telegraph"
-
-	// data generation drivers
-	_ "arhat.dev/mbot/pkg/generator/file"
-	_ "arhat.dev/mbot/pkg/generator/gotemplate"
-
-	// data publishing drivers
-	_ "arhat.dev/mbot/pkg/publisher/file"
-	_ "arhat.dev/mbot/pkg/publisher/http"
-	_ "arhat.dev/mbot/pkg/publisher/interpreter"
-	_ "arhat.dev/mbot/pkg/publisher/telegraph"
-
-	// web archiving drivers
-	_ "arhat.dev/mbot/pkg/webarchiver/cdp"
-
-	// bot platforms
-	_ "arhat.dev/mbot/pkg/bot/telegram"
 )
 
 func main() {

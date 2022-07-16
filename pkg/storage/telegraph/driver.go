@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 
+	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/internal/multipart"
 	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/pkg/stringhelper"
@@ -28,7 +29,7 @@ func unescapeQuotes(s string) string {
 func (d *Driver) Upload(
 	ctx context.Context,
 	filename string,
-	contentType rt.MIME,
+	contentType mime.MIME,
 	in *rt.Input,
 ) (url string, err error) {
 	var (
@@ -38,20 +39,19 @@ func (d *Driver) Upload(
 
 	_ = filename
 
-	ct := contentType.Value()
 	switch contentType.Type() {
-	case rt.MIMEType_Video:
-	case rt.MIMEType_Audio:
-	case rt.MIMEType_Image:
+	case mime.MIMEType_Video:
+	case mime.MIMEType_Audio:
+	case mime.MIMEType_Image:
 	default:
 		// TODO: fake it as a png file?
-		err = fmt.Errorf("unsupported content type %q", ct)
+		err = fmt.Errorf("unsupported content type %q", contentType.Value)
 		return
 	}
 
 	multipartContentType, body := pb.CreatePart(
 		hb.Add("Content-Disposition", `form-data; name="file"; filename="blob"`).
-			Add("Content-Type", ct).Build(),
+			Add("Content-Type", contentType.Value).Build(),
 		in.Reader(),
 	).Build()
 

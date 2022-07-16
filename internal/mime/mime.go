@@ -1,4 +1,4 @@
-package rt
+package mime
 
 import "strings"
 
@@ -15,23 +15,28 @@ const (
 	MIMEType_Multipart = "multipart"
 )
 
-func NewMIME(value string) MIME {
+func New(value string) MIME {
 	sep := strings.IndexByte(value, '/')
 	if sep == -1 {
 		sep = len(value)
 	}
 
 	return MIME{
-		sep:   sep,
-		value: value,
+		SlashIndex: sep,
+		Value:      value,
 	}
 }
 
 type MIME struct {
-	sep   int
-	value string
+	SlashIndex int
+	Value      string
 }
 
-func (m MIME) Type() string    { return m.value[:m.sep] }
-func (m MIME) Subtype() string { return strings.TrimPrefix(m.value[m.sep:], "/") }
-func (m MIME) Value() string   { return m.value }
+func (m MIME) Type() string { return m.Value[:m.SlashIndex] }
+func (m MIME) Subtype() string {
+	if m.SlashIndex >= len(m.Value) {
+		return ""
+	}
+
+	return m.Value[m.SlashIndex+1:]
+}

@@ -17,8 +17,8 @@ type WorkflowConfig struct {
 
 	CmdMapping CommandsMapping `yaml:"cmdMapping"`
 
-	// StorageSet config name
-	StorageSet string `yaml:"storageSet"`
+	// Storage config name
+	Storage string `yaml:"storage"`
 
 	// WebArchiver config name
 	WebArchiver string `yaml:"webarchiver"`
@@ -49,9 +49,9 @@ func (wfc *WorkflowConfig) Resolve(bctx *Context) (ret Workflow, err error) {
 		return
 	}
 
-	stConf, ok := bctx.StorageSets[wfc.StorageSet]
+	stConf, ok := bctx.StorageSets[wfc.Storage]
 	if !ok {
-		err = fmt.Errorf("unknown storage set %q", wfc.StorageSet)
+		err = fmt.Errorf("unknown storage set %q", wfc.Storage)
 		return
 	}
 
@@ -75,7 +75,7 @@ func (wfc *WorkflowConfig) Resolve(bctx *Context) (ret Workflow, err error) {
 
 	pbConf, ok := bctx.Publishers[wfc.Publisher]
 	if !ok {
-		err = fmt.Errorf("unknown publisher %q", wfc.StorageSet)
+		err = fmt.Errorf("unknown publisher %q", wfc.Storage)
 		return
 	}
 

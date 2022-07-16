@@ -7,18 +7,10 @@ import (
 
 	"github.com/minio/minio-go/v7"
 
+	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/mbot/pkg/storage"
 )
-
-// nolint:revive
-const (
-	Name = "s3"
-)
-
-func init() {
-	storage.Register(Name, func() storage.Config { return &Config{} })
-}
 
 var _ storage.Interface = (*Driver)(nil)
 
@@ -33,7 +25,7 @@ type Driver struct {
 func (s *Driver) Name() string { return Name }
 
 func (s *Driver) Upload(
-	ctx context.Context, filename string, contentType rt.MIME, in *rt.Input,
+	ctx context.Context, filename string, contentType mime.MIME, in *rt.Input,
 ) (url string, err error) {
 	if len(s.bucket) != 0 {
 		hasBucket, err2 := s.client.BucketExists(ctx, s.bucket)
@@ -59,7 +51,7 @@ func (s *Driver) Upload(
 		in.Reader(),
 		in.Size(),
 		minio.PutObjectOptions{
-			ContentType: contentType.Value(),
+			ContentType: contentType.Value,
 		},
 	)
 	if err != nil {

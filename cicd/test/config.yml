@@ -11,14 +11,15 @@ generators:
 
   file:foo: {}
 
-storageSets:
-  foo:
-  - telegraph:foo:
-      mimeMatch: (image|video)
+storage:
+  compositor:foo:
+    specs:
+    - mimeMatch: (image|video)
       maxSize: 5242880 # 5MB
-  # - s3:foo:
-  #   mimeMatch: (video|audio)
-  #   maxSize: 0
+      telegraph: {}
+    # - mimeMatch: .*
+    #   s3: {}
+
 
 publishers:
   telegraph:foo: {}
@@ -38,7 +39,7 @@ bots:
 
     workflows:
     - generator: gotemplate:foo
-      storageSet: foo
+      storage: compositor:foo
       publisher: telegraph:foo
 
       # cmdMapping:

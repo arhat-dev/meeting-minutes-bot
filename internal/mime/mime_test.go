@@ -1,4 +1,4 @@
-package rt
+package mime
 
 import (
 	"testing"
@@ -18,10 +18,10 @@ func TestMIME(t *testing.T) {
 		{"foo/bar", "foo", "bar"},
 	} {
 		t.Run(test.input, func(t *testing.T) {
-			m := NewMIME(test.input)
+			m := New(test.input)
 			assert.Equal(t, test.expectedType, m.Type())
 			assert.Equal(t, test.expectedSubtype, m.Subtype())
-			assert.Equal(t, test.input, m.Value())
+			assert.Equal(t, test.input, m.Value)
 		})
 	}
 }

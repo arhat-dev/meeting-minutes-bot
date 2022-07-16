@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 
+	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/rt"
 )
 
@@ -19,7 +20,7 @@ type Nop struct{}
 func (Nop) Name() string { return "nop" }
 
 func (Nop) Upload(
-	ctx context.Context, filename string, contentType rt.MIME, in *rt.Input,
+	ctx context.Context, filename string, contentType mime.MIME, in *rt.Input,
 ) (url string, err error) {
 	return filename, nil
 }

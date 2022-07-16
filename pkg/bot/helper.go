@@ -3,6 +3,7 @@ package bot
 import (
 	"time"
 
+	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/generator"
 	"arhat.dev/mbot/pkg/rt"
 )
@@ -38,7 +39,7 @@ func PreprocessText(ctx *rt.RTContext, wf *Workflow, spans []rt.Span) error {
 			data, sz := pageArchive.WARC()
 			if sz > 0 {
 				input = rt.NewInput(sz, data)
-				url, err2 := wf.Storage.Upload(ctx.Context(), "", rt.NewMIME("application/warc"), &input)
+				url, err2 := wf.Storage.Upload(ctx.Context(), "", mime.New("application/warc"), &input)
 				if err2 == nil {
 					spans[i].WebArchiveURL = url
 				}
@@ -47,7 +48,7 @@ func PreprocessText(ctx *rt.RTContext, wf *Workflow, spans []rt.Span) error {
 			data, sz = pageArchive.Screenshot()
 			if sz > 0 {
 				input = rt.NewInput(sz, data)
-				url, err2 := wf.Storage.Upload(ctx.Context(), "", rt.NewMIME("image/png"), &input)
+				url, err2 := wf.Storage.Upload(ctx.Context(), "", mime.New("image/png"), &input)
 				if err2 == nil {
 					spans[i].WebArchiveScreenshotURL = url
 				}

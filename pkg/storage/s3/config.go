@@ -10,11 +10,18 @@ import (
 	"github.com/minio/minio-go/v7/pkg/credentials"
 )
 
+// nolint:revive
+const (
+	Name = "s3"
+)
+
+func init() {
+	storage.Register(Name, func() storage.Config { return &Config{} })
+}
+
 // Config for s3 file uploader
 type Config struct {
 	rs.BaseField
-
-	storage.CommonConfig `yaml:",inline"`
 
 	EndpointURL string `yaml:"endpointURL"`
 	Region      string `yaml:"region"`
@@ -25,9 +32,6 @@ type Config struct {
 	AccessKeyID     string `yaml:"accessKeyID"`
 	AccessKeySecret string `yaml:"accessKeySecret"`
 }
-
-func (c *Config) MIMEMatch() string { return c.CommonConfig.MIMEMatch }
-func (c *Config) MaxSize() int64    { return c.CommonConfig.MaxSize }
 
 func (c *Config) Create() (storage.Interface, error) {
 	eURL, err := url.Parse(c.EndpointURL)
