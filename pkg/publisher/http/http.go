@@ -18,8 +18,8 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"gopkg.in/yaml.v3"
 
-	"arhat.dev/meeting-minutes-bot/pkg/publisher"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/publisher"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 // nolint:revive

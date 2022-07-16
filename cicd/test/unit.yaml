@@ -1,5 +1,5 @@
 golang:test:
-- name: app
+- name: mbot
   env:
   - name: PROFILE_DIR
     value@tpl: |-

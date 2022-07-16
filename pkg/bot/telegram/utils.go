@@ -14,7 +14,7 @@ import (
 	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 func encodeUint64Hex[T rt.ChatID | rt.UserID](n T) string {

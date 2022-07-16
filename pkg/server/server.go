@@ -6,9 +6,9 @@ import (
 	"net"
 	"net/http"
 
-	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/conf"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/bot"
+	"arhat.dev/mbot/pkg/conf"
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/pkg/log"
 )
 

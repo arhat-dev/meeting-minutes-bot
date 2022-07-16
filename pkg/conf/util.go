@@ -29,7 +29,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"arhat.dev/meeting-minutes-bot/pkg/constant"
+	"arhat.dev/mbot/pkg/constant"
 )
 
 func ReadConfig(

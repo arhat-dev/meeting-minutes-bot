@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"strings"
 
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/publisher"
-	"arhat.dev/meeting-minutes-bot/pkg/storage"
-	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
+	"arhat.dev/mbot/pkg/generator"
+	"arhat.dev/mbot/pkg/publisher"
+	"arhat.dev/mbot/pkg/storage"
+	"arhat.dev/mbot/pkg/webarchiver"
 )
 
 var (

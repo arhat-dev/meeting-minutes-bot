@@ -23,9 +23,9 @@ import (
 	"arhat.dev/rs"
 	"github.com/spf13/cobra"
 
-	"arhat.dev/meeting-minutes-bot/pkg/conf"
-	"arhat.dev/meeting-minutes-bot/pkg/constant"
-	"arhat.dev/meeting-minutes-bot/pkg/server"
+	"arhat.dev/mbot/pkg/conf"
+	"arhat.dev/mbot/pkg/constant"
+	"arhat.dev/mbot/pkg/server"
 )
 
 func NewRootCmd() *cobra.Command {
@@ -41,7 +41,7 @@ func NewRootCmd() *cobra.Command {
 	})
 
 	rootCmd := &cobra.Command{
-		Use:           "meeting-minutes-bot",
+		Use:           "mbot",
 		SilenceErrors: true,
 		SilenceUsage:  true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {

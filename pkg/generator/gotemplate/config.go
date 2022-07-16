@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/mbot/pkg/generator"
 	"arhat.dev/rs"
 )
 

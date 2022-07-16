@@ -3,7 +3,7 @@ package telegram
 import (
 	"testing"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 	"github.com/gotd/td/telegram/message/entity"
 	"github.com/gotd/td/telegram/message/styling"
 	"github.com/stretchr/testify/assert"

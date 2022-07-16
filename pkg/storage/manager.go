@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"sync"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 func NewManager() *Manager {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 var _ UserConfig = (*nopUserConfig)(nil)

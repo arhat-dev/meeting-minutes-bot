@@ -12,8 +12,8 @@ import (
 	"github.com/h2non/filetype"
 	"github.com/h2non/filetype/types"
 
-	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/bot"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 // errCh can be nil when there is no background pre-process worker

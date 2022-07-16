@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/pkg/log"
 	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"

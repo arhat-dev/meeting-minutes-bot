@@ -7,8 +7,8 @@ import (
 	"strings"
 	"sync"
 
-	"arhat.dev/meeting-minutes-bot/pkg/publisher"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/publisher"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 // nolint:revive

@@ -3,7 +3,7 @@ package telegraph
 import (
 	"sync"
 
-	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+	"arhat.dev/mbot/pkg/publisher"
 	"arhat.dev/rs"
 )
 
@@ -16,7 +16,7 @@ func init() {
 		Name,
 		func() publisher.Config {
 			return &Config{
-				DefaultAccountShortName: "meeting-minutes-bot",
+				DefaultAccountShortName: "mbot",
 			}
 		},
 	)

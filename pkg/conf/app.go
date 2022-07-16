@@ -17,11 +17,10 @@ limitations under the License.
 package conf
 
 import (
+	"arhat.dev/mbot/pkg/bot"
 	"arhat.dev/pkg/log"
 	"arhat.dev/pkg/tlshelper"
 	"arhat.dev/rs"
-
-	"arhat.dev/meeting-minutes-bot/pkg/bot"
 )
 
 type Config struct {

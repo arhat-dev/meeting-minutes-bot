@@ -1,7 +1,7 @@
 package bot
 
 import (
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 func NewBotBase(name string, ctx rt.RTContext) BaseBot {

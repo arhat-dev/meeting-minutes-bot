@@ -10,7 +10,7 @@ import (
 	pathpkg "path"
 	"strings"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/pkg/stringhelper"
 )
 

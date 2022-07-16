@@ -6,8 +6,8 @@ import (
 
 	"arhat.dev/rs"
 
-	"arhat.dev/meeting-minutes-bot/pkg/publisher"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/publisher"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 // Mux is just an interface alternative to http.ServeMux

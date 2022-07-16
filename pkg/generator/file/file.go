@@ -7,8 +7,8 @@ import (
 	"arhat.dev/pkg/fshelper"
 	"arhat.dev/rs"
 
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/generator"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 // nolint:revive

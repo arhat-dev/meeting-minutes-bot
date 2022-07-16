@@ -3,7 +3,7 @@ package webarchiver
 import (
 	"context"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 type Config interface {

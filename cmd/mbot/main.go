@@ -24,27 +24,27 @@ import (
 
 	"arhat.dev/pkg/versionhelper"
 
-	"arhat.dev/meeting-minutes-bot/pkg/cmd"
+	"arhat.dev/mbot/pkg/cmd"
 
 	// storage drivers
-	_ "arhat.dev/meeting-minutes-bot/pkg/storage/s3"
-	_ "arhat.dev/meeting-minutes-bot/pkg/storage/telegraph"
+	_ "arhat.dev/mbot/pkg/storage/s3"
+	_ "arhat.dev/mbot/pkg/storage/telegraph"
 
 	// data generation drivers
-	_ "arhat.dev/meeting-minutes-bot/pkg/generator/file"
-	_ "arhat.dev/meeting-minutes-bot/pkg/generator/gotemplate"
+	_ "arhat.dev/mbot/pkg/generator/file"
+	_ "arhat.dev/mbot/pkg/generator/gotemplate"
 
 	// data publishing drivers
-	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/file"
-	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/http"
-	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/interpreter"
-	_ "arhat.dev/meeting-minutes-bot/pkg/publisher/telegraph"
+	_ "arhat.dev/mbot/pkg/publisher/file"
+	_ "arhat.dev/mbot/pkg/publisher/http"
+	_ "arhat.dev/mbot/pkg/publisher/interpreter"
+	_ "arhat.dev/mbot/pkg/publisher/telegraph"
 
 	// web archiving drivers
-	_ "arhat.dev/meeting-minutes-bot/pkg/webarchiver/cdp"
+	_ "arhat.dev/mbot/pkg/webarchiver/cdp"
 
 	// bot platforms
-	_ "arhat.dev/meeting-minutes-bot/pkg/bot/telegram"
+	_ "arhat.dev/mbot/pkg/bot/telegram"
 )
 
 func main() {
@@ -55,7 +55,7 @@ func main() {
 
 	err := rootCmd.Execute()
 	if err != nil {
-		_, _ = fmt.Fprintf(os.Stderr, "failed to run meeting-minutes-bot %v: %v\n", os.Args, err)
+		_, _ = fmt.Fprintf(os.Stderr, "failed to run mbot %v: %v\n", os.Args, err)
 		os.Exit(1)
 	}
 }

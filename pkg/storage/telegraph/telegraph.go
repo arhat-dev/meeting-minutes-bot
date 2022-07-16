@@ -10,8 +10,8 @@ import (
 	"net/http"
 	"strings"
 
-	"arhat.dev/meeting-minutes-bot/internal/multipart"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/internal/multipart"
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/pkg/stringhelper"
 )
 

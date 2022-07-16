@@ -17,9 +17,9 @@ import (
 	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
 
-	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
-	"arhat.dev/meeting-minutes-bot/pkg/session"
+	"arhat.dev/mbot/pkg/bot"
+	"arhat.dev/mbot/pkg/rt"
+	"arhat.dev/mbot/pkg/session"
 )
 
 const Platform = "telegram"

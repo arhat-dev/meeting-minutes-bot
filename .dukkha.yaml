@@ -20,20 +20,20 @@ renderers:
 
 # offline mode switch when network connection is not available
 #
-# to activate:
-# - set LOCAL_DUKKHA_PRESETS_PATH to some local dir (a empty value will use ${PWD}/.dukkha/cache/dukkha-presets)
-# - git clone https://github.com/arhat-dev/dukkha-presets "${LOCAL_DUKKHA_PRESETS_PATH}"
-#   or `git clone https://github.com/arhat-dev/dukkha-presets "${PWD}/.dukkha/cache/dukkha-presets"` when LOCAL_DUKKHA_PRESETS_PATH is set to empty
+# to activate offline mode:
+# - set LOCAL_PRESETS_PATH to some local dir (a empty value will use ${PWD}/.dukkha/cache/dukkha-presets)
+# - git clone https://github.com/arhat-dev/dukkha-presets "${LOCAL_PRESETS_PATH}"
+#   or `git clone https://github.com/arhat-dev/dukkha-presets "${PWD}/.dukkha/cache/dukkha-presets"` when LOCAL_PRESETS_PATH is set to empty
 - file:dukkha-presets:
     alias@tpl: |-
-      {{- if env.LOCAL_DUKKHA_PRESETS_PATH -}}
+      {{- if env.LOCAL_PRESETS_PATH -}}
         presets
       {{- end -}}
-    base_path@env: ${LOCAL_DUKKHA_PRESETS_PATH:-".dukkha/cache/dukkha-presets"}
+    base_path@env: ${LOCAL_PRESETS_PATH:-".dukkha/cache/dukkha-presets"}
 
   http:dukkha-presets:
     alias@tpl: |-
-      {{- if not env.LOCAL_DUKKHA_PRESETS_PATH -}}
+      {{- if not env.LOCAL_PRESETS_PATH -}}
         presets
       {{- end -}}
     cache:

@@ -5,5 +5,5 @@
 */ -}}
 
 {{- define "page.header" -}}
-<p><em>powered by</em> <a href="https://github.com/arhat-dev/meeting-minutes-bot">meeting-minutes-bot</a></p>
+<p><em>powered by</em> <a href="https://github.com/arhat-dev/mbot">mbot</a></p>
 {{- end -}}

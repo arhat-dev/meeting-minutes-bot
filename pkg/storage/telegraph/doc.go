@@ -2,7 +2,7 @@
 package telegraph
 
 import (
-	"arhat.dev/meeting-minutes-bot/pkg/storage"
+	"arhat.dev/mbot/pkg/storage"
 )
 
 const Name = "telegraph"

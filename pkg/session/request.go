@@ -3,8 +3,8 @@ package session
 import (
 	"sync/atomic"
 
-	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/bot"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 type Request interface {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"arhat.dev/meeting-minutes-bot/pkg/storage"
+	"arhat.dev/mbot/pkg/storage"
 	"arhat.dev/rs"
 	"github.com/minio/minio-go/v7"
 	"github.com/minio/minio-go/v7/pkg/credentials"

@@ -7,8 +7,8 @@ import (
 
 	"github.com/minio/minio-go/v7"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
-	"arhat.dev/meeting-minutes-bot/pkg/storage"
+	"arhat.dev/mbot/pkg/rt"
+	"arhat.dev/mbot/pkg/storage"
 )
 
 // nolint:revive

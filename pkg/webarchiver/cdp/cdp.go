@@ -5,7 +5,7 @@ import (
 
 	"github.com/chromedp/chromedp"
 
-	"arhat.dev/meeting-minutes-bot/pkg/webarchiver"
+	"arhat.dev/mbot/pkg/webarchiver"
 )
 
 var _ webarchiver.Interface = (*Driver)(nil)

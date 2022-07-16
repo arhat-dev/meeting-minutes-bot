@@ -3,7 +3,7 @@ package storage
 import (
 	"context"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 var _ Interface = (*Nop)(nil)

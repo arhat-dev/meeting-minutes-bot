@@ -3,7 +3,7 @@ package generator
 import (
 	"fmt"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 type Config interface {

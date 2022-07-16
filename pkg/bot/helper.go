@@ -3,8 +3,8 @@ package bot
 import (
 	"time"
 
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/generator"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 // NeedPreProcess returns true when any of following is true:

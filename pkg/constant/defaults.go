@@ -18,5 +18,5 @@ package constant
 
 // nolint:revive
 const (
-	DefaultConfigFile = "/etc/meeting-minutes-bot/config.yaml"
+	DefaultConfigFile = "/etc/mbot/config.yaml"
 )

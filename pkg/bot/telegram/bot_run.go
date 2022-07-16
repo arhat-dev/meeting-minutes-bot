@@ -9,8 +9,8 @@ import (
 	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/tg"
 
-	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/bot"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 func (c *tgBot) Configure() (err error) {

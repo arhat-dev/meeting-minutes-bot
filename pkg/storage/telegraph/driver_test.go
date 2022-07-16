@@ -8,7 +8,7 @@ import (
 	"image/png"
 	"testing"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 	"github.com/stretchr/testify/assert"
 )
 

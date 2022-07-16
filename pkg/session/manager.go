@@ -8,9 +8,9 @@ import (
 
 	"arhat.dev/pkg/queue"
 
-	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/publisher"
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/bot"
+	"arhat.dev/mbot/pkg/publisher"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 func NewManager[C Chat](ctx context.Context) Manager[C] {

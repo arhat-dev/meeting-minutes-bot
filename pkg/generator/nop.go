@@ -1,7 +1,7 @@
 package generator
 
 import (
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 )
 
 var (

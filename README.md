@@ -1,12 +1,12 @@
-# Meeting Minutes Bot
+# mbot
 
-[![CI](https://github.com/arhat-dev/meeting-minutes-bot/workflows/CI/badge.svg)](https://github.com/arhat-dev/meeting-minutes-bot/actions?query=workflow%3ACI)
-[![Build](https://github.com/arhat-dev/meeting-minutes-bot/workflows/Build/badge.svg)](https://github.com/arhat-dev/meeting-minutes-bot/actions?query=workflow%3ABuild)
-[![PkgGoDev](https://pkg.go.dev/badge/arhat.dev/meeting-minutes-bot)](https://pkg.go.dev/arhat.dev/meeting-minutes-bot)
-[![GoReportCard](https://goreportcard.com/badge/arhat.dev/meeting-minutes-bot)](https://goreportcard.com/report/arhat.dev/meeting-minutes-bot)
-[![codecov](https://codecov.io/gh/arhat-dev/meeting-minutes-bot/branch/master/graph/badge.svg)](https://codecov.io/gh/arhat-dev/meeting-minutes-bot)
+[![CI](https://github.com/arhat-dev/mbot/workflows/CI/badge.svg)](https://github.com/arhat-dev/mbot/actions?query=workflow%3ACI)
+[![Build](https://github.com/arhat-dev/mbot/workflows/Build/badge.svg)](https://github.com/arhat-dev/mbot/actions?query=workflow%3ABuild)
+[![PkgGoDev](https://pkg.go.dev/badge/arhat.dev/mbot)](https://pkg.go.dev/arhat.dev/mbot)
+[![GoReportCard](https://goreportcard.com/badge/arhat.dev/mbot)](https://goreportcard.com/report/arhat.dev/mbot)
+[![codecov](https://codecov.io/gh/arhat-dev/mbot/branch/master/graph/badge.svg)](https://codecov.io/gh/arhat-dev/mbot)
 
-Build your KnowledgeBase in Chat
+Build your chat bot with mbot
 
 ## Features
 
@@ -60,10 +60,10 @@ __NOTE:__ You have to manage `POST_KEY`s for your `TOPIC`s
 ## Build
 
 ```bash
-make meeting-minutes-bot
+make mbot
 ```
 
-You can find `meeting-minutes-bot` in `./build`
+You can find `mbot` in `./build`
 
 ## Config
 
@@ -160,7 +160,7 @@ __NOTE:__ You can reference environment variables in config file (e.g. `${FOO}`,
 ## Run
 
 ```bash
-/path/to/built/meeting-minutes-bot -c /path/to/your/config.yaml
+/path/to/built/mbot -c /path/to/your/config.yaml
 ```
 
 ## LICENSE

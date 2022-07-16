@@ -1,4 +1,4 @@
-module arhat.dev/meeting-minutes-bot
+module arhat.dev/mbot
 
 go 1.18
 

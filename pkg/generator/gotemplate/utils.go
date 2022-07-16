@@ -11,7 +11,7 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/bmatcuk/doublestar/v4"
 
-	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/mbot/pkg/generator"
 	"arhat.dev/pkg/stringhelper"
 )
 

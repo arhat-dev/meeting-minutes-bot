@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/mbot/pkg/rt"
 	"github.com/gotd/td/tg"
 )
 
