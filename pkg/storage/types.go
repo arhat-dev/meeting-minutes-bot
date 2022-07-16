@@ -3,8 +3,8 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
 
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 	"arhat.dev/rs"
 )
 
@@ -14,7 +14,7 @@ type Interface interface {
 
 	// Upload content to the storage
 	Upload(
-		ctx context.Context, filename, contentType string, size int64, data io.Reader,
+		ctx context.Context, filename string, contentType rt.MIME, in *rt.Input,
 	) (url string, err error)
 }
 

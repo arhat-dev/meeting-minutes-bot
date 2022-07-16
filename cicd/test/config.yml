@@ -7,7 +7,7 @@ generators:
   gotemplate:foo:
     # builtinTemplate: telegraph
     templatesDir: ./pkg/generator/gotemplate/templates/telegraph
-    outputFormat: html
+    mode: html
 
   file:foo: {}
 
@@ -26,7 +26,14 @@ publishers:
 bots:
   telegram:foo:
     enabled: true
-    endpoint: api.telegram.org
+
+    dc: 2
+    servers: []
+
+    appID@file: ./private/telegram-app-id.txt
+    appHash@file: ./private/telegram-app-hash.txt
+    appPubKey@file: ./private/telegram-app-pubkey-prod.txt
+
     botToken@file: ./private/telegram-bot-token.txt
 
     workflows:

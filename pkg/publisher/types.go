@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 type Input struct {
@@ -35,10 +35,10 @@ type Interface interface {
 	AuthURL() (string, error)
 
 	// Retrieve post and cache it locally according to the url
-	Retrieve(url string) ([]message.Span, error)
+	Retrieve(url string) ([]rt.Span, error)
 
 	// Publish a new post
-	Publish(title string, body []byte) ([]message.Span, error)
+	Publish(title string, body *rt.Input) ([]rt.Span, error)
 
 	// List all posts for this user
 	List() ([]PostInfo, error)
@@ -47,7 +47,7 @@ type Interface interface {
 	Delete(urls ...string) error
 
 	// Append content to local post cache
-	Append(ctx context.Context, body []byte) ([]message.Span, error)
+	Append(ctx context.Context, body *rt.Input) ([]rt.Span, error)
 }
 
 type PostInfo struct {

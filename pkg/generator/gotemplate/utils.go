@@ -9,8 +9,10 @@ import (
 	ttpl "text/template"
 
 	"github.com/Masterminds/sprig/v3"
+	"github.com/bmatcuk/doublestar/v4"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
+	"arhat.dev/pkg/stringhelper"
 )
 
 type tplExecutor interface {
@@ -40,36 +42,29 @@ func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *generator.
 }
 
 func loadTemplatesFromFS(base any, dirFS fs.FS) (tplExecutor, error) {
-	entries, err := fs.ReadDir(dirFS, ".")
+	files, err := doublestar.Glob(dirFS, "**/*.tpl")
 	if err != nil {
-		return nil, fmt.Errorf("load template: %w", err)
-	}
-
-	if len(entries) == 0 {
-		return nil, fmt.Errorf("load template: no dir in fs")
-	}
-
-	first := entries[0]
-	dirName := first.Name()
-	pattern := path.Join(dirName, "**/*.tpl")
-	if !first.IsDir() {
-		pattern = "*"
+		return nil, fmt.Errorf("no template file found: %w", err)
 	}
 
 	switch t := base.(type) {
 	case *htpl.Template:
-		ht, err := t.Funcs(sprig.HtmlFuncMap()).
-			Funcs(htpl.FuncMap(generator.FakeFuncMap())).
-			ParseFS(dirFS, pattern)
+		ht, err := parseFiles(
+			t.Funcs(sprig.HtmlFuncMap()).Funcs(htpl.FuncMap(generator.FakeFuncMap())),
+			dirFS,
+			files,
+		)
 		if err != nil {
 			return nil, err
 		}
 
 		return &hTemplate{*ht}, nil
 	case *ttpl.Template:
-		tt, err := t.Funcs(sprig.TxtFuncMap()).
-			Funcs(ttpl.FuncMap(generator.FakeFuncMap())).
-			ParseFS(dirFS, pattern)
+		tt, err := parseFiles(
+			t.Funcs(sprig.TxtFuncMap()).Funcs(ttpl.FuncMap(generator.FakeFuncMap())),
+			dirFS,
+			files,
+		)
 		if err != nil {
 			return nil, err
 		}
@@ -78,4 +73,49 @@ func loadTemplatesFromFS(base any, dirFS fs.FS) (tplExecutor, error) {
 	default:
 		return nil, fmt.Errorf("unknown template type %T", base)
 	}
+}
+
+func parseFiles[T interface {
+	New(string) T
+	Name() string
+	Parse(string) (T, error)
+}](t T, dirFS fs.FS, files []string) (_ T, err error) {
+	if len(files) == 0 {
+		err = fmt.Errorf("no template file provided")
+		return
+	}
+
+	var (
+		data []byte
+		name string
+		tmpl T
+	)
+
+	for _, filename := range files {
+		data, err = fs.ReadFile(dirFS, filename)
+		if err != nil {
+			return
+		}
+
+		name = path.Base(filename)
+		// First template becomes return value if not already defined,
+		// and we use that one for subsequent New calls to associate
+		// all the templates together. Also, if this file has the same name
+		// as t, this file becomes the contents of t, so
+		//  t, err := New(name).Funcs(xxx).ParseFiles(name)
+		// works. Otherwise we create a new template associated with t.
+
+		if name == t.Name() {
+			tmpl = t
+		} else {
+			tmpl = t.New(name)
+		}
+
+		_, err = tmpl.Parse(stringhelper.Convert[string, byte](data))
+		if err != nil {
+			return
+		}
+	}
+
+	return t, nil
 }

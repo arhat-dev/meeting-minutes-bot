@@ -8,8 +8,5 @@ import (
 const Name = "telegraph"
 
 func init() {
-	storage.Register(
-		Name,
-		func() storage.Config { return &Config{} },
-	)
+	storage.Register(Name, func() storage.Config { return &Config{} })
 }

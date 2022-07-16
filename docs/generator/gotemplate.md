@@ -20,7 +20,7 @@ Render messages with [go template](https://golang.org/pkg/text/template/)
 ## Config
 
 ```yaml
-# available built-in templates are [telegraph, text, beancount, http-request-spec]
+# available built-in templates are [telegraph, text, beancount, http-req-spec]
 builtinTemplate: telegraph
 
 # custom template directory, all files in this directory will be treated as the template

@@ -10,8 +10,8 @@ import (
 	"arhat.dev/pkg/textquery"
 	"github.com/Masterminds/sprig/v3"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 // nolint:revive
@@ -20,10 +20,7 @@ const (
 )
 
 func init() {
-	publisher.Register(
-		Name,
-		func() publisher.Config { return &Config{} },
-	)
+	publisher.Register(Name, func() publisher.Config { return &Config{} })
 }
 
 type Config struct {
@@ -82,7 +79,7 @@ func (d *Driver) AuthURL() (string, error) {
 	return "", fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Retrieve(key string) ([]message.Span, error) {
+func (d *Driver) Retrieve(key string) ([]rt.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
@@ -94,12 +91,20 @@ func (d *Driver) Delete(urls ...string) error {
 	return fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Span, error) {
-	var args []string
-	buf := &bytes.Buffer{}
+func (d *Driver) Append(ctx context.Context, body *rt.Input) (_ []rt.Span, err error) {
+	var (
+		args []string
+		buf  bytes.Buffer
+	)
+
+	content, err := body.String()
+	if err != nil {
+		return
+	}
+
 	for i, tpl := range d.argTpls {
 		buf.Reset()
-		err := tpl.Execute(buf, string(body))
+		err := tpl.Execute(&buf, content)
 		if err != nil {
 			return nil, fmt.Errorf("failed to execute #%d arg template: %w", i, err)
 		}
@@ -111,35 +116,35 @@ func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Span, error
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		if len(output) != 0 {
-			return []message.Span{
+			return []rt.Span{
 				{
-					SpanFlags: message.SpanFlags_Pre,
-					Text:      fmt.Sprintf("%s\n%v", output, err),
+					Flags: rt.SpanFlag_Pre,
+					Text:  fmt.Sprintf("%s\n%v", output, err),
 				},
 			}, nil
 		}
 
-		return []message.Span{
+		return []rt.Span{
 			{
-				SpanFlags: message.SpanFlags_Pre,
-				Text:      err.Error(),
+				Flags: rt.SpanFlag_Pre,
+				Text:  err.Error(),
 			},
 		}, nil
 	}
 
-	return []message.Span{
+	return []rt.Span{
 		{
-			SpanFlags: message.SpanFlags_Pre,
-			Text:      string(output),
+			Flags: rt.SpanFlag_Pre,
+			Text:  string(output),
 		},
 	}, nil
 }
 
-func (d *Driver) Publish(title string, body []byte) ([]message.Span, error) {
-	return []message.Span{
+func (d *Driver) Publish(title string, body *rt.Input) ([]rt.Span, error) {
+	return []rt.Span{
 		{
-			SpanFlags: message.SpanFlags_PlainText,
-			Text:      fmt.Sprintf("You are using %s interpreter.", d.bin),
+			Flags: rt.SpanFlag_PlainText,
+			Text:  fmt.Sprintf("You are using %s interpreter.", d.bin),
 		},
 	}, nil
 }

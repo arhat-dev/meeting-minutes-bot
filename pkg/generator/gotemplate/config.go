@@ -9,21 +9,19 @@ import (
 )
 
 func init() {
-	generator.Register(
-		Name,
-		func() generator.Config { return &Config{} },
-	)
+	generator.Register(Name, func() generator.Config { return &Config{} })
 }
 
 type Config struct {
 	rs.BaseField
 
+	// UseBuiltin to use bundled template, value can be one of [text, telegraph, beancount, http-req-spec]
 	UseBuiltin string `yaml:"useBuiltin"`
 
 	// Custom template
 
 	// text or html
-	OutputFormat string `yaml:"outputFormat"`
+	Mode string `yaml:"mode"`
 
 	// TemplatesDir is the dir template files stored
 	TemplatesDir string `yaml:"templatesDir"`
@@ -39,13 +37,13 @@ func (c *Config) Create() (generator.Interface, error) {
 	case len(c.TemplatesDir) != 0:
 		var base any
 
-		switch f := c.OutputFormat; f {
+		switch f := c.Mode; f {
 		case "text":
 			base = newTextTemplate()
 		case "html":
 			base = newHTMLTemplate()
 		default:
-			return nil, fmt.Errorf("unknown output format %q", f)
+			return nil, fmt.Errorf("unknown mode %q", f)
 		}
 
 		tpl, err = loadTemplatesFromFS(base, os.DirFS(c.TemplatesDir))
@@ -62,7 +60,7 @@ func (c *Config) Create() (generator.Interface, error) {
 			spec = builtinTemplates[builtinTpl_Telegraph]
 		case "beancount":
 			spec = builtinTemplates[builtinTpl_Beancount]
-		case "http-request-spec":
+		case "http-req-spec":
 			spec = builtinTemplates[builtinTpl_HttpRequestSpec]
 		default:
 			return nil, fmt.Errorf("no such builtin template with name %q", c.UseBuiltin)

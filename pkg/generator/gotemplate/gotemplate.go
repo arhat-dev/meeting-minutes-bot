@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 // nolint:revive
@@ -34,21 +34,15 @@ func (g *Driver) RenderPageHeader() (_ []byte, err error) {
 	return buf.Next(buf.Len()), nil
 }
 
-func (g *Driver) RenderPageBody(
-	messages []message.Interface,
-) (_ []byte, err error) {
+func (g *Driver) RenderPageBody(msgs []*rt.Message) (_ []byte, err error) {
 	var (
 		buf bytes.Buffer
 	)
 
-	err = g.templates.ExecuteTemplate(
-		&buf,
-		"page.body",
-		&generator.TemplateData{
-			Messages: messages,
-		},
-	)
-
+	data := generator.TemplateData{
+		Messages: msgs,
+	}
+	err = g.templates.ExecuteTemplate(&buf, "page.body", &data)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute page template: %w", err)
 	}

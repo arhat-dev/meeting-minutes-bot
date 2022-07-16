@@ -84,3 +84,4 @@ Session.vim
 coverage*.txt
 *.log
 /.dukkha
+/.botcache

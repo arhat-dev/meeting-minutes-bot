@@ -3,26 +3,25 @@ package telegram
 import (
 	"fmt"
 	"io"
+	"path"
 	"sync"
 	"time"
 
 	"arhat.dev/pkg/log"
-	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/tg"
 	"github.com/h2non/filetype"
 	"github.com/h2non/filetype/types"
 
 	"arhat.dev/meeting-minutes-bot/pkg/bot"
-	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 // errCh can be nil when there is no background pre-process worker
 // nolint:gocyclo
-func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *Message, msg *tg.Message) (errCh chan error, err error) {
+func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *rt.Message, msg *tg.Message) (errCh chan error, err error) {
 	var (
-		nonText    message.Span
-		doDownload func() (rt.CacheReader, string, int64, error)
+		nonText    rt.Span
+		doDownload func() (_ rt.CacheReader, contentType, ext string, sz int64, err error)
 	)
 
 	media, ok := msg.GetMedia()
@@ -89,12 +88,11 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *Message, msg *tg.Message)
 				ThumbSize:     maxSizeName,
 			}
 
-			doDownload = func() (rt.CacheReader, string, int64, error) {
-				return c.download(
-					c.downloader.Download(c.client.API(), fileLoc).WithVerify(true),
-					maxSize,
-					"",
-				)
+			nonText.Flags |= rt.SpanFlag_Image
+
+			doDownload = func() (rt.CacheReader, string, string, int64, error) {
+				c.Logger().D("download photo", log.Int64("size", int64(maxSize)))
+				return c.download(fileLoc, int64(maxSize), "")
 			}
 		default:
 			return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
@@ -115,24 +113,37 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *Message, msg *tg.Message)
 			for _, attr := range attrs {
 				switch a := attr.(type) {
 				case *tg.DocumentAttributeImageSize:
+					nonText.Flags |= rt.SpanFlag_Image
 				case *tg.DocumentAttributeAnimated:
+					nonText.Flags |= rt.SpanFlag_Video
 				case *tg.DocumentAttributeSticker:
+					if !a.Mask {
+						nonText.Flags |= rt.SpanFlag_Video
+					}
 				case *tg.DocumentAttributeVideo:
-					nonText.Duration.Set(time.Duration(a.GetDuration()) * time.Second)
+					nonText.Flags |= rt.SpanFlag_Video
+					nonText.Duration = time.Duration(a.GetDuration()) * time.Second
 				case *tg.DocumentAttributeAudio:
-					nonText.Duration.Set(time.Duration(a.GetDuration()) * time.Second)
+					if a.Voice {
+						nonText.Flags |= rt.SpanFlag_Voice
+					} else {
+						nonText.Flags |= rt.SpanFlag_Audio
+					}
+
+					nonText.Duration = time.Duration(a.GetDuration()) * time.Second
 				case *tg.DocumentAttributeFilename:
-					nonText.Filename.Set(a.GetFileName())
+					nonText.Filename = a.GetFileName()
 				case *tg.DocumentAttributeHasStickers:
 				}
 			}
 
-			doDownload = func() (rt.CacheReader, string, int64, error) {
-				return c.download(
-					c.downloader.Download(c.client.API(), fileLoc).WithVerify(true),
-					sz,
-					ct,
-				)
+			if !nonText.IsMedia() {
+				nonText.Flags |= rt.SpanFlag_File
+			}
+
+			doDownload = func() (rt.CacheReader, string, string, int64, error) {
+				c.Logger().D("download file", log.Int64("size", sz), log.String("content_type", ct))
+				return c.download(fileLoc, sz, ct)
 			}
 		default:
 			return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
@@ -150,7 +161,7 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *Message, msg *tg.Message)
 	// case *tg.MessageMediaDice:
 	default:
 		c.Logger().I("unhandled telegram message", log.Any("msg", msg))
-		m.markReady()
+		m.MarkReady()
 		return nil, nil
 	}
 
@@ -173,28 +184,78 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *Message, msg *tg.Message)
 		go func() {
 			wg.Wait()
 			close(errCh)
-			m.markReady()
+			m.MarkReady()
 		}()
 	}
 
-	go func() {
+	go func(wg *sync.WaitGroup) {
 		defer func() {
 			wg.Done()
 
-			if noBgTextProcessing {
+			if noBgTextProcessing { // no background job for text processing, errCh is managed by us
 				close(errCh)
-				m.markReady()
+				m.MarkReady()
 			}
 		}()
 
-		cacheRD, contentType, sz, err := doDownload()
+		cacheRD, contentType, ext, sz, err := doDownload()
 		if err != nil {
 			c.Logger().I("failed to download file", log.Error(err))
 			c.sendErrorf(errCh, "unable to download: %w", err)
 			return
 		}
 
-		storageURL, err := wf.Storage.Upload(c.Context(), cacheRD.Name(), contentType, sz, cacheRD)
+		if len(contentType) == 0 || len(ext) == 0 {
+			var (
+				buf [32]byte
+				ft  types.Type
+			)
+
+			n, _ := cacheRD.Read(buf[:])
+			_, err = cacheRD.Seek(0, io.SeekStart)
+			if err != nil {
+				c.Logger().E("failed to seek to start", log.Error(err))
+				c.sendErrorf(errCh, "bad cache reuse")
+				return
+			}
+
+			ft, err = filetype.Match(buf[:n])
+			if err == nil {
+				if len(contentType) == 0 {
+					contentType = ft.MIME.Value
+				}
+
+				if len(ext) == 0 {
+					ext = ft.Extension
+				}
+			}
+		}
+
+		if len(contentType) != 0 {
+			nonText.ContentType = contentType
+		} else {
+			// provide default mime type for storage driver
+			nonText.ContentType = "application/octet-stream"
+		}
+
+		var filename string
+		if len(nonText.Filename) == 0 { // no filename set
+			filename = cacheRD.ID().String() + "." + ext
+		} else {
+			filename = nonText.Filename
+			if len(path.Ext(filename)) == 0 {
+				filename += "." + ext
+			}
+		}
+
+		c.Logger().D("upload file",
+			log.String("filename", filename),
+			rt.LogCacheID(cacheRD.ID()),
+			log.Int64("size", sz),
+		)
+
+		input := rt.NewInput(sz, cacheRD)
+		storageURL, err := wf.Storage.Upload(c.Context(), filename, rt.NewMIME(contentType), &input)
 		if err != nil {
 			c.Logger().I("failed to upload file", log.Error(err))
 			c.sendErrorf(errCh, "unable to upload file: %w", err)
@@ -211,37 +272,11 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *Message, msg *tg.Message)
 			return
 		}
 
-		nonText.URL.Set(storageURL)
+		nonText.URL = storageURL
 		nonText.Data = cacheRD
-		if len(contentType) == 0 {
-			var (
-				buf [32]byte
-				ft  types.Type
-			)
 
-			n, _ := cacheRD.Read(buf[:])
-			_, err = cacheRD.Seek(0, io.SeekStart)
-			if err != nil {
-				c.Logger().E("failed to seek to start", log.Error(err))
-				c.sendErrorf(errCh, "bad cache reuse")
-				return
-			}
-
-			ft, err = filetype.Match(buf[:n])
-			if err == nil {
-				contentType = ft.MIME.Value
-			}
-		}
-
-		if len(contentType) != 0 {
-			nonText.ContentType = contentType
-		} else {
-			// provide default mime type for storage driver
-			nonText.ContentType = "application/octet-stream"
-		}
-
-		m.nonTextEntity.Set(nonText)
-	}()
+		m.SetMediaSpan(&nonText)
+	}(&wg)
 
 	return errCh, nil
 }
@@ -258,18 +293,18 @@ func (c *tgBot) sendErrorf(errCh chan<- error, format string, args ...any) {
 // when wg is not nil, there is other worker working on the same message
 func (c *tgBot) preprocessText(
 	wf *bot.Workflow,
-	m *Message,
+	m *rt.Message,
 	text string,
 	entities []tg.MessageEntityClass,
 	wg *sync.WaitGroup,
 ) (errCh chan error, err error) {
-	mEntities := parseTextEntities(text, entities)
+	spans := parseTextEntities(text, entities)
 
-	if !mEntities.NeedPreProcess() {
-		m.entities = mEntities
+	if !bot.NeedPreProcess(spans) {
+		m.SetTextSpans(spans)
 
 		if wg == nil {
-			m.markReady()
+			m.MarkReady()
 		}
 
 		return nil, nil
@@ -284,63 +319,74 @@ func (c *tgBot) preprocessText(
 		defer func() {
 			if wg == nil {
 				close(errCh)
-				m.markReady()
+				m.MarkReady()
 			} else {
 				wg.Done()
 			}
 		}()
 
-		err2 := bot.PreprocessText(&c.RTContext, wf, mEntities)
+		err2 := bot.PreprocessText(&c.RTContext, wf, spans)
 		if err2 != nil {
 			c.sendErrorf(errCh, "Message pre-process error: %w", err2)
 		}
 
-		m.textEntities = mEntities
+		m.SetTextSpans(spans)
 	}()
 
 	return
 }
 
 func (c *tgBot) download(
-	b *downloader.Builder, sz int, suggestContentType string,
-) (cacheRD rt.CacheReader, contentType string, actualSize int64, err error) {
+	loc tg.InputFileLocationClass, sz int64, suggestContentType string,
+) (cacheRD rt.CacheReader, contentType, ext string, actualSize int64, err error) {
 	cacheRD, actualSize, err = bot.Download(c.Cache(), func(cacheWR rt.CacheWriter) (err2 error) {
+		fileHashes, err2 := c.client.API().UploadGetFileHashes(c.Context(), &tg.UploadGetFileHashesRequest{
+			Location: loc,
+			Offset:   0,
+		})
+
+		for _, h := range fileHashes {
+			h.GetOffset()
+			h.GetLimit()
+		}
+
 		var resp tg.StorageFileTypeClass
 		switch {
 		case sz < 5*1024*1024: // < 5MB
-			resp, err2 = b.Stream(c.Context(), cacheWR)
+			resp, err2 = c.downloader.Download(c.client.API(), loc).
+				Stream(c.Context(), cacheWR)
 		default:
-			// 3 threads is optimal for downloading
-			resp, err2 = b.WithThreads(3).Parallel(c.Context(), cacheWR)
+			// 3 threads is optimal for multi-thread downloading
+			resp, err2 = c.downloader.Download(c.client.API(), loc).
+				WithThreads(3).
+				Parallel(c.Context(), cacheWR)
 		}
 
 		if err2 != nil {
 			return
 		}
 
-		switch resp.TypeID() {
-		case tg.StorageFileJpegTypeID:
-			contentType = "image/jpeg"
-		case tg.StorageFileGifTypeID:
-			contentType = "image/gif"
-		case tg.StorageFilePngTypeID:
-			contentType = "image/png"
-		case tg.StorageFilePdfTypeID:
-			contentType = "application/pdf"
-		case tg.StorageFileMp3TypeID:
-			contentType = "audio/mpeg"
-		case tg.StorageFileMovTypeID:
-			contentType = "video/quicktime"
-		case tg.StorageFileMp4TypeID:
-			contentType = "video/mp4"
-		case tg.StorageFileWebpTypeID:
-			contentType = "image/webp"
-		case tg.StorageFileUnknownTypeID:
-			fallthrough
-		case tg.StorageFilePartialTypeID:
-			fallthrough
+		contentType = suggestContentType
+		switch resp.(type) {
+		case *tg.StorageFileJpeg:
+			contentType, ext = "image/jpeg", "jpg"
+		case *tg.StorageFileGif:
+			contentType, ext = "image/gif", "gif"
+		case *tg.StorageFilePng:
+			contentType, ext = "image/png", "png"
+		case *tg.StorageFilePdf:
+			contentType, ext = "application/pdf", "pdf"
+		case *tg.StorageFileMp3:
+			contentType, ext = "audio/mpeg", "mp3"
+		case *tg.StorageFileMov:
+			contentType, ext = "video/quicktime", "mov"
+		case *tg.StorageFileMp4:
+			contentType, ext = "video/mp4", "mp4"
+		case *tg.StorageFileWebp:
+			contentType, ext = "image/webp", "webp"
+		case *tg.StorageFileUnknown:
+		case *tg.StorageFilePartial:
 		default:
-			contentType = suggestContentType
 		}
 
 		return

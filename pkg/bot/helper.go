@@ -5,36 +5,51 @@ import (
 	"time"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
+// NeedPreProcess returns true when any of following is true:
+// - there is url to be archived
+func NeedPreProcess(spans []rt.Span) bool {
+	for i := range spans {
+		if len(spans[i].URL) != 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
 // PreprocessText message entities, doing following jobs
 // - archive web pages
-func PreprocessText(ctx *rt.RTContext, wf *Workflow, entities message.Entities) error {
-	for i := range entities {
-		if entities[i].URL.IsNil() {
+func PreprocessText(ctx *rt.RTContext, wf *Workflow, spans []rt.Span) error {
+	var input rt.Input
+
+	for i := range spans {
+		if len(spans[i].URL) == 0 {
 			continue
 		}
 
-		pageArchive, err := wf.WebArchiver.Archive(ctx.Context(), entities[i].URL.Get())
+		pageArchive, err := wf.WebArchiver.Archive(ctx.Context(), spans[i].URL)
 		if err != nil {
 			continue
 		}
 
 		data, sz := pageArchive.WARC()
 		if sz > 0 {
-			url, err2 := wf.Storage.Upload(ctx.Context(), "", "application/warc", sz, data)
+			input = rt.NewInput(sz, data)
+			url, err2 := wf.Storage.Upload(ctx.Context(), "", rt.NewMIME("application/warc"), &input)
 			if err2 == nil {
-				entities[i].WebArchiveURL.Set(url)
+				spans[i].WebArchiveURL = url
 			}
 		}
 
 		data, sz = pageArchive.Screenshot()
 		if sz > 0 {
-			url, err2 := wf.Storage.Upload(ctx.Context(), "", "image/png", sz, data)
+			input = rt.NewInput(sz, data)
+			url, err2 := wf.Storage.Upload(ctx.Context(), "", rt.NewMIME("image/png"), &input)
 			if err2 == nil {
-				entities[i].WebArchiveScreenshotURL.Set(url)
+				spans[i].WebArchiveScreenshotURL = url
 			}
 		}
 	}
@@ -50,17 +65,16 @@ func Download(cache rt.Cache, doDownload func(rt.CacheWriter) error) (cacheRD rt
 
 	err = doDownload(cacheWR)
 	if err != nil {
-		_ = cacheWR.CloseWrite()
+		_ = cacheWR.Close()
 		return
 	}
 
-	err2 := cacheWR.CloseWrite()
-	if err2 != nil {
-		err = err2
+	err = cacheWR.Close()
+	if err != nil {
 		return
 	}
 
-	cacheRD, err = cacheWR.OpenReader()
+	cacheRD, err = cache.Open(cacheWR.ID())
 	if err == nil {
 		sz, err = cacheRD.Size()
 	}
@@ -70,15 +84,15 @@ func Download(cache rt.Cache, doDownload func(rt.CacheWriter) error) (cacheRD rt
 
 var msgIfacePool = &sync.Pool{
 	New: func() any {
-		return make([]message.Interface, 0, 16)
+		return make([]rt.Message, 0, 16)
 	},
 }
 
-func getMsgIface(sz int) (ret []message.Interface) {
-	ret = msgIfacePool.Get().([]message.Interface)
+func getMsgIface(sz int) (ret []rt.Message) {
+	ret = msgIfacePool.Get().([]rt.Message)
 	if cap(ret) < sz {
 		msgIfacePool.Put(ret)
-		ret = make([]message.Interface, sz)
+		ret = make([]rt.Message, sz)
 		return
 	} else {
 		ret = ret[:sz]
@@ -86,21 +100,18 @@ func getMsgIface(sz int) (ret []message.Interface) {
 	}
 }
 
-func putMsgIface(s []message.Interface) {
+func putMsgIface(s []rt.Message) {
 	msgIfacePool.Put(s)
 }
 
-func GenerateContent[M message.Interface](gen generator.Interface, msgs []M) (result []byte, err error) {
-	data := getMsgIface(len(msgs))
-	for i, m := range msgs {
+func GenerateContent(gen generator.Interface, msgs []*rt.Message) (result []byte, err error) {
+	for _, m := range msgs {
 		for !m.Ready() {
+			// TODO: m.Wait()
 			time.Sleep(time.Second)
 		}
-
-		data[i] = msgs[i]
 	}
 
-	result, err = gen.RenderPageBody(data)
-	putMsgIface(data)
+	result, err = gen.RenderPageBody(msgs)
 	return
 }

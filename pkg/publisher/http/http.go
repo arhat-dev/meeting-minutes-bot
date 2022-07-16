@@ -11,14 +11,15 @@ import (
 	"text/template"
 	"time"
 
+	"arhat.dev/pkg/stringhelper"
 	"arhat.dev/pkg/textquery"
 	"arhat.dev/pkg/tlshelper"
 	"arhat.dev/rs"
 	"github.com/Masterminds/sprig/v3"
 	"gopkg.in/yaml.v3"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 // nolint:revive
@@ -158,7 +159,7 @@ func (d *Driver) AuthURL() (string, error) {
 	return "", fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Retrieve(key string) ([]message.Span, error) {
+func (d *Driver) Retrieve(key string) ([]rt.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
@@ -170,8 +171,13 @@ func (d *Driver) Delete(urls ...string) error {
 	return fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Span, error) {
-	client := &http.Client{
+func (d *Driver) Append(ctx context.Context, yamlSpec *rt.Input) (_ []rt.Span, err error) {
+	content, err := yamlSpec.Bytes()
+	if err != nil {
+		return
+	}
+
+	client := http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
 			DialContext: (&net.Dialer{
@@ -186,8 +192,8 @@ func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Span, e
 		},
 	}
 
-	spec := &Spec{}
-	err := yaml.Unmarshal(yamlSpec, spec)
+	var spec Spec
+	err = yaml.Unmarshal(content, &spec)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse request spec: %w", err)
 	}
@@ -205,12 +211,14 @@ func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Span, e
 
 	var (
 		body io.Reader
+		br   bytes.Reader
 	)
 	switch method {
 	case http.MethodGet:
 	case http.MethodHead:
 	case http.MethodPost, http.MethodPut, http.MethodPatch:
-		body = bytes.NewReader([]byte(spec.Body))
+		br.Reset(stringhelper.ToBytes[byte, byte](spec.Body))
+		body = &br
 	case http.MethodDelete:
 	case http.MethodOptions:
 	}
@@ -241,9 +249,9 @@ func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Span, e
 	}
 
 	if d.respTpl != nil {
-		buf := &bytes.Buffer{}
+		var buf strings.Builder
 
-		tplData := &responseTemplateData{
+		tplData := responseTemplateData{
 			Code:    resp.StatusCode,
 			Headers: resp.Header,
 			Body:    data,
@@ -253,32 +261,32 @@ func (d *Driver) Append(ctx context.Context, yamlSpec []byte) ([]message.Span, e
 			},
 		}
 
-		err = d.respTpl.Execute(buf, tplData)
+		err = d.respTpl.Execute(&buf, &tplData)
 		if err != nil {
 			return nil, err
 		}
 
-		return []message.Span{
+		return []rt.Span{
 			{
-				SpanFlags: message.SpanFlags_Pre,
-				Text:      buf.String(),
+				Flags: rt.SpanFlag_Pre,
+				Text:  buf.String(),
 			},
 		}, nil
 	}
 
-	return []message.Span{
+	return []rt.Span{
 		{
-			SpanFlags: message.SpanFlags_Pre,
-			Text:      string(data),
+			Flags: rt.SpanFlag_Pre,
+			Text:  stringhelper.Convert[string, byte](data),
 		},
 	}, nil
 }
 
-func (d *Driver) Publish(title string, body []byte) ([]message.Span, error) {
-	return []message.Span{
+func (d *Driver) Publish(title string, body *rt.Input) ([]rt.Span, error) {
+	return []rt.Span{
 		{
-			SpanFlags: message.SpanFlags_PlainText,
-			Text:      "HTTP publisher ready",
+			Flags: rt.SpanFlag_PlainText,
+			Text:  "HTTP publisher ready",
 		},
 	}, nil
 }

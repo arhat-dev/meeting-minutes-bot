@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 var _ UserConfig = (*nopUserConfig)(nil)
@@ -39,15 +39,15 @@ func (nop) AuthURL() (string, error) {
 	return "", fmt.Errorf("unimplemented")
 }
 
-func (nop) Retrieve(url string) ([]message.Span, error) {
+func (nop) Retrieve(url string) ([]rt.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (nop) Publish(title string, body []byte) ([]message.Span, error) {
+func (nop) Publish(title string, body *rt.Input) ([]rt.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
-func (nop) Append(ctx context.Context, body []byte) ([]message.Span, error) {
+func (nop) Append(ctx context.Context, body *rt.Input) ([]rt.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 

@@ -3,10 +3,11 @@ package storage
 import (
 	"context"
 	"fmt"
-	"io"
 	"math"
 	"regexp"
 	"sync"
+
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 func NewManager() *Manager {
@@ -68,7 +69,10 @@ func (m *Manager) Add(mimeMatch string, maxSize int64, config Config) error {
 }
 
 func (m *Manager) Upload(
-	ctx context.Context, filename, mimeType string, size int64, data io.Reader,
+	ctx context.Context,
+	filename string,
+	contentType rt.MIME,
+	in *rt.Input,
 ) (url string, err error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -79,11 +83,11 @@ func (m *Manager) Upload(
 	}
 
 	for i, match := range m.matchers {
-		if !match(mimeType, size) {
+		if !match(contentType.Value(), in.Size()) {
 			continue
 		}
 
-		return m.drivers[i].Upload(ctx, filename, mimeType, size, data)
+		return m.drivers[i].Upload(ctx, filename, contentType, in)
 	}
 
 	return "", fmt.Errorf("not handled by any storage driver")

@@ -3,7 +3,7 @@ package generator
 import (
 	"fmt"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 type Config interface {
@@ -18,11 +18,11 @@ type Interface interface {
 	RenderPageHeader() ([]byte, error)
 
 	// RenderPageBody render page.body
-	RenderPageBody(messages []message.Interface) ([]byte, error)
+	RenderPageBody(messages []*rt.Message) ([]byte, error)
 }
 
 type TemplateData struct {
-	Messages []message.Interface
+	Messages []*rt.Message
 }
 
 type FuncMap = map[string]any

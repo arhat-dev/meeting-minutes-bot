@@ -17,16 +17,16 @@ type templateLoadSpec struct {
 }
 
 var (
-	//go:embed templates/text/*
+	//go:embed templates/text
 	builtinTextTemplate embed.FS
 
-	//go:embed templates/beancount/*
+	//go:embed templates/beancount
 	builtinBeancountTemplate embed.FS
 
-	//go:embed templates/telegraph/*
+	//go:embed templates/telegraph
 	builtinTelegraphTemplate embed.FS
 
-	//go:embed templates/http-request-spec/*
+	//go:embed templates/http-req-spec
 	builtinHTTPRequestSpecTemplate embed.FS
 )
 
@@ -54,7 +54,7 @@ var builtinTemplates = [...]templateLoadSpec{
 		factory: newHTMLTemplate,
 	},
 	builtinTpl_HttpRequestSpec: {
-		name:    "http-request-spec",
+		name:    "http-req-spec",
 		fs:      &builtinHTTPRequestSpecTemplate,
 		factory: newTextTemplate,
 	},

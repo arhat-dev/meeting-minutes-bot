@@ -2,7 +2,8 @@ package storage
 
 import (
 	"context"
-	"io"
+
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 var _ Interface = (*Nop)(nil)
@@ -18,7 +19,7 @@ type Nop struct{}
 func (Nop) Name() string { return "nop" }
 
 func (Nop) Upload(
-	ctx context.Context, filename, contentType string, size int64, data io.Reader,
+	ctx context.Context, filename string, contentType rt.MIME, in *rt.Input,
 ) (url string, err error) {
 	return filename, nil
 }

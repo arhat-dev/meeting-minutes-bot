@@ -3,11 +3,11 @@ package s3
 import (
 	"context"
 	"fmt"
-	"io"
 	"path"
 
 	"github.com/minio/minio-go/v7"
 
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 	"arhat.dev/meeting-minutes-bot/pkg/storage"
 )
 
@@ -17,10 +17,7 @@ const (
 )
 
 func init() {
-	storage.Register(
-		Name,
-		func() storage.Config { return &Config{} },
-	)
+	storage.Register(Name, func() storage.Config { return &Config{} })
 }
 
 var _ storage.Interface = (*Driver)(nil)
@@ -36,7 +33,7 @@ type Driver struct {
 func (s *Driver) Name() string { return Name }
 
 func (s *Driver) Upload(
-	ctx context.Context, filename, contentType string, size int64, data io.Reader,
+	ctx context.Context, filename string, contentType rt.MIME, in *rt.Input,
 ) (url string, err error) {
 	if len(s.bucket) != 0 {
 		hasBucket, err2 := s.client.BucketExists(ctx, s.bucket)
@@ -59,10 +56,10 @@ func (s *Driver) Upload(
 		ctx,
 		s.bucket,
 		objectKey,
-		data,
-		size,
+		in.Reader(),
+		in.Size(),
 		minio.PutObjectOptions{
-			ContentType: contentType,
+			ContentType: contentType.Value(),
 		},
 	)
 	if err != nil {

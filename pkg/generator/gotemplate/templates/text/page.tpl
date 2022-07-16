@@ -6,7 +6,7 @@
 
 {{- define "page.body" -}}
   {{- range .Messages -}}
-    {{-  range .Entities -}}
+    {{-  range .Spans -}}
       {{- .Text -}}
     {{- end -}}
     {{- nindent 0 "" -}}

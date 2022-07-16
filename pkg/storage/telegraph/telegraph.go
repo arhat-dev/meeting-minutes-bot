@@ -1,15 +1,18 @@
 package telegraph
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
-	"mime/multipart"
+
+	// "mime/multipart"
 	"net/http"
-	"net/textproto"
 	"strings"
+
+	"arhat.dev/meeting-minutes-bot/internal/multipart"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
+	"arhat.dev/pkg/stringhelper"
 )
 
 type Driver struct{ client http.Client }
@@ -23,72 +26,113 @@ func unescapeQuotes(s string) string {
 }
 
 func (d *Driver) Upload(
-	ctx context.Context, filename, contentType string, size int64, data io.Reader,
+	ctx context.Context,
+	filename string,
+	contentType rt.MIME,
+	in *rt.Input,
 ) (url string, err error) {
 	var (
-		body bytes.Buffer
+		hb multipart.HeaderBuilder
+		pb multipart.Builder
 	)
 
 	_ = filename
-	mw := multipart.NewWriter(&body)
 
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition", `form-data; name="file"; filename="blob"`)
-	h.Set("Content-Type", contentType)
-	filePart, err := mw.CreatePart(h)
-	if err != nil {
-		return "", fmt.Errorf("failed to prepare file write: %w", err)
+	ct := contentType.Value()
+	switch contentType.Type() {
+	case rt.MIMEType_Video:
+	case rt.MIMEType_Audio:
+	case rt.MIMEType_Image:
+	default:
+		// TODO: fake it as a png file?
+		err = fmt.Errorf("unsupported content type %q", ct)
+		return
 	}
 
-	_, err = io.Copy(filePart, data)
-	if err != nil {
-		return "", fmt.Errorf("failed to buffer request body: %w", err)
-	}
-
-	err = mw.Close()
-	if err != nil {
-		return "", fmt.Errorf("multipart form closed with error: %w", err)
-	}
+	multipartContentType, body := pb.CreatePart(
+		hb.Add("Content-Disposition", `form-data; name="file"; filename="blob"`).
+			Add("Content-Type", ct).Build(),
+		in.Reader(),
+	).Build()
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://telegra.ph/upload", &body)
 	if err != nil {
 		return "", fmt.Errorf("failed to create upload request: %w", err)
 	}
 
-	req.Header.Set("Content-Type", mw.FormDataContentType())
+	req.Header.Set("Content-Type", multipartContentType)
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Referer", "https://telegra.ph/")
 	req.Header.Set("Origin", "https://telegra.ph")
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/103.0.5060.114 Safari/537.36")
 
 	resp, err := d.client.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("failed to request file upload: %w", err)
 	}
 
-	respBody, err := io.ReadAll(resp.Body)
-	_ = resp.Body.Close()
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("file upload failed: %v", string(respBody))
+		respBody, _ := io.ReadAll(resp.Body)
+		if err != nil {
+			return "", fmt.Errorf("read response: %w", err)
+		}
+
+		return "", fmt.Errorf(
+			"failed to upload file, code %d: %s",
+			resp.StatusCode,
+			stringhelper.Convert[string, byte](respBody),
+		)
 	}
 
-	type uploadResp struct {
-		SRC string `json:"src"`
-	}
-
-	var result []uploadResp
-	err = json.Unmarshal(respBody, &result)
+	var result UploadResponse
+	dec := json.NewDecoder(resp.Body)
+	err = dec.Decode(&result)
 	if err != nil {
-		return "", fmt.Errorf("parse upload response %q: %w", string(respBody), err)
+		return "", fmt.Errorf("parse upload response: %w", err)
 	}
 
-	if len(result) == 0 {
-		return "", fmt.Errorf("no url returned")
+	if len(result.Err.Error) != 0 {
+		err = errString(result.Err.Error)
+		return
 	}
 
-	url = "https://telegra.ph/" + strings.TrimLeft(unescapeQuotes(result[0].SRC), "/")
-	return url, nil
+	if len(result.Sources) == 0 {
+		err = errString("unexpected no return url")
+		return
+	}
+
+	url = "https://telegra.ph/" + strings.TrimLeft(unescapeQuotes(result.Sources[0].Src), "/")
+	return
 }
+
+type UploadResponse struct {
+	Sources []struct {
+		Src string `json:"src"`
+	}
+	Err struct {
+		Error string `json:"error"`
+	}
+}
+
+func (r *UploadResponse) UnmarshalJSON(data []byte) error {
+	if len(data) == 0 {
+		return nil
+	}
+
+	switch data[0] {
+	case '{':
+		return json.Unmarshal(data, &r.Err)
+	case '[':
+		return json.Unmarshal(data, &r.Sources)
+	default:
+		return fmt.Errorf("unexpected response data: %s", stringhelper.Convert[string, byte](data))
+	}
+}
+
+type errString string
+
+func (e errString) Error() string { return string(e) }

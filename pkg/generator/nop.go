@@ -1,7 +1,7 @@
 package generator
 
 import (
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 var (
@@ -17,5 +17,5 @@ type nop struct{}
 
 func (nop) Name() string { return "nop" }
 
-func (nop) RenderPageHeader() ([]byte, error)                           { return nil, nil }
-func (nop) RenderPageBody(messages []message.Interface) ([]byte, error) { return nil, nil }
+func (nop) RenderPageHeader() ([]byte, error)                     { return nil, nil }
+func (nop) RenderPageBody(messages []*rt.Message) ([]byte, error) { return nil, nil }

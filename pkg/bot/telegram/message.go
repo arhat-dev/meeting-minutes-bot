@@ -1,72 +1,53 @@
 package telegram
 
 import (
+	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/rt"
 	"github.com/gotd/td/tg"
 )
 
-var _ message.Interface = (*Message)(nil)
-
-type msgFlag uint32
-
-const (
-	msgFlag_Private = 1 << iota
-	msgFlag_Reply
-	msgFlag_Fwd
-)
-
-func (m msgFlag) IsPrivateMessage() bool { return m&msgFlag_Private != 0 }
-func (m msgFlag) IsReply() bool          { return m&msgFlag_Reply != 0 }
-func (m msgFlag) IsForwarded() bool      { return m&msgFlag_Fwd != 0 }
-
-func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*Message) (ret Message) {
+func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*rt.Message) (ret rt.Message) {
 	var (
 		buf strings.Builder
 	)
 
-	ret.id = uint64(msg.GetID())
+	ret.ID = rt.MessageID(msg.GetID())
 	// TODO: set tz by user location
-	ret.timestamp = time.Unix(int64(msg.GetDate()), 0).Local()
-	ret.msgs = msgs
+	ret.Timestamp = time.Unix(int64(msg.GetDate()), 0).UTC()
 
-	if src.Chat.IsPrivateChat() {
-		ret.msgFlag |= msgFlag_Private
-	}
+	ret.IsPrivateMessage = src.Chat.IsPrivateChat()
 
 	if replyTo, ok := msg.GetReplyTo(); ok {
-		ret.msgFlag |= msgFlag_Reply
-		ret.replyToMessageID = uint64(replyTo.GetReplyToMsgID())
+		ret.IsReply = true
+		ret.ReplyToMessageID = rt.MessageID(replyTo.GetReplyToMsgID())
 	}
 
 	if !src.FwdFrom.IsNil() {
-		ret.msgFlag |= msgFlag_Fwd
-
-		ret.origAuthor = src.FwdFrom.GetPtr().Title()
-		if len(ret.origAuthor) == 0 {
+		ret.IsForwarded = true
+		ret.OriginalAuthor = src.FwdFrom.GetPtr().Title()
+		if len(ret.OriginalAuthor) == 0 {
 			buf.Reset()
 			buf.WriteString(src.FwdFrom.GetPtr().Firstname())
 			if buf.Len() != 0 {
 				buf.WriteString(" ")
 			}
 			buf.WriteString(src.FwdFrom.GetPtr().Lastname())
-			ret.origAuthor = buf.String()
+			ret.OriginalAuthor = buf.String()
 		}
 
 		if len(src.FwdFrom.GetPtr().Username()) != 0 {
 			buf.Reset()
 			buf.WriteString("https://t.me/")
 			buf.WriteString(src.FwdFrom.GetPtr().Username())
-			ret.origAuthorLink = buf.String()
+			ret.OriginalAuthorLink = buf.String()
 		}
 	}
 
-	ret.chatName = src.Chat.Title()
-	if len(ret.chatName) == 0 {
+	ret.ChatName = src.Chat.Title()
+	if len(ret.ChatName) == 0 {
 		buf.Reset()
 		buf.WriteString(src.Chat.Firstname())
 		if buf.Len() != 0 {
@@ -74,65 +55,62 @@ func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*Message) (
 		}
 		buf.WriteString(src.Chat.Lastname())
 
-		ret.chatName = buf.String()
+		ret.ChatName = buf.String()
 	}
 
-	if !ret.IsPrivateMessage() && len(src.Chat.Username()) != 0 {
+	if !ret.IsPrivateMessage && len(src.Chat.Username()) != 0 {
 		buf.Reset()
 		buf.WriteString("https://t.me/")
 		buf.WriteString(src.Chat.Username())
-		ret.chatURL = buf.String()
+		ret.ChatLink = buf.String()
 
 		buf.WriteString("/")
-		buf.WriteString(formatMessageID(ret.id))
-		ret.msgURL = buf.String()
+		buf.WriteString(formatMessageID(ret.ID))
+		ret.MessageLink = buf.String()
 	}
 
-	if !src.From.IsNil() {
-		ret.author = src.From.GetPtr().Title()
-
-		if len(ret.author) != 0 {
-			buf.Reset()
-			buf.WriteString(src.From.GetPtr().Firstname())
-			if buf.Len() != 0 {
-				buf.WriteString(" ")
-			}
-			buf.WriteString(src.From.GetPtr().Lastname())
-			ret.author = buf.String()
+	ret.Author = src.From.Title()
+	if len(ret.Author) == 0 {
+		buf.Reset()
+		buf.WriteString(src.From.Firstname())
+		if buf.Len() != 0 {
+			buf.WriteString(" ")
 		}
+		buf.WriteString(src.From.Lastname())
+		ret.Author = buf.String()
 	}
 
-	if !src.From.IsNil() && len(src.From.GetPtr().Username()) != 0 {
+	if len(src.From.Username()) != 0 {
 		buf.Reset()
 		buf.WriteString("https://t.me/")
-		buf.WriteString(src.From.GetPtr().Username())
-		ret.authorURL = buf.String()
+		buf.WriteString(src.From.Username())
+		ret.AuthorLink = buf.String()
 	}
 
 	if !src.FwdChat.IsNil() {
-		ret.origChatName = src.FwdChat.GetPtr().Title()
-		if len(ret.origChatName) == 0 {
+		ret.OriginalChatName = src.FwdChat.GetPtr().Title()
+		if len(ret.OriginalChatName) == 0 {
 			buf.Reset()
 			buf.WriteString(src.FwdChat.GetPtr().Firstname())
 			if buf.Len() != 0 {
 				buf.WriteString(" ")
 			}
 			buf.WriteString(src.FwdChat.GetPtr().Lastname())
-			ret.origChatName = buf.String()
+			ret.OriginalChatName = buf.String()
 		}
 
 		if len(src.FwdChat.GetPtr().Username()) != 0 {
 			buf.Reset()
 			buf.WriteString("https://t.me/")
 			buf.WriteString(src.FwdChat.GetPtr().Username())
-			ret.origChatLink = buf.String()
+			ret.OriginalChatLink = buf.String()
 
 			if fwdHdr, ok := msg.GetFwdFrom(); ok {
 				fwdMsgID, ok := fwdHdr.GetSavedFromMsgID()
 				if ok {
 					buf.WriteString("/")
-					buf.WriteString(formatMessageID(fwdMsgID))
-					ret.origMsgURL = buf.String()
+					buf.WriteString(formatMessageID(rt.MessageID(fwdMsgID)))
+					ret.OriginalMessageLink = buf.String()
 				}
 			}
 		}
@@ -141,84 +119,114 @@ func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*Message) (
 	return
 }
 
-// Message represents a single telegram message
-type Message struct {
-	ready uint32
-	msgFlag
-
-	id               uint64
-	replyToMessageID uint64
-
-	chatName, chatURL string
-	author, authorURL string
-	msgURL            string
-
-	origChatName, origChatLink string
-	origAuthor, origAuthorLink string
-	origMsgURL                 string
-
-	timestamp time.Time
-
-	// temporary buffer for background worker, merged into entities when markReady() called
-	nonTextEntity rt.Optional[message.Span]
-	textEntities  []message.Span
-
-	entities []message.Span
-
-	msgs *[]*Message
-
-	cancelBgJob func()
-	wait        chan struct{}
-}
-
-func (m *Message) ID() uint64           { return m.id }
-func (m *Message) Timestamp() time.Time { return m.timestamp }
-
-func (m *Message) ChatName() string    { return m.chatName }
-func (m *Message) ChatLink() string    { return m.chatURL }
-func (m *Message) MessageLink() string { return m.msgURL }
-func (m *Message) Author() string      { return m.author }
-func (m *Message) AuthorLink() string  { return m.authorURL }
-
-func (m *Message) OriginalChatName() string    { return m.origChatName }
-func (m *Message) OriginalChatLink() string    { return m.origChatLink }
-func (m *Message) OriginalMessageLink() string { return m.origMsgURL }
-func (m *Message) OriginalAuthor() string      { return m.origAuthor }
-func (m *Message) OriginalAuthorLink() string  { return m.origAuthorLink }
-
-func (m *Message) ReplyToMessageID() uint64 { return m.replyToMessageID }
-
-func (m *Message) Entities() []message.Span { return m.entities }
-
-func (m *Message) Ready() bool { return atomic.LoadUint32(&m.ready) == 2 }
-
-func (m *Message) Wait(cancel <-chan struct{}) (done bool) {
-	select {
-	case <-cancel:
-		m.cancelBgJob()
-		return false
-	case <-m.wait:
-		return true
+func parseTextEntities(text string, entities []tg.MessageEntityClass) (spans []rt.Span) {
+	if entities == nil {
+		spans = append(spans, rt.Span{
+			Flags: rt.SpanFlag_PlainText,
+			Text:  text,
+		})
+		return
 	}
-}
 
-func (m *Message) Dispose() {
-	for i := range m.entities {
-		if m.entities[i].Data != nil {
-			_ = m.entities[i].Data.Close()
-		}
-	}
-}
+	var (
+		this *rt.Span
 
-func (m *Message) markReady() {
-	if atomic.CompareAndSwapUint32(&m.ready, 0, 1) {
-		if m.nonTextEntity.IsNil() {
-			m.entities = m.textEntities
-		} else {
-			m.entities = append(m.textEntities, m.nonTextEntity.Get())
+		start, end int
+		prevEnd    int
+	)
+
+	for _, e := range entities {
+		start = e.GetOffset()
+		end = start + e.GetLength()
+
+		switch {
+		case start > prevEnd:
+			// append previously untouched plain text
+			spans = append(spans, rt.Span{
+				Flags: rt.SpanFlag_PlainText,
+				Text:  text[prevEnd:start],
+			})
+
+			fallthrough
+		default: // start == lastEnd
+			spans = append(spans, rt.Span{
+				Text: text[start:end],
+			})
+
+			fallthrough
+		case start < prevEnd:
+			this = &spans[len(spans)-1]
 		}
 
-		m.textEntities = nil
-		atomic.StoreUint32(&m.ready, 2)
+		prevEnd = end
+
+		// handle entities without params
+		switch t := e.(type) {
+		case *tg.MessageEntityUnknown,
+			*tg.MessageEntityCashtag,
+			*tg.MessageEntitySpoiler:
+			this.Flags |= rt.SpanFlag_PlainText
+
+		case *tg.MessageEntityBotCommand,
+			*tg.MessageEntityCode,
+			*tg.MessageEntityBankCard:
+			this.Flags |= rt.SpanFlag_Code
+
+		case *tg.MessageEntityHashtag:
+			this.Flags |= rt.SpanFlag_HashTag
+
+		case *tg.MessageEntityBold:
+			this.Flags |= rt.SpanFlag_Bold
+
+		case *tg.MessageEntityItalic:
+			this.Flags |= rt.SpanFlag_Italic
+
+		case *tg.MessageEntityStrike:
+			this.Flags |= rt.SpanFlag_Strikethrough
+
+		case *tg.MessageEntityUnderline:
+			this.Flags |= rt.SpanFlag_Underline
+
+		case *tg.MessageEntityPre:
+			this.Flags |= rt.SpanFlag_Pre
+
+		case *tg.MessageEntityEmail:
+			this.Flags |= rt.SpanFlag_Email
+
+		case *tg.MessageEntityPhone:
+			this.Flags |= rt.SpanFlag_PhoneNumber
+
+		case *tg.MessageEntityBlockquote:
+			this.Flags |= rt.SpanFlag_Blockquote
+
+		case *tg.MessageEntityURL:
+			this.Flags |= rt.SpanFlag_URL
+			this.URL = this.Text
+
+		case *tg.MessageEntityTextURL:
+			this.Flags |= rt.SpanFlag_URL
+			this.URL = t.GetURL()
+
+		case *tg.MessageEntityMention:
+			this.Flags |= rt.SpanFlag_Mention
+			this.URL = "https://t.me/" + strings.TrimPrefix(this.Text, "@")
+
+		case *tg.MessageEntityMentionName:
+			this.Flags |= rt.SpanFlag_Mention
+			this.URL = "https://t.me/" + strconv.FormatInt(t.GetUserID(), 10)
+		default:
+			// TODO: log error?
+			// client.logger.E("message entity unhandled", log.String("type", string(e.Type)))
+		}
 	}
+
+	// add untouched remainder in message
+	if prevEnd < len(text)-1 {
+		spans = append(spans, rt.Span{
+			Flags: rt.SpanFlag_PlainText,
+			Text:  text[prevEnd:],
+		})
+	}
+
+	return
 }

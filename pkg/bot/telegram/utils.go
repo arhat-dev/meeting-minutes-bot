@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"arhat.dev/pkg/log"
@@ -15,40 +14,47 @@ import (
 	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
-func encodeUint64Hex(n uint64) string {
+func encodeUint64Hex[T rt.ChatID | rt.UserID](n T) string {
 	var buf [8]byte
-	binary.BigEndian.PutUint64(buf[:], n)
+	binary.BigEndian.PutUint64(buf[:], uint64(n))
 	return hex.EncodeToString(buf[:])
 }
 
-func decodeUint64Hex(s string) (_ uint64, err error) {
+func decodeUint64Hex[T rt.ChatID | rt.UserID](s string) (_ T, err error) {
 	var buf [8]byte
 	_, err = hex.Decode(buf[:], stringhelper.ToBytes[byte, byte](s))
 	if err != nil {
 		return 0, err
 	}
 
-	return binary.BigEndian.Uint64(buf[:]), nil
+	return T(binary.BigEndian.Uint64(buf[:])), nil
 }
 
-func formatMessageID[T int | int64 | uint64](msgID T) string {
+func formatMessageID(msgID rt.MessageID) string {
 	return strconv.FormatUint(uint64(msgID), 10)
 }
 
-func translateEntities(entities []message.Span) (ret []styling.StyledTextOption) {
-	ret = make([]styling.StyledTextOption, 0, len(entities))
+func translateSpans(spans []rt.Span) (ret []styling.StyledTextOption) {
+	sz := len(spans)
+	ret = make([]styling.StyledTextOption, 0, sz)
 
-	for _, ent := range entities {
+	for i := 0; i < sz; i++ {
+		ent := &spans[i]
+
 		switch {
 		case ent.IsEmail():
 			ret = append(ret, styling.Email(ent.Text))
 		case ent.IsPhoneNumber():
 			ret = append(ret, styling.Phone(ent.Text))
-		case ent.IsURL():
-			ret = append(ret, styling.URL(ent.Text))
+		case ent.IsURL(), ent.IsMention():
+			if len(ent.URL) == 0 {
+				ret = append(ret, styling.URL(ent.Text))
+			} else {
+				ret = append(ret, styling.TextURL(ent.Text, ent.URL))
+			}
 		case ent.IsStyledText():
 			ret = append(ret, styling.Custom(func(b *entity.Builder) error {
 				var (
@@ -82,7 +88,7 @@ func translateEntities(entities []message.Span) (ret []styling.StyledTextOption)
 				}
 
 				if ent.IsPre() {
-					styles[n] = entity.Pre("")
+					styles[n] = entity.Pre(ent.Hint)
 					n++
 				}
 
@@ -96,7 +102,7 @@ func translateEntities(entities []message.Span) (ret []styling.StyledTextOption)
 			}))
 		case ent.IsPlainText():
 			ret = append(ret, styling.Plain(ent.Text))
-		case ent.IsMultiMedia():
+		case ent.IsMedia():
 			// TODO: implement data uploading
 		}
 
@@ -105,7 +111,12 @@ func translateEntities(entities []message.Span) (ret []styling.StyledTextOption)
 	return
 }
 
-func (c *tgBot) scheduleMessageDelete(chat *chatSpec, after time.Duration, msgIDs ...uint64) {
+type msgDeleteKey struct {
+	chatID rt.ChatID
+	msgID  rt.MessageID
+}
+
+func (c *tgBot) scheduleMessageDelete(chat *chatSpec, after time.Duration, msgIDs ...rt.MessageID) {
 	for _, msgID := range msgIDs {
 		if msgID == 0 {
 			// ignore invalid message id
@@ -113,15 +124,16 @@ func (c *tgBot) scheduleMessageDelete(chat *chatSpec, after time.Duration, msgID
 		}
 
 		_ = c.msgDelQ.OfferWithDelay(msgDeleteKey{
-			chatID: uint64(chat.ID()),
+			chatID: chat.ID(),
 			msgID:  msgID,
 		}, chat.InputPeer(), after)
 	}
 }
 
 func (c *tgBot) sendTextMessage(
-	builder *tm.Builder, entities ...styling.StyledTextOption,
-) (msgID int, err error) {
+	builder *tm.Builder,
+	entities ...styling.StyledTextOption,
+) (msgID rt.MessageID, err error) {
 	updCls, err := builder.StyledText(c.Context(), entities...)
 	if err != nil {
 		c.Logger().E("failed to send message", log.Error(err))
@@ -129,8 +141,34 @@ func (c *tgBot) sendTextMessage(
 	}
 
 	switch resp := updCls.(type) {
+	case *tg.UpdatesTooLong:
+		err = fmt.Errorf("too many updates")
+	case *tg.UpdateShortMessage:
+		msgID = rt.MessageID(resp.GetID())
+	case *tg.UpdateShortChatMessage:
+		msgID = rt.MessageID(resp.GetID())
+	case *tg.UpdateShort:
+		msgID, _ = extractMsgID(resp.GetUpdate())
+	case *tg.UpdatesCombined:
+		upds := resp.GetUpdates()
+		for i := range upds {
+			var ok bool
+			msgID, ok = extractMsgID(upds[i])
+			if ok {
+				return
+			}
+		}
+	case *tg.Updates:
+		upds := resp.GetUpdates()
+		for i := range upds {
+			var ok bool
+			msgID, ok = extractMsgID(upds[i])
+			if ok {
+				return
+			}
+		}
 	case *tg.UpdateShortSentMessage:
-		msgID = resp.GetID()
+		msgID = rt.MessageID(resp.GetID())
 	default:
 		err = fmt.Errorf("unexpected response type %T", resp)
 		return
@@ -139,115 +177,82 @@ func (c *tgBot) sendTextMessage(
 	return
 }
 
-func parseTextEntities(text string, entities []tg.MessageEntityClass) (ret message.Entities) {
-	if entities == nil {
-		ret = append(ret, message.Span{
-			SpanFlags: message.SpanFlags_PlainText,
-			Text:      text,
-		})
+func extractMsgID(upd tg.UpdateClass) (msgID rt.MessageID, hasMsgID bool) {
+	switch u := upd.(type) {
+	case *tg.UpdateNewMessage:
+		return rt.MessageID(u.GetMessage().GetID()), true
+	case *tg.UpdateMessageID:
+		return rt.MessageID(u.GetID()), true
+	default:
+		return
+	}
+}
+
+func (c *tgBot) getChannelCreator(ch *tg.InputChannel) (ret *tg.User, err error) {
+	const (
+		BATCH_COUNT = 10
+	)
+	var (
+		chAdmins tg.ChannelsChannelParticipantsClass
+		offset   int
+	)
+
+QUERY:
+	chAdmins, err = c.client.API().ChannelsGetParticipants(c.Context(), &tg.ChannelsGetParticipantsRequest{
+		Channel: ch,
+		Filter:  &tg.ChannelParticipantsAdmins{},
+		Offset:  offset,
+		Limit:   BATCH_COUNT,
+	})
+	if err != nil {
 		return
 	}
 
-	var (
-		this *message.Span
+	offset += BATCH_COUNT
 
-		start, end         int
-		prevStart, prevEnd int
-	)
+	switch adms := chAdmins.(type) {
+	case *tg.ChannelsChannelParticipants:
+		var (
+			i          int
+			creatorUID int64
+		)
+		pts := adms.GetParticipants()
+		for i = range pts {
+			creator, ok := pts[i].(*tg.ChannelParticipantCreator)
+			if !ok {
+				continue
+			}
 
-	for _, e := range entities {
-		start = e.GetOffset()
-		end = start + e.GetLength()
-
-		switch {
-		case start > prevEnd:
-			// append previously untouched plain text
-			ret = append(ret, message.Span{
-				SpanFlags: message.SpanFlags_PlainText,
-				Text:      text[prevEnd:start],
-			})
-
-			fallthrough
-		default: // start == lastEnd
-			ret = append(ret, message.Span{
-				Text: text[start:end],
-			})
-			this = &ret[len(ret)-1]
-
-		case start < prevEnd:
-			this = &ret[len(ret)-1]
-			ret[len(ret)-2].Text = text[prevStart:start]
+			creatorUID = creator.GetUserID()
+		}
+		if creatorUID == 0 {
+			goto QUERY
 		}
 
-		prevStart, prevEnd = start, end
-
-		// handle entities without params
-		switch t := e.(type) {
-		case *tg.MessageEntityUnknown,
-			*tg.MessageEntityCashtag,
-			*tg.MessageEntitySpoiler:
-			this.SpanFlags |= message.SpanFlags_PlainText
-
-		case *tg.MessageEntityBotCommand,
-			*tg.MessageEntityCode,
-			*tg.MessageEntityBankCard:
-			this.SpanFlags |= message.SpanFlags_Code
-
-		case *tg.MessageEntityHashtag:
-			this.SpanFlags |= message.SpanFlags_HashTag
-
-		case *tg.MessageEntityBold:
-			this.SpanFlags |= message.SpanFlags_Bold
-
-		case *tg.MessageEntityItalic:
-			this.SpanFlags |= message.SpanFlags_Italic
-
-		case *tg.MessageEntityStrike:
-			this.SpanFlags |= message.SpanFlags_Strikethrough
-
-		case *tg.MessageEntityUnderline:
-			this.SpanFlags |= message.SpanFlags_Underline
-
-		case *tg.MessageEntityPre:
-			this.SpanFlags |= message.SpanFlags_Pre
-
-		case *tg.MessageEntityEmail:
-			this.SpanFlags |= message.SpanFlags_Email
-
-		case *tg.MessageEntityPhone:
-			this.SpanFlags |= message.SpanFlags_PhoneNumber
-
-		case *tg.MessageEntityBlockquote:
-			this.SpanFlags |= message.SpanFlags_Blockquote
-
-		case *tg.MessageEntityURL:
-			this.SpanFlags |= message.SpanFlags_URL
-			this.URL.Set(this.Text)
-
-		case *tg.MessageEntityTextURL:
-			this.SpanFlags |= message.SpanFlags_URL
-			this.URL.Set(t.GetURL())
-
-		case *tg.MessageEntityMention:
-			this.SpanFlags |= message.SpanFlags_Mention
-			this.URL.Set("https://t.me/" + strings.TrimPrefix(this.Text, "@"))
-
-		case *tg.MessageEntityMentionName:
-			this.SpanFlags |= message.SpanFlags_Mention
-			this.URL.Set("https://t.me/" + strconv.FormatInt(t.GetUserID(), 10))
-		default:
-			// TODO: log error?
-			// client.logger.E("message entity unhandled", log.String("type", string(e.Type)))
+		users := adms.GetUsers()
+		if len(users) > i && users[i].GetID() == creatorUID {
+			var ok bool
+			ret, ok = users[i].(*tg.User)
+			if ok {
+				return
+			}
 		}
-	}
 
-	// add untouched remainder in message
-	if prevEnd < len(text)-1 {
-		ret = append(ret, message.Span{
-			SpanFlags: message.SpanFlags_PlainText,
-			Text:      text[prevEnd:],
-		})
-	}
+		for _, user := range users {
+			switch u := user.(type) {
+			case *tg.User:
+				if u.GetID() == creatorUID {
+					ret = u
+					return
+				}
+			}
+		}
 
-	return
+		err = fmt.Errorf("unexpected no user detail for creator")
+		return
+	case *tg.ChannelsChannelParticipantsNotModified:
+		return nil, fmt.Errorf("no creator found")
+	default:
+		return nil, fmt.Errorf("unknown type_id %d", adms.TypeID())
+	}
 }

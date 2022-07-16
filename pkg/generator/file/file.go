@@ -8,7 +8,7 @@ import (
 	"arhat.dev/rs"
 
 	"arhat.dev/meeting-minutes-bot/pkg/generator"
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 // nolint:revive
@@ -17,10 +17,7 @@ const (
 )
 
 func init() {
-	generator.Register(
-		Name,
-		func() generator.Config { return &Config{} },
-	)
+	generator.Register(Name, func() generator.Config { return &Config{} })
 }
 
 type Config struct {
@@ -59,14 +56,14 @@ func (d *Driver) RenderPageHeader() ([]byte, error) {
 // one filename each line
 //
 // non multi-media entities (links and plain text) are not touched
-func (d *Driver) RenderPageBody(messages []message.Interface) (_ []byte, err error) {
+func (d *Driver) RenderPageBody(msgs []*rt.Message) (_ []byte, err error) {
 	var (
 		buf bytes.Buffer
 	)
 
-	for _, msg := range messages {
-		for _, e := range msg.Entities() {
-			if e.SpanFlags&message.SpanFlagsColl_MultiMedia == 0 {
+	for _, m := range msgs {
+		for _, e := range m.Spans {
+			if e.Flags&rt.SpanFlagColl_Media == 0 {
 				continue
 			}
 
@@ -79,18 +76,18 @@ func (d *Driver) RenderPageBody(messages []message.Interface) (_ []byte, err err
 				oldFilename string
 			)
 
-			if !e.Filename.IsNil() {
-				oldFilename = e.Filename.Get()
+			if len(e.Filename) != 0 {
+				oldFilename = e.Filename
 				fileExt = path.Ext(oldFilename)
 			}
 
 			if len(fileExt) == 0 {
-				if !e.URL.IsNil() {
-					fileExt = path.Ext(e.URL.Get())
+				if len(e.URL) != 0 {
+					fileExt = path.Ext(e.URL)
 				}
 			}
 
-			filename := e.Data.Name() + fileExt
+			filename := e.Data.ID().String() + fileExt
 			// TODO: write
 			// err2 := os.WriteFile(filepath.Join(d.dir, filename), data, 0644)
 			// if err2 != nil {

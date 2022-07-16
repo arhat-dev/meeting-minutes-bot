@@ -11,5 +11,5 @@
 
 {{- define "message.body" -}}
   {{- .Timestamp.Format "2006-01-02" -}}
-  {{- template "beancount.entry" .Entities | indent 1 -}}
+  {{- template "beancount.entry" .Spans | indent 1 -}}
 {{- end -}}

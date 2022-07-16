@@ -9,7 +9,7 @@ import (
 
 type messageSource struct {
 	Chat chatSpec
-	From rt.Optional[authorSpec]
+	From authorSpec
 
 	FwdChat rt.Optional[chatSpec]
 	FwdFrom rt.Optional[authorSpec]
@@ -28,8 +28,12 @@ const (
 	chatFlag_Channel
 )
 
+func (f chatFlag) IsPrivateChat() bool { return f&chatFlag_PM != 0 }
+func (f chatFlag) IsChannelChat() bool { return f&chatFlag_Channel != 0 }
+func (f chatFlag) IsGroupChat() bool   { return f&chatFlag_Group != 0 }
+
 type commonSpec struct {
-	id int64
+	id uint64
 
 	firstname, lastname string
 	titile              string
@@ -39,47 +43,27 @@ type commonSpec struct {
 	username string
 }
 
-func (cs *commonSpec) ID() int64         { return cs.id }
 func (cs *commonSpec) Username() string  { return cs.username }
 func (cs *commonSpec) Title() string     { return cs.titile }
 func (cs *commonSpec) Firstname() string { return cs.firstname }
 func (cs *commonSpec) Lastname() string  { return cs.lastname }
 
 type chatSpec struct {
+	id rt.ChatID
 	chatFlag
 
 	commonSpec
 
-	accessHash int64
+	peer tg.InputPeerClass
 }
 
-func (cs *chatSpec) InputPeer() tg.InputPeerClass {
-	switch {
-	case cs.chatFlag&chatFlag_PM != 0:
-		return &tg.InputPeerUser{
-			UserID:     cs.id,
-			AccessHash: cs.accessHash,
-		}
-	case cs.chatFlag&chatFlag_Group != 0:
-		return &tg.InputPeerChannel{
-			ChannelID:  cs.id,
-			AccessHash: cs.accessHash,
-		}
-	case cs.chatFlag&chatFlag_Channel != 0:
-		return &tg.InputPeerChat{
-			ChatID: cs.id,
-		}
-	default:
-		panic("unreachable")
-	}
-}
-
-func (cs *chatSpec) IsPrivateChat() bool { return cs.chatFlag&chatFlag_PM != 0 }
+func (cs *chatSpec) ID() rt.ChatID                { return cs.id }
+func (cs *chatSpec) InputPeer() tg.InputPeerClass { return cs.peer }
 
 func resolveChatSpec(chat any) (ret chatSpec) {
 	switch c := chat.(type) {
 	case *tg.User:
-		ret.id = c.GetID()
+		ret.id = rt.ChatID(c.GetID())
 
 		ret.chatFlag |= chatFlag_PM
 		// TODO: set title as {FirstName} {LastName}
@@ -87,20 +71,21 @@ func resolveChatSpec(chat any) (ret chatSpec) {
 		ret.firstname, _ = c.GetFirstName()
 		ret.lastname, _ = c.GetLastName()
 
-		ret.accessHash, _ = c.GetAccessHash()
+		ret.peer = c.AsInputPeer()
 	case *tg.Channel:
-		ret.id = c.GetID()
+		ret.id = rt.ChatID(c.GetID())
 
 		ret.chatFlag |= chatFlag_Channel
 		ret.titile = c.GetTitle()
 		ret.username, _ = c.GetUsername()
 
-		ret.accessHash, _ = c.GetAccessHash()
+		ret.peer = c.AsInputPeer()
 	case *tg.Chat:
-		ret.id = c.GetID()
+		ret.id = rt.ChatID(c.GetID())
 
 		ret.chatFlag |= chatFlag_Group
 		ret.titile = c.GetTitle()
+		ret.peer = c.AsInputPeer()
 	default:
 		panic("unreachable")
 	}
@@ -118,39 +103,48 @@ const (
 )
 
 type authorSpec struct {
+	id rt.UserID
 	authorFlag
 
 	commonSpec
+
+	user *tg.InputUser
 }
 
-func resolveAuthorSpec(from any) (ret authorSpec) {
+func (cs *authorSpec) ID() rt.UserID            { return cs.id }
+func (as *authorSpec) InputUser() *tg.InputUser { return as.user }
+
+func (c *tgBot) resolveAuthorSpec(from any) (ret authorSpec, err error) {
+	var user *tg.User
+
 	switch f := from.(type) {
 	case *tg.User:
-		ret.id = f.GetID()
-
-		ret.authorFlag |= authorFlag_User
-		if f.GetBot() {
-			ret.authorFlag |= authorFlag_Bot
-		}
-
-		ret.username, _ = f.GetUsername()
-		ret.firstname, _ = f.GetFirstName()
-		ret.lastname, _ = f.GetLastName()
+		user = f
 	case *tg.Channel:
-		ret.id = f.GetID()
-
-		ret.authorFlag |= authorFlag_Channel
-		ret.username, _ = f.GetUsername()
-		ret.titile = f.GetTitle()
-	case *tg.Chat:
-		ret.id = f.GetID()
-
-		ret.authorFlag |= authorFlag_Group
-		ret.titile = f.GetTitle()
+		user, err = c.getChannelCreator(f.AsInput())
+		if err != nil {
+			return
+		}
+	case *tg.Chat: // TODO: is it possible?
+		err = fmt.Errorf("unsupported chat as author")
+		return
 	default:
-		panic("unreachable")
+		err = fmt.Errorf("unknown type %T", f)
+		return
 	}
 
+	ret.id = rt.UserID(user.GetID())
+
+	ret.authorFlag |= authorFlag_User
+	if user.GetBot() {
+		ret.authorFlag |= authorFlag_Bot
+	}
+
+	ret.username, _ = user.GetUsername()
+	ret.firstname, _ = user.GetFirstName()
+	ret.lastname, _ = user.GetLastName()
+
+	ret.user = user.AsInput()
 	return
 }
 
@@ -193,5 +187,62 @@ func extractPeer(e tg.Entities, p tg.PeerClass) (any, error) {
 		return nil, fmt.Errorf("unknown chat %d", id)
 	default:
 		return nil, fmt.Errorf("unknown peer type: %T", t)
+	}
+}
+
+type chatIDWrapper struct {
+	chat tg.InputPeerClass
+}
+
+func (c chatIDWrapper) ID() rt.ChatID {
+	switch this := c.chat.(type) {
+	case *tg.InputPeerChat:
+		return rt.ChatID(this.GetChatID())
+	case *tg.InputPeerUser:
+		return rt.ChatID(this.GetUserID())
+	case *tg.InputPeerChannel:
+		return rt.ChatID(this.GetChannelID())
+	case *tg.InputPeerUserFromMessage:
+		return rt.ChatID(this.GetUserID())
+	case *tg.InputPeerChannelFromMessage:
+		return rt.ChatID(this.GetChannelID())
+	default:
+		return 0
+	}
+}
+
+func (c chatIDWrapper) Equals(o chatIDWrapper) bool {
+	switch {
+	case c.chat == nil && o.chat == nil:
+		return true
+	case c.chat == nil || o.chat == nil:
+		return false
+
+	// both are not nil
+	case c.chat == o.chat:
+		return true
+	case c.chat.TypeID() != c.chat.TypeID():
+		return false
+	}
+
+	switch this := c.chat.(type) {
+	case *tg.InputPeerEmpty:
+		return true
+	case *tg.InputPeerSelf:
+		return true
+	case *tg.InputPeerChat:
+		return this.GetChatID() == o.chat.(*tg.InputPeerChat).GetChatID()
+	case *tg.InputPeerUser:
+		return this.GetUserID() == o.chat.(*tg.InputPeerUser).GetUserID()
+	case *tg.InputPeerChannel:
+		return this.GetChannelID() == o.chat.(*tg.InputPeerChannel).GetChannelID()
+	case *tg.InputPeerUserFromMessage:
+		return this.GetUserID() == o.chat.(*tg.InputPeerUserFromMessage).GetUserID() &&
+			this.GetMsgID() == o.chat.(*tg.InputPeerUserFromMessage).GetMsgID()
+	case *tg.InputPeerChannelFromMessage:
+		return this.GetChannelID() == o.chat.(*tg.InputPeerChannelFromMessage).GetChannelID() &&
+			this.GetMsgID() == o.chat.(*tg.InputPeerUserFromMessage).GetMsgID()
+	default:
+		return false
 	}
 }

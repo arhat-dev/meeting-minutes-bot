@@ -10,8 +10,8 @@ import (
 	"arhat.dev/rs"
 	"go.uber.org/multierr"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
 	"arhat.dev/meeting-minutes-bot/pkg/publisher"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 )
 
 // nolint:revive
@@ -79,7 +79,7 @@ func (d *Driver) AuthURL() (string, error) {
 	return "", fmt.Errorf("unimplemented")
 }
 
-func (d *Driver) Retrieve(key string) ([]message.Span, error) {
+func (d *Driver) Retrieve(key string) ([]rt.Span, error) {
 	return nil, fmt.Errorf("unimplemented")
 }
 
@@ -117,23 +117,35 @@ func (d *Driver) Delete(keys ...string) error {
 	return err
 }
 
-func (d *Driver) Publish(title string, body []byte) ([]message.Span, error) {
+func (d *Driver) Publish(title string, body *rt.Input) (_ []rt.Span, err error) {
 	filename := normalizeFilename(title)
 	d.currentFilename.Store(filename)
 
-	return []message.Span{
+	f, err := os.OpenFile(filename, os.O_EXCL|os.O_CREATE|os.O_WRONLY, 0640)
+	if err != nil {
+		return
+	}
+
+	defer f.Close()
+
+	_, err = f.ReadFrom(body.Reader())
+	if err != nil {
+		return
+	}
+
+	return []rt.Span{
 		{
-			SpanFlags: message.SpanFlags_PlainText,
-			Text:      "Your messages will be rendered into ",
+			Flags: rt.SpanFlag_PlainText,
+			Text:  "Your messages will be rendered into ",
 		},
 		{
-			SpanFlags: message.SpanFlags_Pre,
-			Text:      filename,
+			Flags: rt.SpanFlag_Code,
+			Text:  filename,
 		},
-	}, os.WriteFile(filepath.Join(d.dir, filename), body, 0640)
+	}, nil
 }
 
-func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Span, error) {
+func (d *Driver) Append(ctx context.Context, body *rt.Input) (_ []rt.Span, err error) {
 	filename := normalizeFilename(d.currentFilename.Load().(string))
 	f, err := os.OpenFile(filepath.Join(d.dir, filename), os.O_APPEND|os.O_WRONLY, 0640)
 	if err != nil {
@@ -142,19 +154,19 @@ func (d *Driver) Append(ctx context.Context, body []byte) ([]message.Span, error
 
 	defer func() { _ = f.Close() }()
 
-	_, err = f.Write(body)
+	_, err = f.ReadFrom(body.Reader())
 	if err != nil {
 		return nil, err
 	}
 
-	return []message.Span{
+	return []rt.Span{
 		{
-			SpanFlags: message.SpanFlags_PlainText,
-			Text:      "Your messages have been rendered into ",
+			Flags: rt.SpanFlag_PlainText,
+			Text:  "Your messages have been rendered into ",
 		},
 		{
-			SpanFlags: message.SpanFlags_Pre,
-			Text:      filename,
+			Flags: rt.SpanFlag_Pre,
+			Text:  filename,
 		},
 	}, nil
 }

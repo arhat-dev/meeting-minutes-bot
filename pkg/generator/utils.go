@@ -3,7 +3,7 @@ package generator
 import (
 	"fmt"
 
-	"arhat.dev/meeting-minutes-bot/pkg/message"
+	"arhat.dev/meeting-minutes-bot/pkg/rt"
 	"arhat.dev/pkg/textquery"
 )
 
@@ -11,7 +11,7 @@ import (
 func FakeFuncMap() FuncMap {
 	return map[string]any{
 		"jq":          func(query string, data any) (string, error) { return "", nil },
-		"findMessage": func(id uint64) message.Interface { return nil },
+		"findMessage": func(id uint64) *rt.Message { return nil },
 	}
 }
 
@@ -29,9 +29,9 @@ func CreateFuncMap(data *TemplateData) FuncMap {
 			}
 		},
 
-		"findMessage": func(id uint64) message.Interface {
+		"findMessage": func(id rt.MessageID) *rt.Message {
 			for _, m := range data.Messages {
-				if m.ID() == id {
+				if m.ID == id {
 					return m
 				}
 			}
