@@ -28,7 +28,7 @@ type Config struct {
 
 	App AppConfig `yaml:"app"`
 
-	bot.Context `yaml:",inline"`
+	bot.BotContext `yaml:",inline"`
 
 	// Bots are combinations of storage, generator, publisher
 	Bots map[string]bot.Config `yaml:"bots"`

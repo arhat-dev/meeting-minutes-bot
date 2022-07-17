@@ -84,7 +84,7 @@ func Download(cache rt.Cache, doDownload func(rt.CacheWriter) error) (cacheRD rt
 	return
 }
 
-func GenerateContent(gen generator.Interface, msgs []*rt.Message) (result []byte, err error) {
+func GenerateContent(gen generator.Interface, msgs []*rt.Message) (result string, err error) {
 	for _, m := range msgs {
 		for !m.Ready() {
 			// TODO: m.Wait()

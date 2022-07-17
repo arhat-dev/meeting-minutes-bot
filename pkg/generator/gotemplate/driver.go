@@ -1,8 +1,8 @@
 package gotemplate
 
 import (
-	"bytes"
 	"fmt"
+	"strings"
 
 	"arhat.dev/mbot/pkg/generator"
 	"arhat.dev/mbot/pkg/rt"
@@ -19,31 +19,31 @@ type Driver struct {
 	templates tplExecutor
 }
 
-func (g *Driver) RenderPageHeader() (_ []byte, err error) {
-	var (
-		buf bytes.Buffer
-	)
+func (g *Driver) RenderPageHeader() (_ string, err error) {
+	var buf strings.Builder
 
 	err = g.templates.ExecuteTemplate(&buf, "page.header", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute page header template: %w", err)
+		return "", fmt.Errorf("execute page header template: %w", err)
 	}
 
-	return buf.Next(buf.Len()), nil
+	return buf.String(), nil
 }
 
-func (g *Driver) RenderPageBody(msgs []*rt.Message) (_ []byte, err error) {
-	var (
-		buf bytes.Buffer
-	)
+type TemplateData struct {
+	Messages []*rt.Message
+}
 
-	data := generator.TemplateData{
+func (g *Driver) RenderPageBody(msgs []*rt.Message) (_ string, err error) {
+	var buf strings.Builder
+
+	data := TemplateData{
 		Messages: msgs,
 	}
 	err = g.templates.ExecuteTemplate(&buf, "page.body", &data)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute page template: %w", err)
+		return "", fmt.Errorf("execute page body template: %w", err)
 	}
 
-	return buf.Next(buf.Len()), nil
+	return buf.String(), nil
 }

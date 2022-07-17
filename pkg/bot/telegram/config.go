@@ -54,7 +54,7 @@ type Config struct {
 	BotToken string `yaml:"botToken"`
 }
 
-func (c *Config) Create(name string, rtCtx rt.RTContext, bctx *bot.Context) (bot.Interface, error) {
+func (c *Config) Create(rtCtx rt.RTContext, bctx *bot.BotContext) (bot.Interface, error) {
 	var (
 		publicKeys []telegram.PublicKey
 		dcList     dcs.List
@@ -78,7 +78,7 @@ func (c *Config) Create(name string, rtCtx rt.RTContext, bctx *bot.Context) (bot
 	}
 
 	tb := &tgBot{
-		BaseBot: bot.NewBotBase(name, rtCtx),
+		BaseBot: bot.NewBotBase(rtCtx),
 
 		botToken: strings.TrimSpace(c.BotToken),
 		username: "", // set in Configure()
@@ -89,7 +89,7 @@ func (c *Config) Create(name string, rtCtx rt.RTContext, bctx *bot.Context) (bot
 
 		wfSet: workflows,
 
-		msgDelQ: *queue.NewTimeoutQueue[msgDeleteKey, tg.InputPeerClass](),
+		msgDelQ: queue.NewTimeoutQueue[msgDeleteKey, tg.InputPeerClass](),
 	}
 
 	tb.dispatcher.OnNewMessage(tb.onNewLegacyMessage)
@@ -106,9 +106,9 @@ func (c *Config) Create(name string, rtCtx rt.RTContext, bctx *bot.Context) (bot
 		SessionStorage: &tds.StorageMemory{},
 	})
 
-	tb.sender = *message.NewSender(tb.client.API())
+	tb.sender = message.NewSender(tb.client.API())
 	_ = tb.downloader.WithPartSize(512 * 1024)
-	tb.uploader = *uploader.NewUploader(tb.client.API())
+	tb.uploader = uploader.NewUploader(tb.client.API()).WithThreads(3)
 
 	return tb, nil
 }

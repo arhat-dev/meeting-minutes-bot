@@ -11,34 +11,33 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/bmatcuk/doublestar/v4"
 
-	"arhat.dev/mbot/pkg/generator"
 	"arhat.dev/pkg/stringhelper"
 )
 
 type tplExecutor interface {
-	ExecuteTemplate(wr io.Writer, name string, data *generator.TemplateData) error
+	ExecuteTemplate(wr io.Writer, name string, data *TemplateData) error
 }
 
 type hTemplate struct{ htpl.Template }
 
-func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *generator.TemplateData) error {
+func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *TemplateData) error {
 	clone, err := ht.Template.Clone()
 	if err != nil {
 		return err
 	}
 
-	return clone.Funcs(generator.CreateFuncMap(data)).ExecuteTemplate(wr, name, data)
+	return clone.Funcs(realFuncMap(data)).ExecuteTemplate(wr, name, data)
 }
 
 type tTemplate struct{ ttpl.Template }
 
-func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *generator.TemplateData) error {
+func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *TemplateData) error {
 	clone, err := tt.Template.Clone()
 	if err != nil {
 		return err
 	}
 
-	return clone.Funcs(generator.CreateFuncMap(data)).ExecuteTemplate(wr, name, data)
+	return clone.Funcs(realFuncMap(data)).ExecuteTemplate(wr, name, data)
 }
 
 func loadTemplatesFromFS(base any, dirFS fs.FS) (tplExecutor, error) {
@@ -50,7 +49,7 @@ func loadTemplatesFromFS(base any, dirFS fs.FS) (tplExecutor, error) {
 	switch t := base.(type) {
 	case *htpl.Template:
 		ht, err := parseFiles(
-			t.Funcs(sprig.HtmlFuncMap()).Funcs(htpl.FuncMap(generator.FakeFuncMap())),
+			t.Funcs(sprig.HtmlFuncMap()).Funcs(htpl.FuncMap(fakeFuncMap())),
 			dirFS,
 			files,
 		)
@@ -61,7 +60,7 @@ func loadTemplatesFromFS(base any, dirFS fs.FS) (tplExecutor, error) {
 		return &hTemplate{*ht}, nil
 	case *ttpl.Template:
 		tt, err := parseFiles(
-			t.Funcs(sprig.TxtFuncMap()).Funcs(ttpl.FuncMap(generator.FakeFuncMap())),
+			t.Funcs(sprig.TxtFuncMap()).Funcs(ttpl.FuncMap(fakeFuncMap())),
 			dirFS,
 			files,
 		)

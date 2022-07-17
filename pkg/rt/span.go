@@ -75,49 +75,57 @@ func (f SpanFlag) IsFile() bool  { return f&SpanFlag_File != 0 }
 
 // Span represents a standalone section in a message
 type Span struct {
-	Flags SpanFlag
+	Flags SpanFlag `yaml:"flags"`
 
 	// Text is the text value visible to user
-	Text string
+	Text string `yaml:"text"`
 
 	// Hint
 	// when kind is pre, it's the programming language name of the text
-	Hint string
+	// when kind is mention, it's the value of mentioned name
+	// when kind is audio, it's the title of the music
+	Hint string `yaml:"hint"`
 
 	// URL
-	// when kind is url, it's a url
+	// when kind is link, it's the url
 	// when kind is media, it's the url to the uploaded content
-	URL string
+	URL string `yaml:"url"`
 
-	// WebArchiveURL for archived web page
-	WebArchiveURL string
+	// WebArchiveURL for archived web page for kind URL
+	WebArchiveURL string `yaml:"webarchiveURL"`
 
-	// WebArchiveScreenshotURL for screenshot of archived web page
-	WebArchiveScreenshotURL string
+	// WebArchiveScreenshotURL for screenshot of archived web page for kind URL
+	WebArchiveScreenshotURL string `yaml:"webarchiveScreenshotURL"`
 
-	// Caption for media messages
-	Caption []Span
+	SpanMediaOptions `yaml:",inline"`
+}
 
-	// Filename for media message
-	Filename string
+type SpanMediaOptions struct {
+	// Caption for media
+	Caption []Span `yaml:"caption"`
 
-	// Data of media message
+	// Filename for media
 	//
-	// REQUIRED when it's a media Span
-	Data CacheReader
+	// Optional
+	Filename string `yaml:"filename"`
+
+	// Data of media
+	//
+	// REQUIRED
+	Data CacheReader `yaml:"cacheID"`
 
 	// Size of Data
 	//
-	// REQUIRED when it's a media Span
-	Size int64
+	// REQUIRED
+	Size int64 `yaml:"size"`
 
 	// ContentType of Data
 	//
-	// REQUIRED when it's a media Span, when it's unknown, set it to "application/octet-stream"
-	ContentType string
+	// REQUIRED, when it's unknown, set it to "application/octet-stream"
+	ContentType string `yaml:"contentType"`
 
 	// Duration of Data (video/audio/voice)
-	Duration time.Duration
+	Duration time.Duration `yaml:"duration"`
 }
 
 func (f *Span) IsPlainText() bool { return f.Flags.IsPlainText() }

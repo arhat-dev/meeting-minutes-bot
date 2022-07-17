@@ -9,26 +9,26 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*rt.Message) (ret rt.Message) {
+func newTelegramMessage(mc *messageContext) (ret rt.Message) {
 	var (
 		buf strings.Builder
 	)
 
-	ret.ID = rt.MessageID(msg.GetID())
+	ret.ID = rt.MessageID(mc.msg.GetID())
 	// TODO: set tz by user location
-	ret.Timestamp = time.Unix(int64(msg.GetDate()), 0).UTC()
+	ret.Timestamp = time.Unix(int64(mc.msg.GetDate()), 0).UTC()
 
-	ret.IsPrivateMessage = src.Chat.IsPrivateChat()
+	ret.IsPrivateMessage = mc.src.Chat.IsPrivateChat()
 
-	if replyTo, ok := msg.GetReplyTo(); ok {
+	if replyTo, ok := mc.msg.GetReplyTo(); ok {
 		ret.IsReply = true
 		ret.ReplyToMessageID = rt.MessageID(replyTo.GetReplyToMsgID())
 	}
 
-	if !src.FwdChat.IsNil() {
+	if !mc.src.FwdChat.IsNil() {
 		ret.IsForwarded = true
 
-		fwdChat := src.FwdChat.GetPtr()
+		fwdChat := mc.src.FwdChat.GetPtr()
 
 		ret.OriginalChatName = fwdChat.Title()
 		if len(ret.OriginalChatName) == 0 {
@@ -47,7 +47,7 @@ func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*rt.Message
 			buf.WriteString(fwdChat.Username())
 			ret.OriginalChatLink = buf.String()
 
-			if fwdHdr, ok := msg.GetFwdFrom(); ok {
+			if fwdHdr, ok := mc.msg.GetFwdFrom(); ok {
 				fwdMsgID, ok := fwdHdr.GetChannelPost()
 				if ok {
 					buf.WriteString("/")
@@ -58,22 +58,22 @@ func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*rt.Message
 		}
 	}
 
-	ret.ChatName = src.Chat.Title()
+	ret.ChatName = mc.src.Chat.Title()
 	if len(ret.ChatName) == 0 {
 		buf.Reset()
-		buf.WriteString(src.Chat.Firstname())
+		buf.WriteString(mc.src.Chat.Firstname())
 		if buf.Len() != 0 {
 			buf.WriteString(" ")
 		}
-		buf.WriteString(src.Chat.Lastname())
+		buf.WriteString(mc.src.Chat.Lastname())
 
 		ret.ChatName = buf.String()
 	}
 
-	if !ret.IsPrivateMessage && len(src.Chat.Username()) != 0 {
+	if !ret.IsPrivateMessage && len(mc.src.Chat.Username()) != 0 {
 		buf.Reset()
 		buf.WriteString("https://t.me/")
-		buf.WriteString(src.Chat.Username())
+		buf.WriteString(mc.src.Chat.Username())
 		ret.ChatLink = buf.String()
 
 		buf.WriteString("/")
@@ -81,26 +81,26 @@ func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*rt.Message
 		ret.MessageLink = buf.String()
 	}
 
-	ret.Author = src.From.Title()
+	ret.Author = mc.src.From.Title()
 	if len(ret.Author) == 0 {
 		buf.Reset()
-		buf.WriteString(src.From.Firstname())
+		buf.WriteString(mc.src.From.Firstname())
 		if buf.Len() != 0 {
 			buf.WriteString(" ")
 		}
-		buf.WriteString(src.From.Lastname())
+		buf.WriteString(mc.src.From.Lastname())
 		ret.Author = buf.String()
 	}
 
-	if len(src.From.Username()) != 0 {
+	if len(mc.src.From.Username()) != 0 {
 		buf.Reset()
 		buf.WriteString("https://t.me/")
-		buf.WriteString(src.From.Username())
+		buf.WriteString(mc.src.From.Username())
 		ret.AuthorLink = buf.String()
 	}
 
-	if !src.FwdFrom.IsNil() {
-		fwdFrom := src.FwdFrom.GetPtr()
+	if !mc.src.FwdFrom.IsNil() {
+		fwdFrom := mc.src.FwdFrom.GetPtr()
 
 		ret.OriginalAuthor = fwdFrom.Title()
 		if len(ret.OriginalAuthor) == 0 {
@@ -125,7 +125,7 @@ func newTelegramMessage(src *messageSource, msg *tg.Message, msgs *[]*rt.Message
 }
 
 func parseTextEntities(text string, entities []tg.MessageEntityClass) (spans []rt.Span) {
-	if entities == nil {
+	if len(entities) == 0 {
 		spans = append(spans, rt.Span{
 			Flags: rt.SpanFlag_PlainText,
 			Text:  text,

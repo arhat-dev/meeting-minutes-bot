@@ -20,24 +20,22 @@ type Interface interface {
 
 // Result of a web archive operation
 type Result interface {
-	// WARC get archived .warc file
+	// WARC get archived .warc file, when return size is 0, data is considered nil
 	//
 	// ref: https://en.wikipedia.org/wiki/Web_ARChive
 	WARC() (data rt.CacheReader, size int64)
 
-	// Screenshot get archived bitmap data
+	// Screenshot get archived bitmap data, when return size is 0, data is considered nil
 	Screenshot() (data rt.CacheReader, size int64)
 }
 
-type (
-	ConfigFactoryFunc func() Config
-)
+type configFactoryFunc = func() Config
 
 var (
-	supportedDrivers = map[string]ConfigFactoryFunc{}
+	supportedDrivers = map[string]configFactoryFunc{}
 )
 
-func Register(name string, cf ConfigFactoryFunc) {
+func Register(name string, cf configFactoryFunc) {
 	// reserve empty name
 	if name == "" {
 		return

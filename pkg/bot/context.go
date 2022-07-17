@@ -8,7 +8,7 @@ import (
 	"arhat.dev/rs"
 )
 
-type Context struct {
+type BotContext struct {
 	rs.BaseField
 
 	StorageSets  map[string]storage.Config     `yaml:"storage"`

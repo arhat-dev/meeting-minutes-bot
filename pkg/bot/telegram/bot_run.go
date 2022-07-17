@@ -145,16 +145,23 @@ func (c *tgBot) handleNewMessage(e tg.Entities, msg tg.MessageClass) error {
 		c.Logger().V("new service message", log.Uint32("type_id", m.TypeID()))
 		return nil
 	case *tg.Message:
-		var src messageSource
+		var (
+			mc messageContext
+		)
 
 		chat, err := extractPeer(e, m.GetPeerID())
 		if err != nil {
-			c.Logger().E("bad chat for new message", log.Error(err))
+			c.Logger().E("bad chat of new message", log.Error(err))
 			return err
 		}
-		src.Chat = resolveChatSpec(chat)
+		mc.src.Chat = resolveChatSpec(chat)
 
-		c.Logger().V("new message", log.Uint32("type_id", m.TypeID()), log.Bool("pm", src.Chat.IsPrivateChat()))
+		mc.con = conversationImpl{
+			bot:  c,
+			peer: mc.src.Chat.InputPeer(),
+		}
+
+		c.Logger().V("new message", log.Uint32("type_id", m.TypeID()), log.Bool("pm", mc.src.Chat.IsPrivateChat()))
 
 		fromID, ok := m.GetFromID()
 		if ok {
@@ -165,25 +172,25 @@ func (c *tgBot) handleNewMessage(e tg.Entities, msg tg.MessageClass) error {
 				return err
 			}
 
-			src.From, err = resolveAuthorSpec(from)
+			mc.src.From, err = resolveAuthorSpec(from)
 			if err != nil {
 				c.Logger().E("unresolable sender", log.Error(err))
 				return err
 			}
-		} else if src.Chat.IsPrivateChat() {
-			src.From, err = resolveAuthorSpec(chat)
+		} else if mc.src.Chat.IsPrivateChat() {
+			mc.src.From, err = resolveAuthorSpec(chat)
 			if err != nil {
 				c.Logger().E("unresolable sender", log.Error(err))
 				return err
 			}
 		} else {
-			c.Logger().E("unexpected message sent from anonymous user", rt.LogChatID(src.Chat.ID()))
+			c.Logger().E("unexpected message sent from anonymous user", rt.LogChatID(mc.src.Chat.ID()))
 			return nil
 		}
 
 		fwd, ok := m.GetFwdFrom()
 		if ok {
-			var fwdFrom authorSpec
+			var fwdFrom authorInfo
 			if fwdChatID, ok := fwd.GetFromID(); ok {
 				var peer any
 				peer, err = extractPeer(e, fwdChatID)
@@ -204,7 +211,7 @@ func (c *tgBot) handleNewMessage(e tg.Entities, msg tg.MessageClass) error {
 						fwdFrom.authorFlag |= authorFlag_Group
 					}
 
-					src.FwdFrom.Set(fwdFrom)
+					mc.src.FwdFrom.Set(fwdFrom)
 				case fwdChat.IsLegacyGroupChat():
 					// TODO
 				case fwdChat.IsPrivateChat():
@@ -213,14 +220,20 @@ func (c *tgBot) handleNewMessage(e tg.Entities, msg tg.MessageClass) error {
 						c.Logger().E("bad fwd user", log.Error(err))
 						return err
 					}
-					src.FwdFrom.Set(fwdFrom)
+					mc.src.FwdFrom.Set(fwdFrom)
 				}
 
-				src.FwdChat.Set(fwdChat)
+				mc.src.FwdChat.Set(fwdChat)
 			}
 		}
 
-		err = c.dispatchNewMessage(&src, m)
+		mc.msg = m
+		mc.logger = c.Logger().WithFields(
+			rt.LogChatID(mc.src.Chat.ID()),
+			rt.LogSenderID(mc.src.From.ID()),
+		)
+
+		err = c.dispatchNewMessage(&mc)
 		if err != nil {
 			c.Logger().I("bad message", log.Error(err))
 		}

@@ -7,12 +7,12 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-type messageSource struct {
-	Chat chatSpec
-	From authorSpec
+type source struct {
+	Chat chatInfo
+	From authorInfo
 
-	FwdChat rt.Optional[chatSpec]
-	FwdFrom rt.Optional[authorSpec]
+	FwdChat rt.Optional[chatInfo]
+	FwdFrom rt.Optional[authorInfo]
 }
 
 type chatFlag uint32
@@ -52,7 +52,7 @@ func (cs *commonSpec[ID]) Title() string     { return cs.titile }
 func (cs *commonSpec[ID]) Firstname() string { return cs.firstname }
 func (cs *commonSpec[ID]) Lastname() string  { return cs.lastname }
 
-type chatSpec struct {
+type chatInfo struct {
 	chatFlag
 
 	commonSpec[rt.ChatID]
@@ -60,9 +60,9 @@ type chatSpec struct {
 	peer tg.InputPeerClass
 }
 
-func (cs *chatSpec) InputPeer() tg.InputPeerClass { return cs.peer }
+func (cs *chatInfo) InputPeer() tg.InputPeerClass { return cs.peer }
 
-func resolveChatSpec(chatPeer any) (ret chatSpec) {
+func resolveChatSpec(chatPeer any) (ret chatInfo) {
 	switch c := chatPeer.(type) {
 	case *tg.User:
 		ret.id = rt.ChatID(c.GetID())
@@ -112,7 +112,7 @@ const (
 
 func (f authorFlag) IsUser() bool { return f&authorFlag_User != 0 }
 
-type authorSpec struct {
+type authorInfo struct {
 	authorFlag
 
 	commonSpec[rt.UserID]
@@ -120,9 +120,9 @@ type authorSpec struct {
 	user *tg.InputUser
 }
 
-func (as *authorSpec) InputUser() *tg.InputUser { return as.user }
+func (as *authorInfo) InputUser() *tg.InputUser { return as.user }
 
-func resolveAuthorSpec(peerFrom any) (ret authorSpec, err error) {
+func resolveAuthorSpec(peerFrom any) (ret authorInfo, err error) {
 	switch p := peerFrom.(type) {
 	case *tg.User:
 		ret.id = rt.UserID(p.GetID())

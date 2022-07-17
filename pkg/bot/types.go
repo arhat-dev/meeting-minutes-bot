@@ -17,8 +17,6 @@ type Mux interface {
 
 // Interface of a single bot
 type Interface interface {
-	Name() string
-
 	// Configure the bot, prepare to start
 	Configure() error
 
@@ -33,7 +31,7 @@ type PublisherFactoryFunc = func() (publisher.Interface, publisher.UserConfig, e
 // Config type for single bot config
 type Config interface {
 	// Create a bot with this config
-	Create(name string, ctx rt.RTContext, bctx *Context) (Interface, error)
+	Create(ctx rt.RTContext, bctx *BotContext) (Interface, error)
 }
 
 // CommonConfig commonly used config for single bot config
@@ -48,7 +46,7 @@ type CommonConfig struct {
 }
 
 // Resolve workflows
-func (c *CommonConfig) Resolve(bctx *Context) (ret WorkflowSet, err error) {
+func (c *CommonConfig) Resolve(bctx *BotContext) (ret WorkflowSet, err error) {
 	if !c.Enabled || len(c.Workflows) == 0 {
 		return
 	}
@@ -65,7 +63,8 @@ func (c *CommonConfig) Resolve(bctx *Context) (ret WorkflowSet, err error) {
 			return
 		}
 
-		for _, cmd := range ret.Workflows[i].BotCommands.Commands {
+		cmds := &ret.Workflows[i].BotCommands.Commands
+		for _, cmd := range cmds {
 			if len(cmd) == 0 {
 				continue
 			}

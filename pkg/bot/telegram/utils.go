@@ -10,7 +10,6 @@ import (
 	"arhat.dev/pkg/log"
 	"arhat.dev/pkg/stringhelper"
 	tm "github.com/gotd/td/telegram/message"
-	"github.com/gotd/td/telegram/message/entity"
 	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 
@@ -37,86 +36,12 @@ func formatMessageID(msgID rt.MessageID) string {
 	return strconv.FormatUint(uint64(msgID), 10)
 }
 
-func translateSpans(spans []rt.Span) (ret []styling.StyledTextOption) {
-	sz := len(spans)
-	ret = make([]styling.StyledTextOption, 0, sz)
-
-	for i := 0; i < sz; i++ {
-		ent := &spans[i]
-
-		switch {
-		case ent.IsEmail():
-			ret = append(ret, styling.Email(ent.Text))
-		case ent.IsPhoneNumber():
-			ret = append(ret, styling.Phone(ent.Text))
-		case ent.IsURL(), ent.IsMention():
-			if len(ent.URL) == 0 {
-				ret = append(ret, styling.URL(ent.Text))
-			} else {
-				ret = append(ret, styling.TextURL(ent.Text, ent.URL))
-			}
-		case ent.IsStyledText():
-			ret = append(ret, styling.Custom(func(b *entity.Builder) error {
-				var (
-					styles [8]entity.Formatter
-					n      int
-				)
-
-				if ent.IsBlockquote() {
-					styles[n] = entity.Blockquote()
-					n++
-				}
-
-				if ent.IsBold() {
-					styles[n] = entity.Bold()
-					n++
-				}
-
-				if ent.IsItalic() {
-					styles[n] = entity.Italic()
-					n++
-				}
-
-				if ent.IsStrikethrough() {
-					styles[n] = entity.Strike()
-					n++
-				}
-
-				if ent.IsUnderline() {
-					styles[n] = entity.Underline()
-					n++
-				}
-
-				if ent.IsPre() {
-					styles[n] = entity.Pre(ent.Hint)
-					n++
-				}
-
-				if ent.IsCode() {
-					styles[n] = entity.Code()
-					n++
-				}
-
-				b.Format(ent.Text, styles[:n]...)
-				return nil
-			}))
-		case ent.IsPlainText():
-			ret = append(ret, styling.Plain(ent.Text))
-		case ent.IsMedia():
-			// TODO: implement data uploading
-		}
-
-	}
-
-	return
-}
-
 type msgDeleteKey struct {
 	chatID rt.ChatID
 	msgID  rt.MessageID
 }
 
-func (c *tgBot) scheduleMessageDelete(chat *chatSpec, after time.Duration, msgIDs ...rt.MessageID) {
+func (c *tgBot) scheduleMessageDelete(chat *chatInfo, after time.Duration, msgIDs ...rt.MessageID) {
 	for _, msgID := range msgIDs {
 		if msgID == 0 {
 			// ignore invalid message id
@@ -140,52 +65,13 @@ func (c *tgBot) sendTextMessage(
 		return
 	}
 
-	switch resp := updCls.(type) {
-	case *tg.UpdatesTooLong:
-		err = fmt.Errorf("too many updates")
-	case *tg.UpdateShortMessage:
-		msgID = rt.MessageID(resp.GetID())
-	case *tg.UpdateShortChatMessage:
-		msgID = rt.MessageID(resp.GetID())
-	case *tg.UpdateShort:
-		msgID, _ = extractMsgID(resp.GetUpdate())
-	case *tg.UpdatesCombined:
-		upds := resp.GetUpdates()
-		for i := range upds {
-			var ok bool
-			msgID, ok = extractMsgID(upds[i])
-			if ok {
-				return
-			}
-		}
-	case *tg.Updates:
-		upds := resp.GetUpdates()
-		for i := range upds {
-			var ok bool
-			msgID, ok = extractMsgID(upds[i])
-			if ok {
-				return
-			}
-		}
-	case *tg.UpdateShortSentMessage:
-		msgID = rt.MessageID(resp.GetID())
-	default:
-		err = fmt.Errorf("unexpected response type %T", resp)
-		return
+	var buf [1]rt.MessageID
+	out := buf[0:0:1]
+	err = handleMessageSent(updCls, &out)
+	if len(out) == 1 {
+		msgID = buf[0]
 	}
-
 	return
-}
-
-func extractMsgID(upd tg.UpdateClass) (msgID rt.MessageID, hasMsgID bool) {
-	switch u := upd.(type) {
-	case *tg.UpdateNewMessage:
-		return rt.MessageID(u.GetMessage().GetID()), true
-	case *tg.UpdateMessageID:
-		return rt.MessageID(u.GetID()), true
-	default:
-		return
-	}
 }
 
 // getChannelCreator get creator of the channel, requires being channel admin

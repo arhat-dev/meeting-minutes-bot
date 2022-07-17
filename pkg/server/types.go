@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	generatorResultType   = reflect.TypeOf((*generator.Result)(nil)).Elem()
+	generatorResultType   = reflect.TypeOf((*generator.Output)(nil)).Elem()
 	publisherResultType   = reflect.TypeOf((*publisher.Result)(nil)).Elem()
 	storageResultType     = reflect.TypeOf((*storage.Result)(nil)).Elem()
 	webarchiverResultType = reflect.TypeOf((*webarchiver.Result)(nil)).Elem()

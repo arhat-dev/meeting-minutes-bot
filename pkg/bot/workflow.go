@@ -31,7 +31,7 @@ type WorkflowConfig struct {
 	Publisher string `yaml:"publisher"`
 }
 
-func (wfc *WorkflowConfig) Resolve(bctx *Context) (ret Workflow, err error) {
+func (wfc *WorkflowConfig) Resolve(bctx *BotContext) (ret Workflow, err error) {
 	var (
 		wa  webarchiver.Interface
 		st  storage.Interface

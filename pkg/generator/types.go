@@ -11,23 +11,17 @@ type Config interface {
 	Create() (Interface, error)
 }
 
+// Output is the type handle for output of a generator
+type Output interface {
+	// TODO: add methods
+}
+
 type Interface interface {
 	// RenderPageHeader render page.header
-	RenderPageHeader() ([]byte, error)
+	RenderPageHeader() (string, error)
 
 	// RenderPageBody render page.body
-	RenderPageBody(messages []*rt.Message) ([]byte, error)
-}
-
-type TemplateData struct {
-	Messages []*rt.Message
-}
-
-type FuncMap = map[string]any
-
-// Result serves as type handle for arhat.dev/rs
-type Result interface {
-	// TODO: add methods
+	RenderPageBody(messages []*rt.Message) (string, error)
 }
 
 type configFactoryFunc = func() Config

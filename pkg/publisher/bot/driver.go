@@ -19,7 +19,7 @@ func (d Driver) RequireLogin() bool { return false }
 // Login to platform
 func (d *Driver) Login(config publisher.UserConfig) (token string, err error) { return }
 
-// AuthURL return a one click url for external authorization
+// AuthURL returns a clickable url for external authorization
 func (d *Driver) AuthURL() (_ string, err error) { return }
 
 // Retrieve post and cache it locally according to the url

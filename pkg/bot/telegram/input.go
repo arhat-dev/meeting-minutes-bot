@@ -1,28 +1,22 @@
 package telegram
 
 import (
-	"bytes"
 	"fmt"
 	"strings"
 	"time"
 
 	"arhat.dev/mbot/pkg/rt"
-	"arhat.dev/pkg/log"
 	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 )
 
-type tokenInputHandleFunc = func(
-	logger log.Interface, src *messageSource, msg *tg.Message, replyTo rt.MessageID,
-) (bool, error)
+type tokenInputHandleFunc = func(mc *messageContext, replyTo rt.MessageID) (bool, error)
 
-func (c *tgBot) tryToHandleInputForDiscussOrContinue(
-	logger log.Interface, src *messageSource, msg *tg.Message, replyTo rt.MessageID,
-) (handled bool, err error) {
-	chatID := src.Chat.ID()
-	userID := src.From.ID()
+func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo rt.MessageID) (handled bool, err error) {
+	chatID := mc.src.Chat.ID()
+	userID := mc.src.From.ID()
 
-	logger.V("try handle input for discuss or continue")
+	mc.logger.V("try handle input for discuss or continue")
 	standbySession, hasStandbySession := c.sessions.GetStandbySession(userID)
 	if !hasStandbySession {
 		return false, nil
@@ -34,7 +28,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 	}
 
 	handled = true
-	origPeer := src.Chat.InputPeer()
+	origPeer := mc.src.Chat.InputPeer()
 	if chatID != standbySession.Data.ID() {
 		origPeer = standbySession.Data.chat
 	}
@@ -45,15 +39,16 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 			_, _ = c.sessions.ResolvePendingRequest(userID)
 
 			// best effort
+
 			_, _ = c.sendTextMessage(
-				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 				styling.Plain("The session was canceled due to error, please retry later: "),
 				styling.Bold(err.Error()),
 			)
 
 			if standbySession.Data.ID() != chatID {
 				_, _ = c.sendTextMessage(
-					c.sender.To(origPeer).NoWebpage().Silent().Reply(msg.GetID()),
+					c.sender.To(origPeer).NoWebpage().Silent().Reply(mc.msg.GetID()),
 					styling.Plain("The session was canceled due to error, please retry later"),
 				)
 			}
@@ -62,18 +57,18 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Plain("Internal bot error: "),
 			styling.Bold(err.Error()),
 		)
 		return true, nil
 	}
 
-	userConfig.SetAuthToken(strings.TrimSpace(msg.GetMessage()))
+	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
 	_, err = pub.Login(userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Bold(standbySession.Workflow().PublisherName()),
 			styling.Plain(" auth error: "),
 			styling.Bold(err.Error()),
@@ -95,7 +90,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 		}
 
 		var (
-			rd bytes.Reader
+			rd strings.Reader
 			in rt.Input
 		)
 		rd.Reset(content)
@@ -104,7 +99,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 		note, err2 = pub.Publish(standbySession.Topic, &in)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
-				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 				styling.Bold(standbySession.Workflow().PublisherName()),
 				styling.Plain(" pre-publish failed: "),
 				styling.Bold(err2.Error()),
@@ -117,7 +112,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 		note, err = pub.Retrieve(standbySession.URL)
 		if err != nil {
 			_, _ = c.sendTextMessage(
-				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 				styling.Plain("Retrieve "),
 				styling.Bold(standbySession.Workflow().PublisherName()),
 				styling.Plain(" post failed: "),
@@ -130,11 +125,11 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 		}
 	}
 
-	logger.V("activate session")
+	mc.logger.V("activate session")
 	_, err = c.sessions.ActivateSession(standbySession.Workflow(), userID, standbySession.Data.ID(), pub)
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Plain("Internal bot error: "),
 			styling.Bold(err.Error()),
 		)
@@ -150,22 +145,22 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 	}(standbySession.Data.ID())
 
 	msgID, _ := c.sendTextMessage(
-		c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 		styling.Plain("Success!"),
 	)
 
 	// delete user provided token related messages
 	c.scheduleMessageDelete(
-		&src.Chat,
+		&mc.src.Chat,
 		10*time.Second,
 		msgID,
-		rt.MessageID(msg.GetID()),
+		rt.MessageID(mc.msg.GetID()),
 		msgIDShouldReplyTo,
 	)
 
 	_, err = c.sendTextMessage(
-		c.sender.To(origPeer).NoWebpage().Silent().Reply(msg.GetID()),
-		translateSpans(note)...,
+		c.sender.To(origPeer).NoWebpage().Silent().Reply(mc.msg.GetID()),
+		translateTextSpans(note)...,
 	)
 	if err != nil {
 		return true, nil
@@ -174,12 +169,10 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(
 	return true, nil
 }
 
-func (c *tgBot) tryToHandleInputForEditing(
-	logger log.Interface, src *messageSource, msg *tg.Message, replyTo rt.MessageID,
-) (bool, error) {
-	userID := src.From.ID()
+func (c *tgBot) tryToHandleInputForEditing(mc *messageContext, replyTo rt.MessageID) (bool, error) {
+	userID := mc.src.From.ID()
 
-	logger.V("try handle input for editing")
+	mc.logger.V("try handle input for editing")
 	// check if it's a reply for conversion started by links to /edit, /delete, /list
 	req, isPendingEditing := c.sessions.GetPendingEditing(userID)
 	if !isPendingEditing {
@@ -198,7 +191,7 @@ func (c *tgBot) tryToHandleInputForEditing(
 
 			// best effort
 			_, _ = c.sendTextMessage(
-				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 				styling.Plain("The edit was canceled due to error, please retry later: "),
 				styling.Bold(err.Error()),
 			)
@@ -207,18 +200,18 @@ func (c *tgBot) tryToHandleInputForEditing(
 
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Plain("Internal bot error: "),
 			styling.Bold(err.Error()),
 		)
 		return true, nil
 	}
 
-	userConfig.SetAuthToken(strings.TrimSpace(msg.GetMessage()))
+	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
 	_, err = pub.Login(userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" auth error: "),
 			styling.Bold(err.Error()),
@@ -231,7 +224,7 @@ func (c *tgBot) tryToHandleInputForEditing(
 	authURL, err := pub.AuthURL()
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" unable to get auth url: "),
 			styling.Bold(err.Error()),
@@ -242,8 +235,8 @@ func (c *tgBot) tryToHandleInputForEditing(
 	c.sessions.ResolvePendingRequest(userID)
 
 	msgID, _ := c.sendTextMessage(
-		c.sender.To(src.Chat.InputPeer()).NoWebpage().
-			Silent().Reply(msg.GetID()).Row(&tg.KeyboardButtonURL{
+		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().
+			Silent().Reply(mc.msg.GetID()).Row(&tg.KeyboardButtonURL{
 			Text: "Edit on this device",
 			URL:  authURL,
 		}),
@@ -252,23 +245,21 @@ func (c *tgBot) tryToHandleInputForEditing(
 
 	// delete user provided token related messages
 	c.scheduleMessageDelete(
-		&src.Chat, 10*time.Second,
-		rt.MessageID(msg.GetID()),
+		&mc.src.Chat, 10*time.Second,
+		rt.MessageID(mc.msg.GetID()),
 		msgIDshouldReplyTo,
 	)
 
 	// delete auth url later
-	c.scheduleMessageDelete(&src.Chat, 5*time.Minute, msgID)
+	c.scheduleMessageDelete(&mc.src.Chat, 5*time.Minute, msgID)
 
 	return true, nil
 }
 
-func (c *tgBot) tryToHandleInputForListing(
-	logger log.Interface, src *messageSource, msg *tg.Message, replyTo rt.MessageID,
-) (handled bool, err error) {
-	userID := src.From.ID()
+func (c *tgBot) tryToHandleInputForListing(mc *messageContext, replyTo rt.MessageID) (handled bool, err error) {
+	userID := mc.src.From.ID()
 
-	logger.V("try handle input for listing")
+	mc.logger.V("try handle input for listing")
 	// check if it's a reply for conversion started by links to /list
 	req, isPendingListing := c.sessions.GetPendingListing(userID)
 	if !isPendingListing {
@@ -287,7 +278,7 @@ func (c *tgBot) tryToHandleInputForListing(
 
 			// best effort
 			_, _ = c.sendTextMessage(
-				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 				styling.Plain("The list request was canceled due to error, please retry later: "),
 				styling.Bold(err.Error()),
 			)
@@ -297,18 +288,18 @@ func (c *tgBot) tryToHandleInputForListing(
 	pub, userConfig, err := req.Workflow().CreatePublisher()
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Plain("Internal bot error: "),
 			styling.Bold(err.Error()),
 		)
 		return
 	}
 
-	userConfig.SetAuthToken(strings.TrimSpace(msg.GetMessage()))
+	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
 	_, err = pub.Login(userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" auth error: "),
 			styling.Bold(err.Error()),
@@ -321,7 +312,7 @@ func (c *tgBot) tryToHandleInputForListing(
 	posts, err := pub.List()
 	if err != nil && len(posts) == 0 {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" unable to list posts: "),
 			styling.Bold(err.Error()),
@@ -341,15 +332,15 @@ func (c *tgBot) tryToHandleInputForListing(
 	}
 
 	_, _ = c.sendTextMessage(
-		c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent(),
+		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent(),
 		entities...,
 	)
 
 	// delete user provided token related messages
 	c.scheduleMessageDelete(
-		&src.Chat,
+		&mc.src.Chat,
 		10*time.Second,
-		rt.MessageID(msg.GetID()),
+		rt.MessageID(mc.msg.GetID()),
 		msgIDshouldReplyTo,
 	)
 
@@ -357,12 +348,10 @@ func (c *tgBot) tryToHandleInputForListing(
 }
 
 // tryToHandleInputForDeleting treate msg as user input for deleting published post
-func (c *tgBot) tryToHandleInputForDeleting(
-	logger log.Interface, src *messageSource, msg *tg.Message, replyTo rt.MessageID,
-) (handled bool, err error) {
-	userID := src.From.ID()
+func (c *tgBot) tryToHandleInputForDeleting(mc *messageContext, replyTo rt.MessageID) (handled bool, err error) {
+	userID := mc.src.From.ID()
 
-	logger.V("try handle input for deleting")
+	mc.logger.V("try handle input for deleting")
 	// check if it's a reply for conversion started by links to /delete
 	req, isPendingDeleting := c.sessions.GetPendingDeleting(userID)
 	if !isPendingDeleting {
@@ -381,7 +370,7 @@ func (c *tgBot) tryToHandleInputForDeleting(
 
 			// best effort
 			_, _ = c.sendTextMessage(
-				c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 				styling.Plain("The delete request was canceled due to error, please retry later: "),
 				styling.Bold(err.Error()),
 			)
@@ -391,18 +380,18 @@ func (c *tgBot) tryToHandleInputForDeleting(
 	pub, userConfig, err := req.Workflow().CreatePublisher()
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Plain("Internal bot error: "),
 			styling.Bold(err.Error()),
 		)
 		return
 	}
 
-	userConfig.SetAuthToken(strings.TrimSpace(msg.GetMessage()))
+	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
 	_, err = pub.Login(userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(" auth error: "),
 			styling.Bold(err.Error()),
@@ -415,7 +404,7 @@ func (c *tgBot) tryToHandleInputForDeleting(
 	err = pub.Delete(req.URLs...)
 	if err != nil {
 		_, _ = c.sendTextMessage(
-			c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent().Reply(msg.GetID()),
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Bold(req.Workflow().PublisherName()),
 			styling.Plain(": "),
 			styling.Plain(err.Error()),
@@ -426,15 +415,15 @@ func (c *tgBot) tryToHandleInputForDeleting(
 	c.sessions.ResolvePendingRequest(userID)
 
 	_, _ = c.sendTextMessage(
-		c.sender.To(src.Chat.InputPeer()).NoWebpage().Silent(),
+		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent(),
 		styling.Plain("The post(s) has been deleted"),
 	)
 
 	// delete user provided token related messages
 	c.scheduleMessageDelete(
-		&src.Chat,
+		&mc.src.Chat,
 		10*time.Second,
-		rt.MessageID(msg.GetID()),
+		rt.MessageID(mc.msg.GetID()),
 		rt.MessageID(msgIDshouldReplyTo),
 	)
 

@@ -17,15 +17,15 @@ type Driver struct {
 }
 
 // RenderPageHeader does nothing for this driver
-func (d *Driver) RenderPageHeader() ([]byte, error) {
-	return nil, nil
+func (d *Driver) RenderPageHeader() (string, error) {
+	return "", nil
 }
 
 // RenderPageBody saves all multi-media to local file, return filenames of them in bytes, separated by '\n'
 // one filename each line
 //
 // non multi-media entities (links and plain text) are not touched
-func (d *Driver) RenderPageBody(msgs []*rt.Message) (_ []byte, err error) {
+func (d *Driver) RenderPageBody(msgs []*rt.Message) (_ string, err error) {
 	var (
 		buf bytes.Buffer
 	)
@@ -68,5 +68,5 @@ func (d *Driver) RenderPageBody(msgs []*rt.Message) (_ []byte, err error) {
 		}
 	}
 
-	return buf.Next(buf.Len()), err
+	return buf.String(), err
 }

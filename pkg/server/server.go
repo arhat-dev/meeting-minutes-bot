@@ -37,27 +37,36 @@ func Run(ctx context.Context, opts *conf.Config) (err error) {
 		mux = http.NewServeMux()
 	}
 
-	bots := make([]bot.Interface, 0, len(opts.Bots))
+	type Pair struct {
+		Name string
+		Bot  bot.Interface
+	}
+
+	bots := make([]Pair, 0, len(opts.Bots))
 	for name, cfg := range opts.Bots {
-		var b bot.Interface
-		b, err = cfg.Create(name, rt.NewContext(ctx, log.Log.WithName(name), cache), &opts.Context)
+		var p Pair
+
+		p.Name = name
+		p.Bot, err = cfg.Create(rt.NewContext(ctx, log.Log.WithName(name), cache), &opts.BotContext)
 		if err != nil {
 			err = fmt.Errorf("create bot %q: %w", name, err)
 			return
 		}
 
-		bots = append(bots, b)
+		bots = append(bots, p)
 	}
 
 	for _, b := range bots {
-		err = b.Configure()
+		err = b.Bot.Configure()
 		if err != nil {
-			return fmt.Errorf("configure bot %q: %w", b.Name(), err)
+			return fmt.Errorf("configure bot %q: %w", b.Name, err)
 		}
+	}
 
-		err = b.Start(opts.App.PublicBaseURL, mux)
+	for _, b := range bots {
+		err = b.Bot.Start(opts.App.PublicBaseURL, mux)
 		if err != nil {
-			return fmt.Errorf("start bot %q: %w", b.Name(), err)
+			return fmt.Errorf("start bot %q: %w", b.Name, err)
 		}
 	}
 

@@ -1,2 +1,2 @@
-// Package bot implements a publisher sending input data to the same bot provided input
+// Package bot implements a publisher expecting input data as encoded messages
 package bot
