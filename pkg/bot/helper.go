@@ -22,7 +22,7 @@ func NeedPreProcess(spans []rt.Span) bool {
 
 // PreprocessText message entities, doing following jobs
 // - archive web pages
-func PreprocessText(ctx *rt.RTContext, wf *Workflow, spans []rt.Span) error {
+func PreprocessText(con rt.Conversation, wf *Workflow, spans []rt.Span) error {
 	var input rt.Input
 
 	for i := range spans {
@@ -31,24 +31,22 @@ func PreprocessText(ctx *rt.RTContext, wf *Workflow, spans []rt.Span) error {
 		}
 
 		if wf.WebArchiver != nil {
-			pageArchive, err := wf.WebArchiver.Archive(ctx.Context(), spans[i].URL)
+			pageArchive, err := wf.WebArchiver.Archive(con, spans[i].URL)
 			if err != nil {
 				continue
 			}
 
-			data, sz := pageArchive.WARC()
-			if sz > 0 {
-				input = rt.NewInput(sz, data)
-				url, err2 := wf.Storage.Upload(ctx.Context(), "", mime.New("application/warc"), &input)
+			if pageArchive.SizeWARC > 0 {
+				input = rt.NewInput(pageArchive.SizeWARC, pageArchive.WARC)
+				url, err2 := wf.Storage.Upload(con, "", mime.New("application/warc"), &input)
 				if err2 == nil {
 					spans[i].WebArchiveURL = url
 				}
 			}
 
-			data, sz = pageArchive.Screenshot()
-			if sz > 0 {
-				input = rt.NewInput(sz, data)
-				url, err2 := wf.Storage.Upload(ctx.Context(), "", mime.New("image/png"), &input)
+			if pageArchive.SizeScreenshot > 0 {
+				input = rt.NewInput(pageArchive.SizeScreenshot, pageArchive.Screenshot)
+				url, err2 := wf.Storage.Upload(con, "", mime.New("image/png"), &input)
 				if err2 == nil {
 					spans[i].WebArchiveScreenshotURL = url
 				}
@@ -84,7 +82,7 @@ func Download(cache rt.Cache, doDownload func(rt.CacheWriter) error) (cacheRD rt
 	return
 }
 
-func GenerateContent(gen generator.Interface, msgs []*rt.Message) (result string, err error) {
+func GenerateContent(con rt.Conversation, gen generator.Interface, msgs []*rt.Message) (result string, err error) {
 	for _, m := range msgs {
 		for !m.Ready() {
 			// TODO: m.Wait()
@@ -92,6 +90,6 @@ func GenerateContent(gen generator.Interface, msgs []*rt.Message) (result string
 		}
 	}
 
-	result, err = gen.RenderPageBody(msgs)
+	result, err = gen.RenderBody(con, msgs)
 	return
 }

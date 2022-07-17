@@ -1,10 +1,9 @@
 package webarchiver
 
 import (
-	"context"
-
 	"github.com/chromedp/chromedp"
 
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/mbot/pkg/webarchiver"
 )
 
@@ -12,7 +11,7 @@ var _ webarchiver.Interface = (*Driver)(nil)
 
 type Driver struct{}
 
-func (d *Driver) Archive(ctx context.Context, url string) (webarchiver.Result, error) {
-	chromedp.NewContext(ctx)
-	return nil, nil
+func (d *Driver) Archive(con rt.Conversation, url string) (_ webarchiver.Result, _ error) {
+	chromedp.NewContext(con.Context())
+	return
 }

@@ -55,11 +55,11 @@ func TestBuiltinTemplates(t *testing.T) {
 				return
 			}
 
-			hdr, err := gen.RenderPageHeader()
+			hdr, err := gen.New(nil, "", "")
 			assert.NoError(t, err)
 			t.Log("header", string(hdr))
 
-			body, err := gen.RenderPageBody(testMessages())
+			body, err := gen.RenderBody(nil, testMessages())
 			assert.NoError(t, err)
 			t.Log("body", string(body))
 		})

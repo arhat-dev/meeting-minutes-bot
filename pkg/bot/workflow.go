@@ -8,6 +8,7 @@ import (
 
 	"arhat.dev/mbot/pkg/generator"
 	"arhat.dev/mbot/pkg/publisher"
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/mbot/pkg/storage"
 	"arhat.dev/mbot/pkg/webarchiver"
 )
@@ -16,7 +17,7 @@ import (
 type WorkflowConfig struct {
 	rs.BaseField
 
-	CmdMapping CommandsMapping `yaml:"cmdMapping"`
+	CmdMapping rt.CommandsMapping `yaml:"cmdMapping"`
 
 	// Storage config name
 	Storage string `yaml:"storage"`
@@ -33,10 +34,9 @@ type WorkflowConfig struct {
 
 func (wfc *WorkflowConfig) Resolve(bctx *BotContext) (ret Workflow, err error) {
 	var (
-		wa  webarchiver.Interface
-		st  storage.Interface
-		gn  generator.Interface
-		_pb publisher.Interface
+		wa webarchiver.Interface
+		st storage.Interface
+		gn generator.Interface
 	)
 
 	gnConf, ok := bctx.Generators[wfc.Generator]
@@ -80,9 +80,9 @@ func (wfc *WorkflowConfig) Resolve(bctx *BotContext) (ret Workflow, err error) {
 		return
 	}
 
-	_pb, _, err = pbConf.Create()
+	_, _, err = pbConf.Create()
 	if err != nil {
-		err = fmt.Errorf("check publisher %q: %w", wfc.Publisher, err)
+		err = fmt.Errorf("check publisher creation %q: %w", wfc.Publisher, err)
 		return
 	}
 
@@ -93,8 +93,7 @@ func (wfc *WorkflowConfig) Resolve(bctx *BotContext) (ret Workflow, err error) {
 		WebArchiver: wa,
 		Generator:   gn,
 
-		pbRequireLogin: _pb.RequireLogin(),
-		pbFactoryFunc:  pbConf.Create,
+		pbFactoryFunc: pbConf.Create,
 	}
 
 	ret.pbName, _, _ = strings.Cut(wfc.Publisher, ":")
@@ -119,19 +118,17 @@ func (w *WorkflowSet) WorkflowFor(cmd string) (ret *Workflow, ok bool) {
 
 // Workflow contains all runtime components for a workflow
 type Workflow struct {
-	BotCommands BotCommands
+	BotCommands rt.BotCommands
 
 	Storage     storage.Interface
 	WebArchiver webarchiver.Interface
 	Generator   generator.Interface
 
-	pbName         string
-	pbRequireLogin bool
-	pbFactoryFunc  PublisherFactoryFunc
+	pbName        string
+	pbFactoryFunc PublisherFactoryFunc
 }
 
-func (c *Workflow) PublisherName() string       { return c.pbName }
-func (c *Workflow) PublisherRequireLogin() bool { return c.pbRequireLogin }
-func (c *Workflow) CreatePublisher() (publisher.Interface, publisher.UserConfig, error) {
+func (c *Workflow) PublisherName() string { return c.pbName }
+func (c *Workflow) CreatePublisher() (publisher.Interface, publisher.User, error) {
 	return c.pbFactoryFunc()
 }

@@ -1,8 +1,8 @@
 package file
 
 import (
-	"bytes"
 	"path"
+	"strings"
 
 	"arhat.dev/pkg/fshelper"
 
@@ -16,18 +16,25 @@ type Driver struct {
 	fs *fshelper.OSFS
 }
 
-// RenderPageHeader does nothing for this driver
-func (d *Driver) RenderPageHeader() (string, error) {
+// New implements generator.Interface
+func (*Driver) New(con rt.Conversation, cmd, params string) (string, error) {
 	return "", nil
 }
 
-// RenderPageBody saves all multi-media to local file, return filenames of them in bytes, separated by '\n'
+// Continue implements generator.Interface
+func (*Driver) Continue(con rt.Conversation, cmd string, params string) (string, error) {
+	return "", nil
+}
+
+// RenderBody implements generator.Interface
+//
+// it saves all multi-media to local file, return filenames of them in bytes, separated by '\n'
 // one filename each line
 //
 // non multi-media entities (links and plain text) are not touched
-func (d *Driver) RenderPageBody(msgs []*rt.Message) (_ string, err error) {
+func (*Driver) RenderBody(con rt.Conversation, msgs []*rt.Message) (_ string, err error) {
 	var (
-		buf bytes.Buffer
+		buf strings.Builder
 	)
 
 	for _, m := range msgs {

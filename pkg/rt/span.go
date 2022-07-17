@@ -9,12 +9,10 @@ type SpanFlag uint32
 
 // Format kinds
 const (
-	SpanFlag_Unknown SpanFlag = 0
-
-	SpanFlag_PlainText SpanFlag = 1 << (iota - 1)
+	SpanFlag_PlainText SpanFlag = 0
 
 	// text styles
-	SpanFlag_Bold
+	SpanFlag_Bold SpanFlag = 1 << (iota - 1)
 	SpanFlag_Italic
 	SpanFlag_Strikethrough
 	SpanFlag_Underline

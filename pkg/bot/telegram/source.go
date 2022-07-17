@@ -229,39 +229,3 @@ func (c chatIDWrapper) ID() rt.ChatID {
 		return 0
 	}
 }
-
-func (c chatIDWrapper) Equals(o chatIDWrapper) bool {
-	switch {
-	case c.chat == nil && o.chat == nil:
-		return true
-	case c.chat == nil || o.chat == nil:
-		return false
-
-	// both are not nil
-	case c.chat == o.chat:
-		return true
-	case c.chat.TypeID() != c.chat.TypeID():
-		return false
-	}
-
-	switch this := c.chat.(type) {
-	case *tg.InputPeerEmpty:
-		return true
-	case *tg.InputPeerSelf:
-		return true
-	case *tg.InputPeerChat:
-		return this.GetChatID() == o.chat.(*tg.InputPeerChat).GetChatID()
-	case *tg.InputPeerUser:
-		return this.GetUserID() == o.chat.(*tg.InputPeerUser).GetUserID()
-	case *tg.InputPeerChannel:
-		return this.GetChannelID() == o.chat.(*tg.InputPeerChannel).GetChannelID()
-	case *tg.InputPeerUserFromMessage:
-		return this.GetUserID() == o.chat.(*tg.InputPeerUserFromMessage).GetUserID() &&
-			this.GetMsgID() == o.chat.(*tg.InputPeerUserFromMessage).GetMsgID()
-	case *tg.InputPeerChannelFromMessage:
-		return this.GetChannelID() == o.chat.(*tg.InputPeerChannelFromMessage).GetChannelID() &&
-			this.GetMsgID() == o.chat.(*tg.InputPeerUserFromMessage).GetMsgID()
-	default:
-		return false
-	}
-}

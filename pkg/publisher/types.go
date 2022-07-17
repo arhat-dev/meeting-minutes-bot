@@ -1,7 +1,6 @@
 package publisher
 
 import (
-	"context"
 	"fmt"
 
 	"arhat.dev/mbot/pkg/rt"
@@ -9,7 +8,7 @@ import (
 
 type Config interface {
 	// Create a publisher base on this config
-	Create() (Interface, UserConfig, error)
+	Create() (Interface, User, error)
 }
 
 type Feature uint32
@@ -22,31 +21,48 @@ const (
 	Feature_Delete                     // supports deleting
 )
 
+// TODO: rename methods and redesign workflow
 type Interface interface {
-	// RequireLogin return true when the publisher requires login, if false
-	// there will be no login process presented to user
-	RequireLogin() bool
-
-	// Login to platform
-	Login(config UserConfig) (token string, _ error)
-
-	// AuthURL returns a clickable url for external authorization
-	AuthURL() (string, error)
+	// CreateNew creates a new published item
+	//
+	// this is called on BotCmd_Discuss
+	//
+	// examples:
+	//   for blog publishers, a new blog post (draft) is supposed to be created after this call
+	CreateNew(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) ([]rt.Span, error)
 
 	// Retrieve post and cache it locally according to the url
-	Retrieve(url string) ([]rt.Span, error)
+	//
+	// this is called on BotCmd_Continue
+	//
+	// examples:
+	//   for blog publishers, cache blog post locally
+	Retrieve(con rt.Conversation, cmd, params string) ([]rt.Span, error)
 
-	// Publish a new post
-	Publish(title string, body *rt.Input) ([]rt.Span, error)
+	// AppendToExisting appends generated content to existing published item
+	//
+	// this is called on BotCmd_End
+	//
+	// examples:
+	//   for blog publishers, append generated content to the existing blog post
+	AppendToExisting(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) ([]rt.Span, error)
+
+	// RequireLogin returns true when the publisher requires login, if false, there will be no login process presented to user
+	//
+	// this is called on BotCmd_Discuss, BotCmd_Continue, BotCmd_List, BotCmd_Delete
+	RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error)
+
+	// Login as user of the publisher
+	Login(con rt.Conversation, user User) ([]rt.Span, error)
+
+	// RequestExternalAccess returns a clickable url for external authorization
+	RequestExternalAccess(con rt.Conversation) ([]rt.Span, error)
 
 	// List all posts for this user
-	List() ([]PostInfo, error)
+	List(con rt.Conversation) ([]PostInfo, error)
 
 	// Delete one post according to the url
-	Delete(urls ...string) error
-
-	// Append content to local post cache
-	Append(ctx context.Context, body *rt.Input) ([]rt.Span, error)
+	Delete(con rt.Conversation, cmd, params string) error
 }
 
 type PostInfo struct {
@@ -54,7 +70,7 @@ type PostInfo struct {
 	URL   string
 }
 
-type UserConfig interface {
+type User interface {
 	SetAuthToken(token string)
 }
 

@@ -23,7 +23,7 @@ func (c *tgBot) handleStartCommand(
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 			styling.Plain("Welcome, need some help? send command "),
-			styling.Code(wf.BotCommands.TextOf(bot.BotCmd_Help)),
+			styling.Code(wf.BotCommands.TextOf(rt.BotCmd_Help)),
 			styling.Plain(" to show all commands."),
 		)
 		return nil
@@ -172,7 +172,7 @@ func (c *tgBot) handleStartCommand(
 			return err2
 		}
 
-		token, err2 := pub.Login(userConfig)
+		token, err2 := pub.Login(&mc.con, userConfig)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -185,10 +185,7 @@ func (c *tgBot) handleStartCommand(
 
 		_, err2 = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage(),
-			styling.Plain("Here is your "),
-			styling.Bold(wf.PublisherName()),
-			styling.Plain(" token, keep it for future use:\n\n"),
-			styling.Code(token),
+			translateTextSpans(token)...,
 		)
 		if err2 != nil {
 			// best effort
@@ -200,7 +197,11 @@ func (c *tgBot) handleStartCommand(
 			return err2
 		}
 
-		content, err2 := wf.Generator.RenderPageHeader()
+		content, err2 := wf.Generator.New(
+			&mc.con,
+			wf.BotCommands.TextOf(rt.BotCmd_Discuss),
+			"",
+		)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Reply(mc.msg.GetID()),
@@ -218,7 +219,12 @@ func (c *tgBot) handleStartCommand(
 		rd.Reset(content)
 		in = rt.NewInput(rd.Size(), &rd)
 
-		note, err2 := pub.Publish(standbySession.Topic, &in)
+		note, err2 := pub.CreateNew(
+			&mc.con,
+			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
+			standbySession.Params,
+			&in,
+		)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),

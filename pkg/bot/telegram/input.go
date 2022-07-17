@@ -7,10 +7,11 @@ import (
 
 	"arhat.dev/mbot/pkg/rt"
 	"github.com/gotd/td/telegram/message/styling"
-	"github.com/gotd/td/tg"
 )
 
-type tokenInputHandleFunc = func(mc *messageContext, replyTo rt.MessageID) (bool, error)
+// input handling func MUST be ONLY called in private chat
+
+type inputHandleFunc = func(mc *messageContext, replyTo rt.MessageID) (bool, error)
 
 func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo rt.MessageID) (handled bool, err error) {
 	chatID := mc.src.Chat.ID()
@@ -65,7 +66,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 	}
 
 	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
-	_, err = pub.Login(userConfig)
+	_, err = pub.Login(&mc.con, userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -81,10 +82,15 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 	var (
 		note []rt.Span
 	)
-	switch {
-	case len(standbySession.Topic) != 0:
+
+	if standbySession.IsDiscuss {
 		// is /discuss, create a new post
-		content, err2 := standbySession.Workflow().Generator.RenderPageHeader()
+
+		content, err2 := standbySession.Workflow().Generator.New(
+			&mc.con,
+			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
+			"",
+		)
 		if err2 != nil {
 			return true, fmt.Errorf("failed to generate initial page: %w", err2)
 		}
@@ -96,7 +102,12 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 		rd.Reset(content)
 		in = rt.NewInput(rd.Size(), &rd)
 
-		note, err2 = pub.Publish(standbySession.Topic, &in)
+		note, err2 = pub.CreateNew(
+			&mc.con,
+			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
+			standbySession.Params,
+			&in,
+		)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -106,10 +117,14 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 			)
 			return true, err2
 		}
-	case len(standbySession.URL) != 0:
+	} else {
 		// is /continue, find existing post to edit
 
-		note, err = pub.Retrieve(standbySession.URL)
+		note, err = pub.Retrieve(
+			&mc.con,
+			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Continue),
+			standbySession.Params,
+		)
 		if err != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -208,7 +223,7 @@ func (c *tgBot) tryToHandleInputForEditing(mc *messageContext, replyTo rt.Messag
 	}
 
 	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
-	_, err = pub.Login(userConfig)
+	_, err = pub.Login(&mc.con, userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -221,7 +236,7 @@ func (c *tgBot) tryToHandleInputForEditing(mc *messageContext, replyTo rt.Messag
 		return true, nil
 	}
 
-	authURL, err := pub.AuthURL()
+	authURL, err := pub.RequestExternalAccess(&mc.con)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -235,12 +250,8 @@ func (c *tgBot) tryToHandleInputForEditing(mc *messageContext, replyTo rt.Messag
 	c.sessions.ResolvePendingRequest(userID)
 
 	msgID, _ := c.sendTextMessage(
-		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().
-			Silent().Reply(mc.msg.GetID()).Row(&tg.KeyboardButtonURL{
-			Text: "Edit on this device",
-			URL:  authURL,
-		}),
-		styling.Plain("Login Success!"),
+		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
+		translateTextSpans(authURL)...,
 	)
 
 	// delete user provided token related messages
@@ -296,7 +307,7 @@ func (c *tgBot) tryToHandleInputForListing(mc *messageContext, replyTo rt.Messag
 	}
 
 	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
-	_, err = pub.Login(userConfig)
+	_, err = pub.Login(&mc.con, userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -309,7 +320,7 @@ func (c *tgBot) tryToHandleInputForListing(mc *messageContext, replyTo rt.Messag
 		return
 	}
 
-	posts, err := pub.List()
+	posts, err := pub.List(&mc.con)
 	if err != nil && len(posts) == 0 {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -388,7 +399,7 @@ func (c *tgBot) tryToHandleInputForDeleting(mc *messageContext, replyTo rt.Messa
 	}
 
 	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
-	_, err = pub.Login(userConfig)
+	_, err = pub.Login(&mc.con, userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -401,7 +412,11 @@ func (c *tgBot) tryToHandleInputForDeleting(mc *messageContext, replyTo rt.Messa
 		return
 	}
 
-	err = pub.Delete(req.URLs...)
+	err = pub.Delete(
+		&mc.con,
+		req.Workflow().BotCommands.TextOf(rt.BotCmd_Delete),
+		req.Params,
+	)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),

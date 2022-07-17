@@ -4,7 +4,7 @@
     Go to https://telegra.ph/api and find supported tags
 */ -}}
 
-{{- define "page.body" -}}
+{{- define "gen.body" -}}
 
 {{- range $_, $msg := .Messages -}}
 

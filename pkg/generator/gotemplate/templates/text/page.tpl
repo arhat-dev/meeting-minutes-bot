@@ -2,9 +2,9 @@
 /*
     Page template to render messsages as plain text
 */ -}}
-{{- define "page.header" -}}{{- end -}}
+{{- define "gen.new" -}}{{- end -}}
 
-{{- define "page.body" -}}
+{{- define "gen.body" -}}
   {{- range .Messages -}}
     {{-  range .Spans -}}
       {{- .Text -}}

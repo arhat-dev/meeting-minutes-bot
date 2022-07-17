@@ -1,7 +1,6 @@
 package webarchiver
 
 import (
-	"context"
 	"fmt"
 
 	"arhat.dev/mbot/pkg/rt"
@@ -15,18 +14,17 @@ type Config interface {
 type Interface interface {
 	// Archive web page
 	// TODO: support full web request context
-	Archive(ctx context.Context, url string) (Result, error)
+	Archive(con rt.Conversation, url string) (Result, error)
 }
 
 // Result of a web archive operation
-type Result interface {
-	// WARC get archived .warc file, when return size is 0, data is considered nil
-	//
-	// ref: https://en.wikipedia.org/wiki/Web_ARChive
-	WARC() (data rt.CacheReader, size int64)
+type Result struct {
+	SizeWARC       int64
+	SizeScreenshot int64
 
-	// Screenshot get archived bitmap data, when return size is 0, data is considered nil
-	Screenshot() (data rt.CacheReader, size int64)
+	// re:warc: https://en.wikipedia.org/wiki/Web_ARChive
+	WARC       rt.CacheReader
+	Screenshot rt.CacheReader
 }
 
 type configFactoryFunc = func() Config

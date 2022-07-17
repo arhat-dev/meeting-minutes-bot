@@ -1,8 +1,6 @@
 package bot
 
 import (
-	"context"
-
 	"arhat.dev/mbot/pkg/publisher"
 	"arhat.dev/mbot/pkg/rt"
 )
@@ -12,27 +10,26 @@ var _ publisher.Interface = (*Driver)(nil)
 type Driver struct {
 }
 
-// RequireLogin return true when the publisher requires login, if false
-// there will be no login process presented to user
-func (d Driver) RequireLogin() bool { return false }
+// AppendToExisting implements publisher.Interface
+func (*Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) ([]rt.Span, error) {
+	panic("unimplemented")
+}
 
-// Login to platform
-func (d *Driver) Login(config publisher.UserConfig) (token string, err error) { return }
+// CreateNew implements publisher.Interface
+func (*Driver) CreateNew(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) ([]rt.Span, error) {
+	panic("unimplemented")
+}
 
-// AuthURL returns a clickable url for external authorization
-func (d *Driver) AuthURL() (_ string, err error) { return }
+func (d Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
+	return rt.LoginFlow_None, nil
+}
 
-// Retrieve post and cache it locally according to the url
-func (d *Driver) Retrieve(url string) (_ []rt.Span, err error) { return }
+func (d *Driver) Login(con rt.Conversation, user publisher.User) (_ []rt.Span, _ error) { return }
 
-// Publish a new post
-func (d *Driver) Publish(title string, body *rt.Input) (_ []rt.Span, err error) { return }
+func (d *Driver) RequestExternalAccess(con rt.Conversation) (_ []rt.Span, err error) { return }
 
-// List all posts for this user
-func (d *Driver) List() (_ []publisher.PostInfo, err error) { return }
+func (d *Driver) Retrieve(con rt.Conversation, cmd, params string) (_ []rt.Span, err error) { return }
 
-// Delete one post according to the url
-func (d *Driver) Delete(urls ...string) (err error) { return }
+func (d *Driver) List(con rt.Conversation) (_ []publisher.PostInfo, err error) { return }
 
-// Append content to local post cache
-func (d *Driver) Append(ctx context.Context, body *rt.Input) (_ []rt.Span, err error) { return }
+func (d *Driver) Delete(con rt.Conversation, cmd, params string) (err error) { return }

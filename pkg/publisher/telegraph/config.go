@@ -1,8 +1,6 @@
 package telegraph
 
 import (
-	"sync"
-
 	"arhat.dev/mbot/pkg/publisher"
 	"arhat.dev/rs"
 )
@@ -22,7 +20,7 @@ func init() {
 	)
 }
 
-var _ publisher.UserConfig = (*userConfig)(nil)
+var _ publisher.User = (*userConfig)(nil)
 
 type userConfig struct {
 	// TODO: support overriding
@@ -43,7 +41,7 @@ type Config struct {
 	DefaultAccountShortName string `yaml:"defaultAccountShortName"`
 }
 
-func (c *Config) Create() (_ publisher.Interface, _ publisher.UserConfig, err error) {
+func (c *Config) Create() (_ publisher.Interface, _ publisher.User, err error) {
 	client, err := newDefaultClient()
 	if err != nil {
 		return
@@ -53,7 +51,5 @@ func (c *Config) Create() (_ publisher.Interface, _ publisher.UserConfig, err er
 		client: client,
 
 		defaultAccountShortName: c.DefaultAccountShortName,
-
-		mu: &sync.RWMutex{},
 	}, &userConfig{}, nil
 }

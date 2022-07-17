@@ -19,15 +19,15 @@ import (
 
 // errCh can be nil when there is no background pre-process worker
 // nolint:gocyclo
-func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *rt.Message, msg *tg.Message) (errCh chan error, err error) {
+func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Message) (errCh chan error, err error) {
 	var (
 		nonText    rt.Span
 		doDownload func() (_ rt.CacheReader, contentType, ext string, sz int64, err error)
 	)
 
-	media, ok := msg.GetMedia()
+	media, ok := mc.msg.GetMedia()
 	if !ok {
-		return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
+		return c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, nil)
 	}
 
 	switch t := media.(type) {
@@ -96,12 +96,12 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *rt.Message, msg *tg.Messa
 				return c.download(fileLoc, int64(maxSize), "")
 			}
 		default:
-			return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
+			return c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, nil)
 		}
 	case *tg.MessageMediaDocument:
 		doc, ok := t.GetDocument()
 		if !ok {
-			return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
+			return c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, nil)
 		}
 
 		switch d := doc.(type) {
@@ -147,7 +147,7 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *rt.Message, msg *tg.Messa
 				return c.download(fileLoc, sz, ct)
 			}
 		default:
-			return c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, nil)
+			return c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, nil)
 		}
 
 	// case *tg.MessageMediaGeo:
@@ -161,15 +161,15 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *rt.Message, msg *tg.Messa
 	// case *tg.MessageMediaPoll:
 	// case *tg.MessageMediaDice:
 	default:
-		c.Logger().I("unhandled telegram message", log.Any("msg", msg))
+		c.Logger().I("unhandled telegram message", log.Any("msg", mc.msg))
 		m.MarkReady()
 		return nil, nil
 	}
 
 	var wg sync.WaitGroup
 
-	if len(msg.GetMessage()) != 0 {
-		errCh, err = c.preprocessText(wf, m, msg.GetMessage(), msg.Entities, &wg)
+	if len(mc.msg.GetMessage()) != 0 {
+		errCh, err = c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, &wg)
 		if err != nil {
 			return
 		}
@@ -256,7 +256,7 @@ func (c *tgBot) preprocessMessage(wf *bot.Workflow, m *rt.Message, msg *tg.Messa
 		)
 
 		input := rt.NewInput(sz, cacheRD)
-		storageURL, err := wf.Storage.Upload(c.Context(), filename, mime.New(contentType), &input)
+		storageURL, err := wf.Storage.Upload(&mc.con, filename, mime.New(contentType), &input)
 		if err != nil {
 			c.Logger().I("failed to upload file", log.Error(err))
 			c.sendErrorf(errCh, "unable to upload file: %w", err)
@@ -293,6 +293,7 @@ func (c *tgBot) sendErrorf(errCh chan<- error, format string, args ...any) {
 //
 // when wg is not nil, there is other worker working on the same message
 func (c *tgBot) preprocessText(
+	con *conversationImpl,
 	wf *bot.Workflow,
 	m *rt.Message,
 	text string,
@@ -326,7 +327,7 @@ func (c *tgBot) preprocessText(
 			}
 		}()
 
-		err2 := bot.PreprocessText(&c.RTContext, wf, spans)
+		err2 := bot.PreprocessText(con, wf, spans)
 		if err2 != nil {
 			c.sendErrorf(errCh, "Message pre-process error: %w", err2)
 		}

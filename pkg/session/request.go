@@ -43,9 +43,8 @@ type (
 
 		Data T
 
-		// Topic and URL are mutually exclusive
-		Topic string
-		URL   string
+		Params    string
+		IsDiscuss bool
 	}
 
 	EditRequest struct {
@@ -59,25 +58,25 @@ type (
 	DeleteRequest struct {
 		BaseRequest
 
-		URLs []string
+		Params string
 	}
 )
 
-func GetCommandFromRequest[T any](req any) bot.BotCmd {
+func GetCommandFromRequest[T any](req any) rt.BotCmd {
 	switch r := req.(type) {
 	case *DeleteRequest:
-		return bot.BotCmd_Delete
+		return rt.BotCmd_Delete
 	case *ListRequest:
-		return bot.BotCmd_List
+		return rt.BotCmd_List
 	case *EditRequest:
-		return bot.BotCmd_Edit
+		return rt.BotCmd_Edit
 	case *SessionRequest[T]:
-		if len(r.Topic) != 0 {
-			return bot.BotCmd_Discuss
+		if len(r.Params) != 0 {
+			return rt.BotCmd_Discuss
 		}
 
-		return bot.BotCmd_Continue
+		return rt.BotCmd_Continue
 	default:
-		return bot.BotCmd_Unknown
+		return rt.BotCmd_Unknown
 	}
 }

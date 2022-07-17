@@ -17,6 +17,6 @@ type Config struct {
 	rs.BaseField
 }
 
-func (c *Config) Create() (_ publisher.Interface, _ publisher.UserConfig, err error) {
+func (c *Config) Create() (_ publisher.Interface, _ publisher.User, err error) {
 	return
 }

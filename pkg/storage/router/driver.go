@@ -1,7 +1,6 @@
 package router
 
 import (
-	"context"
 	"fmt"
 	"regexp"
 
@@ -32,7 +31,7 @@ func (m *impl) accepts(contentType string, sz int64) bool {
 }
 
 func (m *Driver) Upload(
-	ctx context.Context, filename string, contentType mime.MIME, in *rt.Input,
+	con rt.Conversation, filename string, contentType mime.MIME, in *rt.Input,
 ) (url string, err error) {
 	sz := len(m.underlay)
 	if sz == 0 {
@@ -42,7 +41,7 @@ func (m *Driver) Upload(
 
 	for i := 0; i < sz; i++ {
 		if m.underlay[i].accepts(contentType.Value, in.Size()) {
-			return m.underlay[i].store.Upload(ctx, filename, contentType, in)
+			return m.underlay[i].store.Upload(con, filename, contentType, in)
 		}
 	}
 

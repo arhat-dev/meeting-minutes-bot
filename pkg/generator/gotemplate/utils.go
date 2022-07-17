@@ -15,12 +15,12 @@ import (
 )
 
 type tplExecutor interface {
-	ExecuteTemplate(wr io.Writer, name string, data *TemplateData) error
+	ExecuteTemplate(wr io.Writer, name string, data *Data) error
 }
 
 type hTemplate struct{ htpl.Template }
 
-func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *TemplateData) error {
+func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *Data) error {
 	clone, err := ht.Template.Clone()
 	if err != nil {
 		return err
@@ -31,7 +31,7 @@ func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *TemplateDa
 
 type tTemplate struct{ ttpl.Template }
 
-func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *TemplateData) error {
+func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *Data) error {
 	clone, err := tt.Template.Clone()
 	if err != nil {
 		return err

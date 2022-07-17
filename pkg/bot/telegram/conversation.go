@@ -46,7 +46,7 @@ func (c *conversationImpl) SendMessage(ctx context.Context, opts rt.SendMessageO
 		cancel context.CancelFunc
 	)
 
-	sz := len(opts.MessageBody)
+	sz := len(opts.Body)
 	builder := c.bot.sender.To(c.peer).Reply(int(opts.ReplyTo))
 
 	if len(opts.Callbacks) != 0 {
@@ -80,7 +80,7 @@ func (c *conversationImpl) SendMessage(ctx context.Context, opts rt.SendMessageO
 	}
 
 	for i := 0; i < sz; i++ {
-		sp := &opts.MessageBody[i]
+		sp := &opts.Body[i]
 
 		if !sp.IsMedia() {
 			text = append(text, getStyleOptionForSpan(sp))

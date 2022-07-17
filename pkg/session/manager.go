@@ -61,7 +61,7 @@ func (c *Manager[C]) MarkPendingEditing(
 	wf *bot.Workflow,
 	userID rt.UserID,
 	timeout time.Duration,
-) (bot.BotCmd, bool) {
+) (rt.BotCmd, bool) {
 	pVal, loaded := c.pendingRequests.LoadOrStore(
 		userID, &EditRequest{BaseRequest: BaseRequest{wf: wf}},
 	)
@@ -85,7 +85,7 @@ func (c *Manager[C]) MarkPendingListing(
 	wf *bot.Workflow,
 	userID rt.UserID,
 	timeout time.Duration,
-) (bot.BotCmd, bool) {
+) (rt.BotCmd, bool) {
 	pVal, loaded := c.pendingRequests.LoadOrStore(
 		userID, &ListRequest{BaseRequest: BaseRequest{wf: wf}},
 	)
@@ -109,15 +109,15 @@ func (c *Manager[C]) GetPendingListing(userID rt.UserID) (*ListRequest, bool) {
 func (c *Manager[C]) MarkPendingDeleting(
 	wf *bot.Workflow,
 	userID rt.UserID,
-	urls []string,
+	params string,
 	timeout time.Duration,
-) (prevCmd bot.BotCmd, hasPrevCmd bool) {
+) (prevCmd rt.BotCmd, hasPrevCmd bool) {
 	pVal, loaded := c.pendingRequests.LoadOrStore(
 		userID, &DeleteRequest{
 			BaseRequest: BaseRequest{
 				wf: wf,
 			},
-			URLs: urls,
+			Params: params,
 		},
 	)
 	if !loaded {
@@ -147,7 +147,8 @@ func (c *Manager[C]) MarkSessionStandby(
 	wf *bot.Workflow,
 	userID rt.UserID,
 	chatID C,
-	topic, url string,
+	topic string,
+	isDiscuss bool,
 	timeout time.Duration,
 ) bool {
 	_, loaded := c.pendingRequests.LoadOrStore(
@@ -156,8 +157,8 @@ func (c *Manager[C]) MarkSessionStandby(
 
 			Data: chatID,
 
-			Topic: topic,
-			URL:   url,
+			Params:    topic,
+			IsDiscuss: isDiscuss,
 		},
 	)
 	if !loaded {

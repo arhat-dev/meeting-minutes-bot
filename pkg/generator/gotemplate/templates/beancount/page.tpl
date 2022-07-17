@@ -2,9 +2,9 @@
 /*
     Page template to render beancount entries
 */ -}}
-{{- define "page.header" -}}{{- end -}}
+{{- define "gen.new" -}}{{- end -}}
 
-{{- define "page.body" -}}
+{{- define "gen.body" -}}
   {{- range .Messages -}}
     {{- template "message.body" . -}}
     {{- nindent 0 "" -}}

@@ -1,7 +1,6 @@
 package telegraph
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -27,7 +26,7 @@ func unescapeQuotes(s string) string {
 }
 
 func (d *Driver) Upload(
-	ctx context.Context,
+	con rt.Conversation,
 	filename string,
 	contentType mime.MIME,
 	in *rt.Input,
@@ -55,7 +54,7 @@ func (d *Driver) Upload(
 		in.Reader(),
 	).Build()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "https://telegra.ph/upload", &body)
+	req, err := http.NewRequestWithContext(con.Context(), http.MethodPost, "https://telegra.ph/upload", &body)
 	if err != nil {
 		return "", fmt.Errorf("failed to create upload request: %w", err)
 	}

@@ -4,7 +4,7 @@
     the generated result is yaml text config, which can be recognized by the `http` publisher
 */ -}}
 
-{{- define "page.header" -}}{{- end -}}
+{{- define "gen.new" -}}{{- end -}}
 
 {{-
 /*
@@ -19,7 +19,7 @@
   {{- end -}}
 {{- end -}}
 
-{{- define "page.body" -}}
+{{- define "gen.body" -}}
 
 {{- range .Messages -}}
 params:

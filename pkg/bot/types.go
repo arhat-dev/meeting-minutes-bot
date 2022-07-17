@@ -26,7 +26,7 @@ type Interface interface {
 	Start(baseURL string, mux Mux) error
 }
 
-type PublisherFactoryFunc = func() (publisher.Interface, publisher.UserConfig, error)
+type PublisherFactoryFunc = func() (publisher.Interface, publisher.User, error)
 
 // Config type for single bot config
 type Config interface {

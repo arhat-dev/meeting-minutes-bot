@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"context"
 	"fmt"
 
 	"arhat.dev/mbot/internal/mime"
@@ -10,9 +9,7 @@ import (
 
 type Interface interface {
 	// Upload content to the storage
-	Upload(
-		ctx context.Context, filename string, contentType mime.MIME, in *rt.Input,
-	) (url string, err error)
+	Upload(con rt.Conversation, filename string, contentType mime.MIME, in *rt.Input) (url string, err error)
 }
 
 type Result interface {

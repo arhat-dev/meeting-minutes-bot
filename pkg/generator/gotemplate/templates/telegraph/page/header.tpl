@@ -4,6 +4,6 @@
     Go to https://telegra.ph/api and find supported tags
 */ -}}
 
-{{- define "page.header" -}}
+{{- define "gen.new" -}}
 <p><em>powered by</em> <a href="https://github.com/arhat-dev/mbot">mbot</a></p>
 {{- end -}}

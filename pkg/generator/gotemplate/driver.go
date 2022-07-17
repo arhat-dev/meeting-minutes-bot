@@ -19,30 +19,57 @@ type Driver struct {
 	templates tplExecutor
 }
 
-func (g *Driver) RenderPageHeader() (_ string, err error) {
+// New implements generator.Interface
+func (d *Driver) New(con rt.Conversation, cmd, params string) (_ string, err error) {
 	var buf strings.Builder
 
-	err = g.templates.ExecuteTemplate(&buf, "page.header", nil)
+	data := Data{
+		Command: cmd,
+		Params:  params,
+	}
+
+	err = d.templates.ExecuteTemplate(&buf, "gen.new", &data)
 	if err != nil {
-		return "", fmt.Errorf("execute page header template: %w", err)
+		return "", fmt.Errorf("execute template gen.new: %w", err)
 	}
 
 	return buf.String(), nil
 }
 
-type TemplateData struct {
+// Continue implements generator.Interface
+func (d *Driver) Continue(con rt.Conversation, cmd string, params string) (_ string, err error) {
+	var buf strings.Builder
+
+	data := Data{
+		Command: cmd,
+		Params:  params,
+	}
+
+	err = d.templates.ExecuteTemplate(&buf, "gen.new", &data)
+	if err != nil {
+		return "", fmt.Errorf("execute template gen.continue: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+type Data struct {
+	Command  string
+	Params   string
 	Messages []*rt.Message
 }
 
-func (g *Driver) RenderPageBody(msgs []*rt.Message) (_ string, err error) {
+// RenderBody implements generator.Interface
+func (d *Driver) RenderBody(con rt.Conversation, msgs []*rt.Message) (_ string, err error) {
 	var buf strings.Builder
 
-	data := TemplateData{
+	data := Data{
 		Messages: msgs,
 	}
-	err = g.templates.ExecuteTemplate(&buf, "page.body", &data)
+
+	err = d.templates.ExecuteTemplate(&buf, "gen.body", &data)
 	if err != nil {
-		return "", fmt.Errorf("execute page body template: %w", err)
+		return "", fmt.Errorf("execute template gen.body: %w", err)
 	}
 
 	return buf.String(), nil
