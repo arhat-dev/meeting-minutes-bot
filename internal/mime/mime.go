@@ -15,6 +15,9 @@ const (
 	MIMEType_Multipart = "multipart"
 )
 
+// New creates a new MIME struct by indexing first slash ('/') in value.
+//
+// if there is no slash in value, SlashIndex is set to len(value)
 func New(value string) MIME {
 	sep := strings.IndexByte(value, '/')
 	if sep == -1 {

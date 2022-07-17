@@ -6,6 +6,7 @@ import (
 
 	"arhat.dev/mbot/pkg/publisher"
 	"arhat.dev/pkg/textquery"
+	"arhat.dev/rs"
 	"github.com/Masterminds/sprig/v3"
 )
 
@@ -19,6 +20,8 @@ func init() {
 }
 
 type Config struct {
+	rs.BaseField
+
 	Bin  string   `json:"bin" yaml:"bin"`
 	Args []string `json:"args" yaml:"args"`
 }
