@@ -2,6 +2,7 @@ package webarchiver
 
 import (
 	"context"
+	"fmt"
 
 	"arhat.dev/mbot/pkg/rt"
 )
@@ -26,4 +27,30 @@ type Result interface {
 
 	// Screenshot get archived bitmap data
 	Screenshot() (data rt.CacheReader, size int64)
+}
+
+type (
+	ConfigFactoryFunc func() Config
+)
+
+var (
+	supportedDrivers = map[string]ConfigFactoryFunc{}
+)
+
+func Register(name string, cf ConfigFactoryFunc) {
+	// reserve empty name
+	if name == "" {
+		return
+	}
+
+	supportedDrivers[name] = cf
+}
+
+func NewConfig(name string) (interface{}, error) {
+	cf, ok := supportedDrivers[name]
+	if !ok {
+		return nil, fmt.Errorf("driver %q not found", name)
+	}
+
+	return cf(), nil
 }

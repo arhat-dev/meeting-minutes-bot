@@ -64,9 +64,7 @@ type Result interface {
 type configFactoryFunc = func() Config
 
 var (
-	supportedDrivers = map[string]configFactoryFunc{
-		"": func() Config { return &nopConfig{} },
-	}
+	supportedDrivers = map[string]configFactoryFunc{}
 )
 
 func Register(name string, cf configFactoryFunc) {

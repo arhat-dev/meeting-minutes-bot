@@ -19,8 +19,6 @@ type Driver struct {
 	templates tplExecutor
 }
 
-func (g *Driver) Name() string { return Name }
-
 func (g *Driver) RenderPageHeader() (_ []byte, err error) {
 	var (
 		buf bytes.Buffer

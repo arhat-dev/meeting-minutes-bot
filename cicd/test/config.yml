@@ -12,7 +12,7 @@ generators:
   file:foo: {}
 
 storage:
-  compositor:foo:
+  router:foo:
     specs:
     - mimeMatch: (image|video)
       maxSize: 5242880 # 5MB
@@ -39,7 +39,7 @@ bots:
 
     workflows:
     - generator: gotemplate:foo
-      storage: compositor:foo
+      storage: router:foo
       publisher: telegraph:foo
 
       # cmdMapping:

@@ -1,4 +1,4 @@
-package compositor
+package router
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 )
 
 const (
-	Name = "compositor"
+	Name = "router"
 )
 
 func init() {

@@ -12,8 +12,6 @@ type Config interface {
 }
 
 type Interface interface {
-	Name() string
-
 	// RenderPageHeader render page.header
 	RenderPageHeader() ([]byte, error)
 
@@ -35,9 +33,7 @@ type Result interface {
 type configFactoryFunc = func() Config
 
 var (
-	supportedDrivers = map[string]configFactoryFunc{
-		"": func() Config { return nopConfig{} },
-	}
+	supportedDrivers = map[string]configFactoryFunc{}
 )
 
 func Register(name string, cf configFactoryFunc) {

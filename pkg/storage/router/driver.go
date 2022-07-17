@@ -1,4 +1,4 @@
-package compositor
+package router
 
 import (
 	"context"
@@ -23,7 +23,7 @@ type impl struct {
 	store storage.Interface
 }
 
-func (m *impl) matches(contentType string, sz int64) bool {
+func (m *impl) accepts(contentType string, sz int64) bool {
 	if m.exp == nil {
 		return m.exp.MatchString(contentType) && sz < m.maxSize
 	}
@@ -41,7 +41,7 @@ func (m *Driver) Upload(
 	}
 
 	for i := 0; i < sz; i++ {
-		if m.underlay[i].matches(contentType.Value, in.Size()) {
+		if m.underlay[i].accepts(contentType.Value, in.Size()) {
 			return m.underlay[i].store.Upload(ctx, filename, contentType, in)
 		}
 	}

@@ -64,8 +64,7 @@ func NewRootCmd() *cobra.Command {
 
 	flags := rootCmd.PersistentFlags()
 
-	flags.StringVarP(&configFile, "config", "c", constant.DefaultConfigFile,
-		"path to the config file")
+	flags.StringVarP(&configFile, "config", "c", constant.DefaultConfigFile, "path to the config file")
 
 	return rootCmd
 }
