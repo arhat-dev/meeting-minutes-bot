@@ -1,5 +1,5 @@
-// Package multipub implements a publisher for publishing generated content through multiple
-// publishers
+// Package multipub implements a wrapper publisher for publishing generated content through
+// multiple publishers
 package multipub
 
 import (
@@ -8,7 +8,7 @@ import (
 	"go.uber.org/multierr"
 )
 
-// TODO
+var _ publisher.Interface = (*Driver)(nil)
 
 type Driver struct {
 	underlay []pair
@@ -76,7 +76,10 @@ func (d *Driver) RequestExternalAccess(con rt.Conversation) (out rt.PublisherOut
 }
 
 // RequireLogin implements publisher.Interface
-func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string) (_ rt.LoginFlow, _ error) {
+func (d *Driver) RequireLogin(
+	con rt.Conversation, cmd, params string, user publisher.User,
+) (out rt.PublisherOutput, err error) {
+	// TODO
 	return
 }
 

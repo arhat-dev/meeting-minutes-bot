@@ -2,6 +2,7 @@ package telegraph
 
 import (
 	"arhat.dev/mbot/pkg/publisher"
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/rs"
 )
 
@@ -48,6 +49,15 @@ type User struct {
 	authorURL  string
 
 	authToken string
+}
+
+func (u *User) NextExepcted() (flow rt.LoginFlow) {
+	switch {
+	case len(u.authToken) == 0:
+		return rt.LoginFlow_Token
+	}
+
+	return
 }
 
 // SetPassword implements publisher.User

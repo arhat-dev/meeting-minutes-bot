@@ -147,21 +147,25 @@ func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, in *r
 	return
 }
 
-func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
+func (d *Driver) RequireLogin(
+	con rt.Conversation, cmd, params string, user publisher.User,
+) (out rt.PublisherOutput, err error) {
 	if len(params) == 0 {
-		return rt.LoginFlow_Token, nil
+		out.SendMessage.Set(rt.SendMessageOptions{
+			NoForward:    true,
+			NoWebPreview: true,
+			Body: []rt.Span{
+				{Text: "Reply this message with your "},
+				{Flags: rt.SpanFlag_Bold, Text: Name},
+				{Text: " token"},
+			},
+		})
+
+		return
 	}
 
-	user := User{
-		authToken: params,
-	}
-
-	_, err := d.Login(con, &user)
-	if err == nil {
-		return rt.LoginFlow_None, nil
-	}
-
-	return rt.LoginFlow_None, err
+	user.SetToken(params)
+	return
 }
 
 func (d *Driver) Login(con rt.Conversation, user publisher.User) (out rt.PublisherOutput, err error) {

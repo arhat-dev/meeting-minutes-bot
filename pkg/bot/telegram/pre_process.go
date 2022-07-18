@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"arhat.dev/pkg/log"
+	"github.com/gotd/td/telegram/message/styling"
 	"github.com/gotd/td/tg"
 	"github.com/h2non/filetype"
 	"github.com/h2non/filetype/types"
@@ -15,9 +16,10 @@ import (
 	"arhat.dev/mbot/pkg/rt"
 )
 
-// errCh can be nil when there is no background pre-process worker
+type donwlodFunc = func() (_ rt.CacheReader, contentType, ext string, sz int64, err error)
+
 // nolint:gocyclo
-func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Message) (errCh chan error, err error) {
+func (c *tgBot) fillMessageSpans(mc *messageContext, wf *bot.Workflow, m *rt.Message) (err error) {
 	if len(m.Text) != 0 {
 		m.Spans = parseTextEntities(m.Text, mc.msg.Entities)
 	}
@@ -29,14 +31,14 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 
 	var (
 		nonText    rt.Span
-		doDownload func() (_ rt.CacheReader, contentType, ext string, sz int64, err error)
+		doDownload donwlodFunc
 	)
 
 	switch t := media.(type) {
 	case *tg.MessageMediaPhoto:
 		photo, ok := t.GetPhoto()
 		if !ok {
-			return nil, nil
+			return nil
 		}
 
 		switch p := photo.(type) {
@@ -94,7 +96,7 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 			nonText.Flags |= rt.SpanFlag_Image
 
 			doDownload = func() (rt.CacheReader, string, string, int64, error) {
-				c.Logger().D("download photo", log.Int64("size", int64(maxSize)))
+				mc.logger.D("download photo", log.Int64("size", int64(maxSize)))
 				return c.download(fileLoc, int64(maxSize), "")
 			}
 		default:
@@ -145,7 +147,7 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 			}
 
 			doDownload = func() (rt.CacheReader, string, string, int64, error) {
-				c.Logger().D("download file", log.Int64("size", sz), log.String("content_type", ct))
+				mc.logger.D("download file", log.Int64("size", sz), log.String("content_type", ct))
 				return c.download(fileLoc, sz, ct)
 			}
 		default:
@@ -163,21 +165,24 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 	// case *tg.MessageMediaPoll:
 	// case *tg.MessageMediaDice:
 	default:
-		c.Logger().I("unhandled telegram message", log.Any("msg", mc.msg))
-		return nil, nil
+		return nil
 	}
 
 	m.Spans = append(m.Spans, nonText)
+
+	if !wf.DownloadMedia() {
+		return nil
+	}
+
 	mediaSpan := &m.Spans[len(m.Spans)-1]
+	peer := mc.src.Chat.InputPeer()
+	msgID := mc.msg.GetID()
 
-	errCh = make(chan error, 1)
-	m.AddWorker(func(cancel rt.Signal) {
-		defer close(errCh)
-
+	m.AddWorker(func(cancel rt.Signal, _ *rt.Message) {
 		cacheRD, contentType, ext, sz, err := doDownload()
 		if err != nil {
-			c.Logger().I("failed to download file", log.Error(err))
-			c.sendErrorf(errCh, "unable to download: %w", err)
+			mc.logger.I("failed to download file", log.Error(err))
+			c.sendErrorf(peer, msgID, "unable to download: %v", err)
 			return
 		}
 
@@ -190,8 +195,8 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 			n, _ := cacheRD.Read(buf[:])
 			_, err = cacheRD.Seek(0, io.SeekStart)
 			if err != nil {
-				c.Logger().E("failed to seek to start", log.Error(err))
-				c.sendErrorf(errCh, "bad cache reuse")
+				mc.logger.E("failed to seek to start", log.Error(err))
+				c.sendErrorf(peer, msgID, "bad cache reuse")
 				return
 			}
 
@@ -224,7 +229,7 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 			}
 		}
 
-		c.Logger().D("upload file",
+		mc.logger.D("upload file",
 			log.String("filename", filename),
 			rt.LogCacheID(cacheRD.ID()),
 			log.Int64("size", sz),
@@ -233,8 +238,8 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 		input := rt.NewStorageInput(filename, sz, cacheRD, contentType)
 		sout, err := wf.Storage.Upload(&mc.con, &input)
 		if err != nil {
-			c.Logger().I("failed to upload file", log.Error(err))
-			c.sendErrorf(errCh, "unable to upload file: %w", err)
+			mc.logger.I("failed to upload file", log.Error(err))
+			c.sendErrorf(peer, msgID, "unable to upload file: %v", err)
 			return
 		}
 
@@ -243,8 +248,8 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 		// NOTE: here we do not close the cache reader to keep it available (avoid unexpected file deletion)
 		_, err = cacheRD.Seek(0, io.SeekStart)
 		if err != nil {
-			c.Logger().E("failed to reuse cached data", log.Error(err))
-			c.sendErrorf(errCh, "bad cache reuse")
+			mc.logger.E("failed to reuse cached data", log.Error(err))
+			c.sendErrorf(peer, msgID, "bad cache reuse")
 			return
 		}
 
@@ -252,14 +257,15 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 		mediaSpan.Data = cacheRD
 	})
 
-	return errCh, nil
+	return nil
 }
 
-func (c *tgBot) sendErrorf(errCh chan<- error, format string, args ...any) {
-	select {
-	case errCh <- fmt.Errorf(format, args...):
-	case <-c.Context().Done():
-	}
+func (c *tgBot) sendErrorf(peer tg.InputPeerClass, msgID int, format string, args ...any) {
+	_, _ = c.sendTextMessage(
+		c.sender.To(peer).NoWebpage().Silent().Reply(int(msgID)),
+		styling.Plain("Internal bot error: "),
+		styling.Bold(fmt.Sprintf(format, args...)),
+	)
 }
 
 func (c *tgBot) download(

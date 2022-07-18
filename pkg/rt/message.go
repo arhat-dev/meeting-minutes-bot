@@ -102,12 +102,12 @@ func (m *Message) Dispose() {
 
 type Signal <-chan struct{}
 
-func (m *Message) AddWorker(do func(cancel Signal)) {
+func (m *Message) AddWorker(do func(cancel Signal, m *Message)) {
 	atomic.AddInt32(&m.workers, 1)
 
 	go func() {
 		defer atomic.AddInt32(&m.workers, -1)
 
-		do(nil)
+		do(nil, m)
 	}()
 }

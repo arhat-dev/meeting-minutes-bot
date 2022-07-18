@@ -42,7 +42,8 @@ type Config struct {
 
 	bot.CommonConfig `yaml:",inline"`
 
-	DC      int        `yaml:"dc"`
+	DC int `yaml:"dc"`
+	// TODO: support custom servers
 	Servers []Endpoint `yaml:"servers"`
 
 	// Telegram app info obtained from https://my.telegram.org/apps
@@ -92,9 +93,9 @@ func (c *Config) Create(rtCtx rt.RTContext, bctx *bot.CreationContext) (bot.Inte
 		msgDelQ: queue.NewTimeoutQueue[msgDeleteKey, tg.InputPeerClass](),
 	}
 
-	tb.dispatcher.OnNewMessage(tb.onNewLegacyMessage)
-	tb.dispatcher.OnNewChannelMessage(tb.onNewChannelMessage)
-	tb.dispatcher.OnNewEncryptedMessage(tb.onNewEncryptedMessage)
+	tb.dispatcher.OnNewMessage(tb.onNewTelegramLegacyMessage)
+	tb.dispatcher.OnNewChannelMessage(tb.onNewTelegramChannelMessage)
+	tb.dispatcher.OnNewEncryptedMessage(tb.onNewTelegramEncryptedMessage)
 
 	tb.client = telegram.NewClient(c.AppID, strings.TrimSpace(c.AppHash), telegram.Options{
 		UpdateHandler:  tb.dispatcher,

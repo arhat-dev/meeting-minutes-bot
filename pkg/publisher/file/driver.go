@@ -84,8 +84,8 @@ func (d *Driver) CreateNew(con rt.Conversation, cmd, params string, in *rt.Gener
 	return
 }
 
-func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
-	return rt.LoginFlow_None, nil
+func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string, user publisher.User) (out rt.PublisherOutput, err error) {
+	return
 }
 
 func (d *Driver) Login(con rt.Conversation, user publisher.User) (out rt.PublisherOutput, err error) {

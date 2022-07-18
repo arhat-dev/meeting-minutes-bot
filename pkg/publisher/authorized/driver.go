@@ -13,6 +13,7 @@ type Driver struct {
 }
 
 // RequireLogin overrides publisher.Interface
-func (*Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
-	return rt.LoginFlow_None, nil
+func (*Driver) RequireLogin(con rt.Conversation, cmd, params string, user publisher.User) (out rt.PublisherOutput, err error) {
+	// nop
+	return
 }

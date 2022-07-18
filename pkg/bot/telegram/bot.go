@@ -1,13 +1,14 @@
 package telegram
 
 import (
-	"encoding/base64"
+	"context"
 	"fmt"
 	"strings"
 	"time"
 
 	"arhat.dev/pkg/log"
 	"arhat.dev/pkg/queue"
+	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/downloader"
 	"github.com/gotd/td/telegram/message"
@@ -41,11 +42,278 @@ type tgBot struct {
 	msgDelQ *queue.TimeoutQueue[msgDeleteKey, tg.InputPeerClass]
 }
 
+func (c *tgBot) Configure() (err error) {
+	stop, err := bg.Connect(c.client, bg.WithContext(c.Context()))
+	if err != nil {
+		return fmt.Errorf("connect: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			stop()
+		}
+	}()
+
+	// TODO: support user account
+	auth, err := c.client.Auth().Bot(c.Context(), c.botToken)
+	if err != nil {
+		return fmt.Errorf("auth: %w", err)
+	}
+	_ = auth
+
+	var self *tg.User
+	switch t := auth.GetUser().(type) {
+	case *tg.UserEmpty:
+	case *tg.User:
+		self = t
+	default:
+		self, err = c.client.Self(c.Context())
+		if err != nil {
+			return fmt.Errorf("recognize self: %w", err)
+		}
+	}
+
+	c.isBot = self.GetBot()
+	c.username, _ = self.GetUsername()
+
+	c.Logger().D("recognized self",
+		log.Int64("user_id", self.GetID()),
+		log.String("username", c.username),
+		log.Bool("is_bot", c.isBot),
+	)
+
+	if self.Bot {
+		const (
+			reqDefault = iota
+			reqUsers
+			reqChats
+			reqChatAdmins
+
+			REQ_COUNT
+		)
+
+		var (
+			requests [REQ_COUNT]tg.BotsSetBotCommandsRequest
+
+			defaultScope    tg.BotCommandScopeDefault
+			usersScope      tg.BotCommandScopeUsers
+			chatsScope      tg.BotCommandScopeChats
+			chatAdminsScope tg.BotCommandScopeChatAdmins
+
+			// TODO: support peer scopes?
+			// peerScope       tg.BotCommandScopePeer
+			// peerAdminsScope tg.BotCommandScopePeerAdmins
+			// peerUserScope   tg.BotCommandScopePeerUser
+		)
+
+		requests[reqDefault].Scope = &defaultScope
+		requests[reqUsers].Scope = &usersScope
+		requests[reqChats].Scope = &chatsScope
+		requests[reqChatAdmins].Scope = &chatAdminsScope
+
+		for _, wf := range c.wfSet.Workflows {
+			for i, cmd := range wf.BotCommands.Commands {
+				if len(cmd) == 0 || len(wf.BotCommands.Descriptions[i]) == 0 {
+					continue
+				}
+
+				cmdSpec := tg.BotCommand{
+					Command:     strings.TrimPrefix(cmd, "/"),
+					Description: wf.BotCommands.Descriptions[i],
+				}
+
+				for j := 0; j < REQ_COUNT; j++ {
+					switch {
+					case j == reqChats && wf.RequireAdmin():
+						// skip
+					default:
+						requests[j].Commands = append(requests[j].Commands, cmdSpec)
+					}
+				}
+			}
+		}
+
+		for i := 0; i < REQ_COUNT; i++ {
+			_, err = c.client.API().BotsSetBotCommands(c.Context(), &requests[i])
+			if err != nil {
+				return fmt.Errorf("set bot commands: %w", err)
+			}
+		}
+
+		c.Logger().D("bot commands updated", log.Any("commands", requests[reqDefault].Commands))
+	}
+
+	return nil
+}
+
+// nolint:gocyclo
+func (c *tgBot) Start(baseURL string, mux rt.Mux) error {
+	c.msgDelQ.Start(c.Context().Done())
+	go func() {
+		msgDelCh := c.msgDelQ.TakeCh()
+
+		for td := range msgDelCh {
+			// delete message with best effort
+			for i := 0; i < 5; i++ {
+
+				// TODO: which to use?
+				// c.client.API().MessagesDeleteMessages(c.Context(), &tg.MessagesDeleteMessagesRequest{
+				// 	ID:     []int{},
+				// 	Revoke: true,
+				// })
+
+				c.sender.To(td.Data).Revoke().Messages(c.Context(), int(td.Key.msgID))
+				deleted, err2 := c.sender.Delete().Messages(c.Context(), int(td.Key.msgID))
+				if err2 != nil {
+					continue
+				}
+				_ = deleted
+
+				break
+			}
+		}
+	}()
+
+	return nil
+}
+
+func (c *tgBot) onNewTelegramEncryptedMessage(ctx context.Context, e tg.Entities, update *tg.UpdateNewEncryptedMessage) error {
+	switch m := update.GetMessage().(type) {
+	case *tg.EncryptedMessage:
+		c.Logger().V("new encrypted message", log.Uint32("type_id", m.TypeID()))
+	case *tg.EncryptedMessageService:
+		c.Logger().V("new encrypted service message", log.Uint32("type_id", m.TypeID()))
+	default:
+		c.Logger().I("unknown encrypted message type", log.Uint32("type_id", m.TypeID()))
+	}
+
+	return nil
+}
+
+func (c *tgBot) onNewTelegramChannelMessage(ctx context.Context, e tg.Entities, update *tg.UpdateNewChannelMessage) error {
+	return c.handleTelegramMessage(e, update.GetMessage())
+}
+
+func (c *tgBot) onNewTelegramLegacyMessage(ctx context.Context, e tg.Entities, update *tg.UpdateNewMessage) error {
+	return c.handleTelegramMessage(e, update.GetMessage())
+}
+
 type messageContext struct {
 	con    conversationImpl
 	src    source
 	msg    *tg.Message
 	logger log.Interface
+}
+
+func (c *tgBot) handleTelegramMessage(e tg.Entities, msg tg.MessageClass) error {
+	switch m := msg.(type) {
+	case *tg.MessageEmpty:
+		c.Logger().V("new empty message", log.Uint32("type_id", m.TypeID()))
+		return nil
+	case *tg.MessageService:
+		c.Logger().V("new service message", log.Uint32("type_id", m.TypeID()))
+		return nil
+	case *tg.Message:
+		var (
+			mc messageContext
+		)
+
+		// resolve chat
+		chat, err := extractPeer(e, m.GetPeerID())
+		if err != nil {
+			c.Logger().E("bad chat of new message", log.Error(err))
+			return err
+		}
+		mc.src.Chat = resolveChatSpec(chat)
+
+		mc.con = conversationImpl{
+			bot:  c,
+			peer: mc.src.Chat.InputPeer(),
+		}
+
+		c.Logger().V("new message", log.Uint32("type_id", m.TypeID()), log.Bool("pm", mc.src.Chat.IsPrivateChat()))
+
+		// resolve sender
+		fromID, ok := m.GetFromID()
+		if ok {
+			var from any
+			from, err = extractPeer(e, fromID)
+			if err != nil {
+				c.Logger().E("bad sender of new message", log.Error(err))
+				return err
+			}
+
+			mc.src.From, err = resolveAuthorSpec(from)
+			if err != nil {
+				c.Logger().E("unresolable sender", log.Error(err))
+				return err
+			}
+		} else if mc.src.Chat.IsPrivateChat() {
+			mc.src.From, err = resolveAuthorSpec(chat)
+			if err != nil {
+				c.Logger().E("unresolable sender", log.Error(err))
+				return err
+			}
+		} else {
+			c.Logger().E("unexpected message sent from anonymous user", rt.LogChatID(mc.src.Chat.ID()))
+			return nil
+		}
+
+		// resolve orignial chat and sender
+		fwd, ok := m.GetFwdFrom()
+		if ok {
+			var fwdFrom authorInfo
+			if fwdChatID, ok := fwd.GetFromID(); ok {
+				var peer any
+				peer, err = extractPeer(e, fwdChatID)
+				if err != nil {
+					c.Logger().E("bad fwd chat", log.Error(err))
+					return err
+				}
+
+				fwdChat := resolveChatSpec(peer)
+				switch {
+				case fwdChat.IsChannelChat(), fwdChat.IsGroupChat():
+					fwdFrom.username, ok = fwd.GetPostAuthor()
+					if ok {
+						fwdFrom.authorFlag |= authorFlag_User
+					} else if fwdChat.IsChannelChat() {
+						fwdFrom.authorFlag |= authorFlag_Channel
+					} else {
+						fwdFrom.authorFlag |= authorFlag_Group
+					}
+
+					mc.src.FwdFrom.Set(fwdFrom)
+				case fwdChat.IsLegacyGroupChat():
+					// TODO
+				case fwdChat.IsPrivateChat():
+					fwdFrom, err = resolveAuthorSpec(peer)
+					if err != nil {
+						c.Logger().E("bad fwd user", log.Error(err))
+						return err
+					}
+					mc.src.FwdFrom.Set(fwdFrom)
+				}
+
+				mc.src.FwdChat.Set(fwdChat)
+			}
+		}
+
+		mc.msg = m
+		mc.logger = c.Logger().WithFields(
+			rt.LogChatID(mc.src.Chat.ID()),
+			rt.LogSenderID(mc.src.From.ID()),
+		)
+
+		err = c.dispatchNewMessage(&mc)
+		if err != nil {
+			c.Logger().I("bad message", log.Error(err))
+		}
+
+		return err
+	default:
+		c.Logger().E("unknown new message", log.Uint32("type_id", msg.TypeID()))
+		return nil
+	}
 }
 
 // nolint:gocyclo
@@ -116,30 +384,17 @@ func (c *tgBot) appendSessionMessage(mc *messageContext) (err error) {
 	}
 
 	mc.logger.V("append session message")
-	m := newTelegramMessage(mc)
+	m := newMessageFromTelegramMessage(mc)
 
-	errCh, err := c.preprocessMessage(mc, s.Workflow(), m)
+	err = c.fillMessageSpans(mc, s.Workflow(), m)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-			styling.Plain("Internal bot error: message unhandled: "),
+			styling.Plain("Internal bot error: "),
 			styling.Bold(err.Error()),
 		)
-		return
-	}
 
-	if errCh != nil {
-		// has background work
-		go func(msgID int) {
-			for errProcessing := range errCh {
-				// best effort, no error check
-				_, _ = c.sendTextMessage(
-					c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(msgID),
-					styling.Plain("Internal bot error: failed to process that message: "),
-					styling.Bold(errProcessing.Error()),
-				)
-			}
-		}(mc.msg.GetID())
+		return
 	}
 
 	s.AppendMessage(m)
@@ -153,21 +408,28 @@ func (c *tgBot) handleBotCmd(
 	mc *messageContext, cmd, params string,
 ) error {
 	mc.logger.V("handle bot command", log.String("cmd", cmd))
-
 	if !mc.src.From.IsUser() {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-			styling.Plain("Only non-anonymous users can use this bot"),
+			styling.Plain("Anonymous user not allowed"),
 		)
 
 		return nil
 	}
 
-	chatID := mc.src.Chat.ID()
-	userID := mc.src.From.ID()
+	wf, ok := c.wfSet.WorkflowFor(cmd)
+	if !ok {
+		msgID, _ := c.sendTextMessage(
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
+			styling.Plain("Unknown command: "),
+			styling.Code(cmd),
+		)
 
-	// ensure only group admin can start session
-	if !mc.src.Chat.IsPrivateChat() {
+		c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
+		return nil
+	}
+
+	if wf.RequireAdmin() && !mc.src.Chat.IsPrivateChat() {
 		// ensure only admin can use this bot in group
 
 		if mc.src.Chat.IsLegacyGroupChat() {
@@ -175,6 +437,7 @@ func (c *tgBot) handleBotCmd(
 				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 				styling.Plain("Unsupported chat type: please consider upgrading this chat to supergroup."),
 			)
+
 			return nil
 		}
 
@@ -192,7 +455,7 @@ func (c *tgBot) handleBotCmd(
 			_, _ = c.sendTextMessage(
 				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
 				styling.Plain("Internal bot error: "),
-				styling.Bold("unable to check status of the initiator."),
+				styling.Code("unable to verify the initiator."),
 			)
 			return err
 		}
@@ -211,669 +474,37 @@ func (c *tgBot) handleBotCmd(
 		}
 	}
 
-	wf, ok := c.wfSet.WorkflowFor(cmd)
-	if !ok {
-		msgID, _ := c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-			styling.Plain("Unknown command: "),
-			styling.Code(cmd),
-		)
-
-		c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-		return nil
-	}
-
 	switch bc := wf.BotCommands.Parse(cmd); bc {
-	case rt.BotCmd_Discuss, rt.BotCmd_Continue:
-		// mark this session as standby, wait for reply from bot private message
-		var (
-			isDiscuss        = bc == rt.BotCmd_Discuss
-			onInvalidCmdResp []styling.StyledTextOption
-		)
-
-		if isDiscuss {
-			onInvalidCmdResp = []styling.StyledTextOption{
-				styling.Plain("Please specify a session topic, e.g. "),
-				styling.Code(cmd + " foo"),
-			}
-		} else {
-			onInvalidCmdResp = []styling.StyledTextOption{
-				styling.Plain("Please specify the key of the session, e.g. "),
-				styling.Code(cmd + " your-key"),
-			}
-		}
-
-		if len(params) == 0 {
-			mc.logger.D("invalid command usage", log.String("cmd", cmd), log.String("reason", "missing param"))
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).Silent().Reply(mc.msg.GetID()),
-				onInvalidCmdResp...,
-			)
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-
-			return nil
-		}
-
-		_, ok := c.sessions.GetActiveSession(chatID)
-		if ok {
-			mc.logger.D("invalid command usage", log.String("cmd", cmd), log.String("reason", "already in a session"))
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("Please end existing session before starting a new one."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-
-			return nil
-		}
-
-		if !c.sessions.MarkSessionStandby(
-			wf,
-			userID,
-			chatIDWrapper{chat: mc.src.Chat.InputPeer()},
-			params,
-			isDiscuss,
-			5*time.Minute,
-		) {
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You have already started a session with no token replied, please end that first"),
-			)
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-
-			return nil
-		}
-
-		// skip login when not required
-		pub, _, _ := wf.CreatePublisher()
-		loginFlow, err := pub.RequireLogin(&mc.con, cmd, params)
-		if err != nil {
-			return nil
-		}
-
-		if loginFlow == rt.LoginFlow_None {
-			// no explicit login flow required
-			_, err := c.sessions.ActivateSession(wf, userID, chatID, pub)
-			if err != nil {
-				msgID, _ := c.sendTextMessage(
-					c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-					styling.Plain("You have already started a session before, please end that first"),
-				)
-				c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-
-				return nil
-			}
-
-			defer func() {
-				if err != nil {
-					c.sessions.DeactivateSession(chatID)
-				}
-			}()
-
-			pageHeader, err := wf.Generator.New(
-				&mc.con,
-				wf.BotCommands.TextOf(rt.BotCmd_Discuss),
-				"",
-			)
-			if err != nil {
-				return fmt.Errorf("failed to render page header: %w", err)
-			}
-
-			note, err := pub.CreateNew(
-				&mc.con,
-				wf.BotCommands.TextOf(rt.BotCmd_Discuss),
-				params,
-				&pageHeader,
-			)
-			if err != nil {
-				return fmt.Errorf("failed to pre-publish page: %w", err)
-			}
-
-			switch {
-			case !note.SendMessage.IsNil():
-				mc.con.SendMessage(c.Context(), note.SendMessage.Get())
-			}
-
-			return nil
-		}
-
-		// login is required, redirect user to private message to enter credentials
-
-		// base64-url({create | enter}:hex(userID):hex(chatID))
-		userIDPart := encodeUint64Hex(userID)
-		chatIDPart := encodeUint64Hex(chatID)
-
-		urlForCreate := fmt.Sprintf(
-			"https://t.me/%s?start=%s",
-			c.username,
-			base64.URLEncoding.EncodeToString(
-				[]byte(fmt.Sprintf("create:%s:%s", userIDPart, chatIDPart)),
-			),
-		)
-
-		urlForEnter := fmt.Sprintf(
-			"https://t.me/%s?start=%s",
-			c.username,
-			base64.URLEncoding.EncodeToString(
-				[]byte(fmt.Sprintf("enter:%s:%s", userIDPart, chatIDPart)),
-			),
-		)
-
-		var (
-			buttons []tg.KeyboardButtonClass
-			prompt  []styling.StyledTextOption
-		)
-
-		switch bc {
-		case rt.BotCmd_Discuss:
-			prompt = []styling.StyledTextOption{
-				styling.Plain("Create or enter your "),
-				styling.Bold(wf.PublisherName()),
-				styling.Plain(" token for this session."),
-			}
-			buttons = append(buttons, &tg.KeyboardButtonURL{
-				Text: "Create",
-				URL:  urlForCreate,
-			})
-		case rt.BotCmd_Continue:
-			prompt = []styling.StyledTextOption{
-				styling.Plain("Enter your "),
-				styling.Bold(wf.PublisherName()),
-				styling.Plain(" token to continue this session."),
-			}
-		}
-
-		buttons = append(buttons, &tg.KeyboardButtonURL{
-			Text: "Enter",
-			URL:  urlForEnter,
-		})
-
-		_, err = c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()).
-				Row(buttons...),
-			prompt...,
-		)
-		if err != nil {
-			c.sessions.ResolvePendingRequest(userID)
-		}
-		return err
+	case rt.BotCmd_Discuss:
+		return c.handleBotCmd_Discuss(mc, wf, cmd, params)
+	case rt.BotCmd_Continue:
+		return c.handleBotCmd_Continue(mc, wf, cmd, params)
 	case rt.BotCmd_Start:
-		if !mc.src.Chat.IsPrivateChat() {
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You cannot "),
-				styling.Code("/start"),
-				styling.Plain(" this bot in group chat."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-			return nil
-		}
-
-		return c.handleStartCommand(mc, wf, params)
+		return c.handleBotCmd_Start(mc, wf, params)
 	case rt.BotCmd_Cancel:
-		prevReq, ok := c.sessions.ResolvePendingRequest(userID)
-		if ok {
-			// a pending request, no generator involved
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You have canceled the pending "),
-				styling.Code(wf.BotCommands.TextOf(session.GetCommandFromRequest[chatIDWrapper](prevReq))),
-				styling.Plain(" request"),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-
-			if sr, isSR := prevReq.(*session.SessionRequest[chatIDWrapper]); isSR {
-				if sr.Data.ID() != mc.src.Chat.ID() {
-					_, _ = c.sendTextMessage(
-						c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent(),
-						styling.Plain("Session canceled by the initiator."),
-					)
-				}
-			}
-		} else {
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("There is no pending request."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-		}
-
-		return nil
+		return c.handleBotCmd_Cancel(mc, wf, cmd, params)
 	case rt.BotCmd_End:
-		currentSession, ok := c.sessions.GetActiveSession(chatID)
-		if !ok {
-			// TODO
-			mc.logger.D("invalid usage of end", log.String("reason", "no active session"))
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("There is no active session."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-
-			return nil
-		}
-
-		msgs := currentSession.GetMessages()
-		content, err := bot.GenerateContent(
-			wf.Generator,
-			&mc.con,
-			wf.BotCommands.TextOf(rt.BotCmd_End),
-			params,
-			msgs,
-		)
-		if err != nil {
-			mc.logger.I("failed to generate post content", log.Error(err))
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).Silent().Reply(mc.msg.GetID()),
-				styling.Plain("Internal bot error: failed to generate post content: "),
-				styling.Bold(err.Error()),
-			)
-
-			// do not execute again on telegram redelivery
-			return nil
-		}
-
-		pub := currentSession.GetPublisher()
-		note, err := pub.AppendToExisting(
-			&mc.con,
-			wf.BotCommands.TextOf(rt.BotCmd_End),
-			params,
-			&content,
-		)
-		if err != nil {
-			mc.logger.I("failed to append content to post", log.Error(err))
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).Silent().Reply(mc.msg.GetID()),
-				styling.Bold(currentSession.Workflow().PublisherName()),
-				styling.Plain(" post update error: "),
-				styling.Bold(err.Error()),
-			)
-
-			// do not execute again on telegram redelivery
-			return nil
-		}
-
-		for _, m := range msgs {
-			m.Dispose()
-		}
-
-		currentSession.TruncMessages(len(msgs))
-
-		_, ok = c.sessions.DeactivateSession(chatID)
-		if !ok {
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("Internal bot error: active session already been ended out of no reason."),
-			)
-
-			return nil
-		}
-
-		switch {
-		case !note.SendMessage.IsNil():
-			mc.con.SendMessage(c.Context(), note.SendMessage.Get())
-		}
-
-		return nil
+		return c.handleBotCmd_End(mc, wf, cmd, params)
 	case rt.BotCmd_Include:
-		replyTo, ok := mc.msg.GetReplyTo()
-		if !ok {
-			mc.logger.D("invalid command usage", log.String("cmd", cmd), log.String("reason", "not a reply"))
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).Silent().Reply(mc.msg.GetID()),
-				styling.Code(cmd),
-				styling.Plain(" can only be used as a reply."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID)
-			return nil
-		}
-
-		_, ok = c.sessions.GetActiveSession(chatID)
-		if !ok {
-			mc.logger.D("invalid command usage", log.String("cmd", cmd), log.String("reason", "not in a session"))
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).Silent().Reply(mc.msg.GetID()),
-				styling.Plain("There is no active session, "),
-				styling.Code(cmd),
-				styling.Plain(" will do nothing in this case."),
-			)
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-			return nil
-		}
-
-		var (
-			history tg.MessagesMessagesClass
-			err     error
-		)
-
-		if c.isBot {
-			if mc.src.Chat.IsPrivateChat() || mc.src.Chat.IsLegacyGroupChat() {
-				history, err = c.client.API().MessagesGetMessages(c.Context(), []tg.InputMessageClass{
-					&tg.InputMessageID{
-						ID: replyTo.GetReplyToMsgID(),
-					},
-				})
-			} else {
-				peer := mc.src.Chat.InputPeer().(*tg.InputPeerChannel)
-				history, err = c.client.API().ChannelsGetMessages(c.Context(), &tg.ChannelsGetMessagesRequest{
-					Channel: &tg.InputChannel{
-						ChannelID:  peer.ChannelID,
-						AccessHash: peer.AccessHash,
-					},
-					ID: []tg.InputMessageClass{
-						&tg.InputMessageID{
-							ID: replyTo.GetReplyToMsgID(),
-						},
-					},
-				})
-			}
-		} else {
-			// message.getHistory is not allowed for bot user
-			history, err = c.client.API().MessagesGetHistory(c.Context(), &tg.MessagesGetHistoryRequest{
-				Peer:     mc.src.Chat.InputPeer(),
-				OffsetID: replyTo.GetReplyToMsgID(),
-				Limit:    1,
-			})
-		}
-
-		if err != nil {
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("Internal bot error: "),
-				styling.Bold("unable to get that message."),
-			)
-
-			return err
-		}
-
-		var hmsgs []tg.MessageClass
-		switch h := history.(type) {
-		case *tg.MessagesMessages:
-			hmsgs = h.GetMessages()
-		case *tg.MessagesMessagesSlice:
-			hmsgs = h.GetMessages()
-		case *tg.MessagesChannelMessages:
-			hmsgs = h.GetMessages()
-		case *tg.MessagesMessagesNotModified:
-		}
-
-		toAppend, err := expectExactOneMessage(hmsgs)
-		if err != nil {
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("Internal bot error: "),
-				styling.Bold(err.Error()),
-			)
-
-			return nil
-		}
-
-		nMC := *mc
-		nMC.msg = toAppend
-		err = c.appendSessionMessage(&nMC)
-		if err != nil {
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("Failed to include that message."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-			return err
-		}
-
-		msgID, _ := c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-			styling.Plain("Included."),
-		)
-
-		c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID)
-		return nil
+		return c.handleBotCmd_Include(mc, wf, cmd, params)
 	case rt.BotCmd_Ignore:
-		replyTo, ok := mc.msg.GetReplyTo()
-		if !ok {
-			mc.logger.D("invalid command usage", log.String("cmd", cmd), log.String("reason", "not a reply"))
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).Silent().Reply(mc.msg.GetID()),
-				styling.Code(cmd),
-				styling.Plain(" can only be used as a reply."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-			return nil
-		}
-
-		currentSession, ok := c.sessions.GetActiveSession(chatID)
-		if !ok {
-			mc.logger.D("invalid command usage", log.String("reason", "not in a session"))
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).Silent().Reply(mc.msg.GetID()),
-				styling.Plain("There is not active session, "),
-				styling.Code(cmd),
-				styling.Plain(" will do nothing in this case."),
-			)
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-
-			return nil
-		}
-
-		_ = currentSession.DeleteMessage(rt.MessageID(replyTo.GetReplyToMsgID()))
-
-		mc.logger.V("ignored message")
-		msgID, _ := c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).Silent().Reply(mc.msg.GetID()),
-			styling.Plain("Ignored."),
-		)
-
-		c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID)
-
-		return nil
+		return c.handleBotCmd_Ignore(mc, wf, cmd, params)
 	case rt.BotCmd_Edit:
-		if !mc.src.Chat.IsPrivateChat() {
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You cannot use "),
-				styling.Code(cmd),
-				styling.Plain(" command in group chat."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-			return nil
-		}
-
-		prevCmd, ok := c.sessions.MarkPendingEditing(wf, userID, 5*time.Minute)
-		if !ok {
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You have pending "),
-				styling.Code(wf.BotCommands.TextOf(prevCmd)),
-				styling.Plain(" request not finished."),
-			)
-
-			return nil
-		}
-
-		// base64-url(edit:hex(userID):hex(chatID))
-		userIDPart := encodeUint64Hex(userID)
-		chatIDPart := encodeUint64Hex(chatID)
-
-		urlForEdit := fmt.Sprintf(
-			"https://t.me/%s?start=%s",
-			c.username,
-			base64.URLEncoding.EncodeToString(
-				[]byte(fmt.Sprintf("edit:%s:%s", userIDPart, chatIDPart)),
-			),
-		)
-
-		_, err := c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()).
-				Row(&tg.KeyboardButtonURL{
-					Text: "Enter",
-					URL:  urlForEdit,
-				}),
-			styling.Plain("Enter your "),
-			styling.Bold(wf.PublisherName()),
-			styling.Plain(" token to edit."),
-		)
-
-		return err
+		return c.handleBotCmd_Edit(mc, wf, cmd, params)
 	case rt.BotCmd_Delete:
-		if !mc.src.Chat.IsPrivateChat() {
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You cannot use "),
-				styling.Code(cmd),
-				styling.Plain(" command in group chat."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-			return nil
-		}
-
-		if len(params) == 0 {
-			mc.logger.D("invalid command usage", log.String("reason", "missing param"))
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).Reply(mc.msg.GetID()),
-				styling.Plain("Please specify the url(s) of the "),
-				styling.Bold(wf.PublisherName()),
-				styling.Plain(" post(s) to be deleted."),
-			)
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-
-			return nil
-		}
-
-		prevCmd, ok := c.sessions.MarkPendingDeleting(wf, userID, params, 5*time.Minute)
-		if !ok {
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You have pending "),
-				styling.Code(wf.BotCommands.TextOf(prevCmd)),
-				styling.Plain(" request not finished."),
-			)
-			return nil
-		}
-
-		// base64-url(delete:hex(userID):hex(chatID))
-		userIDPart := encodeUint64Hex(userID)
-		chatIDPart := encodeUint64Hex(chatID)
-
-		urlForDelete := fmt.Sprintf(
-			"https://t.me/%s?start=%s",
-			c.username,
-			base64.URLEncoding.EncodeToString(
-				[]byte(fmt.Sprintf("delete:%s:%s", userIDPart, chatIDPart)),
-			),
-		)
-
-		_, err := c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()).
-				Row(&tg.KeyboardButtonURL{
-					Text: "Enter",
-					URL:  urlForDelete,
-				}),
-			styling.Plain("Enter your "),
-			styling.Bold(wf.PublisherName()),
-			styling.Plain(" token to delete the post."),
-		)
-
-		return err
+		return c.handleBotCmd_Delete(mc, wf, cmd, params)
 	case rt.BotCmd_List:
-		if !mc.src.Chat.IsPrivateChat() {
-			msgID, _ := c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You cannot use "),
-				styling.Code(cmd),
-				styling.Plain(" command in group chat."),
-			)
-
-			c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
-			return nil
-		}
-
-		prevCmd, ok := c.sessions.MarkPendingListing(wf, userID, 5*time.Minute)
-		if !ok {
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("You have pending "),
-				styling.Code(wf.BotCommands.TextOf(prevCmd)),
-				styling.Plain(" request not finished."),
-			)
-			return nil
-		}
-
-		// base64-url(list:hex(userID):hex(chatID))
-		userIDPart := encodeUint64Hex(userID)
-		chatIDPart := encodeUint64Hex(chatID)
-
-		urlForList := fmt.Sprintf(
-			"https://t.me/%s?start=%s",
-			c.username,
-			base64.URLEncoding.EncodeToString(
-				[]byte(fmt.Sprintf("list:%s:%s", userIDPart, chatIDPart)),
-			),
-		)
-
-		_, err := c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()).
-				Row(&tg.KeyboardButtonURL{
-					Text: "Enter",
-					URL:  urlForList,
-				}),
-			styling.Plain("Enter your "),
-			styling.Bold(wf.PublisherName()),
-			styling.Plain(" token to list your posts."),
-		)
-		if err != nil {
-			_, _ = c.sendTextMessage(
-				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-				styling.Plain("Internal bot error: "),
-				styling.Bold(err.Error()),
-			)
-
-			return err
-		}
-
-		return nil
+		return c.handleBotCmd_List(mc, wf, cmd, params)
 	case rt.BotCmd_Help:
-		body := []styling.StyledTextOption{
-			styling.Plain("Usage:\n\n"),
-		}
-
-		for i := range c.wfSet.Workflows {
-			wf := &c.wfSet.Workflows[i]
-
-			for i, cmd := range wf.BotCommands.Commands {
-				if len(cmd) == 0 || len(wf.BotCommands.Descriptions[i]) == 0 {
-					continue
-				}
-
-				body = append(body, styling.Code(cmd))
-				body = append(body, styling.Plain(" - "))
-				body = append(body, styling.Plain(wf.BotCommands.Descriptions[i]))
-				body = append(body, styling.Plain("\n"))
-			}
-		}
-
-		body = append(body, styling.Plain("\n"))
-
-		_, _ = c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent(),
-			body...,
-		)
-		return nil
+		return c.handleBotCmd_Help(mc)
 	default:
-		mc.logger.D("unknown cmd")
+		mc.logger.E("unhandled cmd", log.String("cmd", cmd))
 
 		_, err := c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-			styling.Plain("Command "),
-			styling.Code(cmd),
-			styling.Plain(" is not supported."),
+			styling.Plain("Internal bot error: "),
+			styling.Bold(cmd),
+			styling.Bold(" not handled."),
 		)
 
 		return err

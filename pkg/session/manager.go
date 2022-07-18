@@ -146,8 +146,8 @@ func (c *Manager[C]) ResolvePendingRequest(userID rt.UserID) (any, bool) {
 func (c *Manager[C]) MarkSessionStandby(
 	wf *bot.Workflow,
 	userID rt.UserID,
-	chatID C,
-	topic string,
+	data C,
+	params string,
 	isDiscuss bool,
 	timeout time.Duration,
 ) bool {
@@ -155,9 +155,9 @@ func (c *Manager[C]) MarkSessionStandby(
 		userID, &SessionRequest[C]{
 			BaseRequest: BaseRequest{wf: wf},
 
-			Data: chatID,
+			Data: data,
 
-			Params:    topic,
+			Params:    params,
 			IsDiscuss: isDiscuss,
 		},
 	)

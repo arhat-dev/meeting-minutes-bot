@@ -38,21 +38,5 @@ func (c *Config) Create() (publisher.Interface, publisher.User, error) {
 		return nil, nil, fmt.Errorf("failed to ensure dir: %w", err)
 	}
 
-	return &Driver{dir: dir}, &User{}, nil
+	return &Driver{dir: dir}, publisher.NoUser{}, nil
 }
-
-var _ publisher.User = (*User)(nil)
-
-type User struct{}
-
-// SetPassword implements publisher.User
-func (*User) SetPassword(string) {}
-
-// SetTOTPCode implements publisher.User
-func (*User) SetTOTPCode(string) {}
-
-// SetToken implements publisher.User
-func (*User) SetToken(string) {}
-
-// SetUsername implements publisher.User
-func (*User) SetUsername(string) {}

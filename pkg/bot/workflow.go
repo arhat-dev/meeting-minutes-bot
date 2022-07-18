@@ -18,6 +18,9 @@ type WorkflowConfig struct {
 
 	CmdMapping rt.CommandsMapping `yaml:"cmdMapping"`
 
+	AdminOnly     *bool `yaml:"adminOnly"`
+	DownloadMedia bool  `yaml:"downloadMedia"`
+
 	// Storage config name
 	Storage string `yaml:"storage"`
 
@@ -28,7 +31,7 @@ type WorkflowConfig struct {
 	Publisher string `yaml:"publisher"`
 }
 
-func (wfc *WorkflowConfig) Resolve(bctx *CreationContext) (ret Workflow, err error) {
+func (c *WorkflowConfig) Resolve(bctx *CreationContext) (ret Workflow, err error) {
 	var (
 		st storage.Interface
 		gn generator.Interface
@@ -36,40 +39,45 @@ func (wfc *WorkflowConfig) Resolve(bctx *CreationContext) (ret Workflow, err err
 		ok bool
 	)
 
-	gn, ok = bctx.Generators[wfc.Generator]
+	gn, ok = bctx.Generators[c.Generator]
 	if !ok {
-		err = fmt.Errorf("unknown generator %q", wfc.Generator)
+		err = fmt.Errorf("unknown generator %q", c.Generator)
 		return
 	}
 
-	st, ok = bctx.Storage[wfc.Storage]
+	st, ok = bctx.Storage[c.Storage]
 	if !ok {
-		err = fmt.Errorf("unknown storage %q", wfc.Storage)
+		err = fmt.Errorf("unknown storage %q", c.Storage)
 		return
 	}
 
-	pbConf, ok := bctx.Publishers[wfc.Publisher]
+	pbConf, ok := bctx.Publishers[c.Publisher]
 	if !ok {
-		err = fmt.Errorf("unknown publisher %q", wfc.Storage)
+		err = fmt.Errorf("unknown publisher %q", c.Storage)
 		return
 	}
 
 	_, _, err = pbConf.Create()
 	if err != nil {
-		err = fmt.Errorf("check publisher creation %q: %w", wfc.Publisher, err)
+		err = fmt.Errorf("check publisher creation %q: %w", c.Publisher, err)
 		return
 	}
 
 	ret = Workflow{
-		BotCommands: wfc.CmdMapping.Resovle(),
+		BotCommands: c.CmdMapping.Resovle(),
 
-		Storage:   st,
-		Generator: gn,
+		adminOnly:     true,
+		downloadMedia: c.DownloadMedia,
+		Storage:       st,
+		Generator:     gn,
 
 		pbFactoryFunc: pbConf.Create,
 	}
 
-	ret.pbName, _, _ = strings.Cut(wfc.Publisher, ":")
+	ret.pbName, _, _ = strings.Cut(c.Publisher, ":")
+	if c.AdminOnly != nil {
+		ret.adminOnly = *c.AdminOnly
+	}
 
 	return
 }
@@ -96,10 +104,14 @@ type Workflow struct {
 	Storage   storage.Interface
 	Generator generator.Interface
 
+	downloadMedia bool
+	adminOnly     bool
 	pbName        string
 	pbFactoryFunc PublisherFactoryFunc
 }
 
+func (c *Workflow) DownloadMedia() bool   { return c.downloadMedia }
+func (c *Workflow) RequireAdmin() bool    { return c.adminOnly }
 func (c *Workflow) PublisherName() string { return c.pbName }
 func (c *Workflow) CreatePublisher() (publisher.Interface, publisher.User, error) {
 	return c.pbFactoryFunc()

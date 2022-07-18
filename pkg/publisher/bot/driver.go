@@ -30,7 +30,7 @@ func (*Driver) RequestExternalAccess(con rt.Conversation) (out rt.PublisherOutpu
 }
 
 // RequireLogin implements publisher.Interface
-func (*Driver) RequireLogin(con rt.Conversation, cmd, params string) (_ rt.LoginFlow, err error) {
+func (*Driver) RequireLogin(con rt.Conversation, cmd, params string, user publisher.User) (out rt.PublisherOutput, err error) {
 	return
 }
 

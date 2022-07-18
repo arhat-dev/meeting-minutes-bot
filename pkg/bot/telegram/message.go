@@ -9,7 +9,7 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-func newTelegramMessage(mc *messageContext) (ret *rt.Message) {
+func newMessageFromTelegramMessage(mc *messageContext) (ret *rt.Message) {
 	var (
 		buf strings.Builder
 	)

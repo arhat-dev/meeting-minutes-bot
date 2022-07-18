@@ -14,11 +14,23 @@ import (
 	"arhat.dev/mbot/pkg/session"
 )
 
-func (c *tgBot) handleStartCommand(
+func (c *tgBot) handleBotCmd_Start(
 	mc *messageContext,
 	wf *bot.Workflow,
 	params string,
 ) error {
+	if !mc.src.Chat.IsPrivateChat() {
+		msgID, _ := c.sendTextMessage(
+			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
+			styling.Plain("You cannot "),
+			styling.Code("/start"),
+			styling.Plain(" this bot in group chat."),
+		)
+
+		c.scheduleMessageDelete(&mc.src.Chat, 5*time.Second, msgID, rt.MessageID(mc.msg.GetID()))
+		return nil
+	}
+
 	if len(params) == 0 {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -29,8 +41,7 @@ func (c *tgBot) handleStartCommand(
 		return nil
 	}
 
-	chatID := mc.src.Chat.ID()
-	userID := mc.src.From.ID()
+	chatID, userID := mc.src.Chat.ID(), mc.src.From.ID()
 
 	createOrEnter, err := base64.URLEncoding.DecodeString(params)
 	if err != nil {

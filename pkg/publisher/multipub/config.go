@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"arhat.dev/mbot/pkg/publisher"
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/rs"
 )
 
@@ -36,8 +37,33 @@ func (c *Config) Create() (_ publisher.Interface, _ publisher.User, err error) {
 		}
 	}
 
-	return &Driver{underlay: underlay}, nil, nil
+	return &Driver{underlay: underlay}, &User{0, underlay}, nil
 }
+
+var _ publisher.User = (*User)(nil)
+
+// TODO: implement this user for all underlay user objects
+type User struct {
+	index    int
+	underlay []pair
+}
+
+func (u *User) NextExepcted() (flow rt.LoginFlow) {
+	for u.index < len(u.underlay) {
+		flow = u.underlay[u.index].user.NextExepcted()
+		if flow != rt.LoginFlow_None {
+			return
+		}
+
+		u.index++
+	}
+
+	return
+}
+func (u *User) SetPassword(string) {}
+func (u *User) SetTOTPCode(string) {}
+func (u *User) SetToken(string)    {}
+func (u *User) SetUsername(string) {}
 
 type singleSpec struct {
 	rs.BaseField
