@@ -35,7 +35,7 @@ func (f chatFlag) IsChannelChat() bool     { return f&chatFlag_Channel != 0 }
 func (f chatFlag) IsGroupChat() bool       { return f&chatFlag_Group != 0 }
 func (f chatFlag) IsLegacyGroupChat() bool { return f&chatFlag_LegacyGroup != 0 }
 
-type commonSpec[ID rt.UserID | rt.ChatID] struct {
+type commonInfo[ID rt.UserID | rt.ChatID] struct {
 	id ID
 
 	firstname, lastname string
@@ -46,16 +46,16 @@ type commonSpec[ID rt.UserID | rt.ChatID] struct {
 	username string
 }
 
-func (cs *commonSpec[ID]) ID() ID            { return cs.id }
-func (cs *commonSpec[ID]) Username() string  { return cs.username }
-func (cs *commonSpec[ID]) Title() string     { return cs.titile }
-func (cs *commonSpec[ID]) Firstname() string { return cs.firstname }
-func (cs *commonSpec[ID]) Lastname() string  { return cs.lastname }
+func (cs *commonInfo[ID]) ID() ID            { return cs.id }
+func (cs *commonInfo[ID]) Username() string  { return cs.username }
+func (cs *commonInfo[ID]) Title() string     { return cs.titile }
+func (cs *commonInfo[ID]) Firstname() string { return cs.firstname }
+func (cs *commonInfo[ID]) Lastname() string  { return cs.lastname }
 
 type chatInfo struct {
 	chatFlag
 
-	commonSpec[rt.ChatID]
+	commonInfo[rt.ChatID]
 
 	peer tg.InputPeerClass
 }
@@ -115,7 +115,7 @@ func (f authorFlag) IsUser() bool { return f&authorFlag_User != 0 }
 type authorInfo struct {
 	authorFlag
 
-	commonSpec[rt.UserID]
+	commonInfo[rt.UserID]
 
 	user *tg.InputUser
 }

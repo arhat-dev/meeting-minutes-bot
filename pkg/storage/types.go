@@ -3,19 +3,8 @@ package storage
 import (
 	"fmt"
 
-	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/rt"
 )
-
-type Interface interface {
-	// Upload content to the storage
-	Upload(con rt.Conversation, filename string, contentType mime.MIME, in *rt.Input) (url string, err error)
-}
-
-type Result interface {
-	// URL to fetch this result
-	URL() string
-}
 
 // Config defines common config methods for storage backend
 type Config interface {
@@ -23,10 +12,15 @@ type Config interface {
 	Create() (Interface, error)
 }
 
+type Interface interface {
+	// Upload content to the storage
+	Upload(con rt.Conversation, in *rt.StorageInput) (out rt.StorageOutput, err error)
+}
+
 type configFactoryFunc = func() Config
 
 var (
-	supportedDrivers = map[string]configFactoryFunc{}
+	drivers = map[string]configFactoryFunc{}
 )
 
 func Register(name string, cf configFactoryFunc) {
@@ -35,11 +29,11 @@ func Register(name string, cf configFactoryFunc) {
 		return
 	}
 
-	supportedDrivers[name] = cf
+	drivers[name] = cf
 }
 
 func NewConfig(name string) (any, error) {
-	cf, ok := supportedDrivers[name]
+	cf, ok := drivers[name]
 	if !ok {
 		return nil, fmt.Errorf("unknown storage driver %q", name)
 	}

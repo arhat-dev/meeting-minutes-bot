@@ -9,24 +9,29 @@ import (
 	"github.com/gotd/td/tg"
 )
 
-func newTelegramMessage(mc *messageContext) (ret rt.Message) {
+func newTelegramMessage(mc *messageContext) (ret *rt.Message) {
 	var (
 		buf strings.Builder
 	)
 
+	ret = rt.NewMessage()
+
 	ret.ID = rt.MessageID(mc.msg.GetID())
 	// TODO: set tz by user location
 	ret.Timestamp = time.Unix(int64(mc.msg.GetDate()), 0).UTC()
+	ret.Text = mc.msg.GetMessage()
 
-	ret.IsPrivateMessage = mc.src.Chat.IsPrivateChat()
+	if mc.src.Chat.IsPrivateChat() {
+		ret.Flags |= rt.MessageFlag_Private
+	}
 
 	if replyTo, ok := mc.msg.GetReplyTo(); ok {
-		ret.IsReply = true
-		ret.ReplyToMessageID = rt.MessageID(replyTo.GetReplyToMsgID())
+		ret.Flags |= rt.MessageFlag_Reply
+		ret.ReplyTo = rt.MessageID(replyTo.GetReplyToMsgID())
 	}
 
 	if !mc.src.FwdChat.IsNil() {
-		ret.IsForwarded = true
+		ret.Flags |= rt.MessageFlag_Forwarded
 
 		fwdChat := mc.src.FwdChat.GetPtr()
 
@@ -70,7 +75,7 @@ func newTelegramMessage(mc *messageContext) (ret rt.Message) {
 		ret.ChatName = buf.String()
 	}
 
-	if !ret.IsPrivateMessage && len(mc.src.Chat.Username()) != 0 {
+	if !mc.src.Chat.IsPrivateChat() && len(mc.src.Chat.Username()) != 0 {
 		buf.Reset()
 		buf.WriteString("https://t.me/")
 		buf.WriteString(mc.src.Chat.Username())

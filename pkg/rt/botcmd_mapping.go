@@ -29,7 +29,7 @@ type CmdMapping struct {
 	Description string `yaml:"description"`
 }
 
-func (c *CommandsMapping) Resovle() (ret BotCommands) {
+func (c CommandsMapping) Resovle() (ret BotCommands) {
 	ret = DefaultBotCommands()
 
 loop:

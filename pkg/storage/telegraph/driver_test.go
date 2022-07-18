@@ -8,7 +8,6 @@ import (
 	"image/png"
 	"testing"
 
-	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/rt"
 	rttest "arhat.dev/mbot/pkg/rt/test"
 	"github.com/stretchr/testify/assert"
@@ -28,8 +27,13 @@ func TestDriver(t *testing.T) {
 	err := png.Encode(&fakeData, img)
 	assert.NoError(t, err)
 
-	input := rt.NewInput(int64(fakeData.Len()), &fakeData)
-	url, err := d.Upload(con, "", mime.New("image/png"), &input)
+	input := rt.NewStorageInput(
+		"",
+		int64(fakeData.Len()),
+		rttest.FakeCacheReader(fakeData.Bytes()),
+		"image/png",
+	)
+	url, err := d.Upload(con, &input)
 	assert.NoError(t, err)
 	t.Log(url)
 }

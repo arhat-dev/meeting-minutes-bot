@@ -25,64 +25,57 @@ const (
 type Interface interface {
 	// CreateNew creates a new published item
 	//
-	// this is called on BotCmd_Discuss
+	// this method is called on BotCmd_Discuss
 	//
 	// examples:
 	//   for blog publishers, a new blog post (draft) is supposed to be created after this call
-	CreateNew(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) ([]rt.Span, error)
+	CreateNew(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error)
 
 	// Retrieve post and cache it locally according to the url
 	//
-	// this is called on BotCmd_Continue
+	// this method is called on BotCmd_Continue
 	//
 	// examples:
 	//   for blog publishers, cache blog post locally
-	Retrieve(con rt.Conversation, cmd, params string) ([]rt.Span, error)
+	Retrieve(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error)
 
 	// AppendToExisting appends generated content to existing published item
 	//
-	// this is called on BotCmd_End
+	// this method is called on BotCmd_End
 	//
 	// examples:
 	//   for blog publishers, append generated content to the existing blog post
-	AppendToExisting(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) ([]rt.Span, error)
+	AppendToExisting(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error)
 
 	// RequireLogin returns true when the publisher requires login, if false, there will be no login process presented to user
 	//
-	// this is called on BotCmd_Discuss, BotCmd_Continue, BotCmd_List, BotCmd_Delete
+	// this method is called on BotCmd_Discuss, BotCmd_Continue, BotCmd_List, BotCmd_Delete
 	RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error)
 
 	// Login as user of the publisher
-	Login(con rt.Conversation, user User) ([]rt.Span, error)
+	Login(con rt.Conversation, user User) (out rt.PublisherOutput, err error)
 
 	// RequestExternalAccess returns a clickable url for external authorization
-	RequestExternalAccess(con rt.Conversation) ([]rt.Span, error)
+	RequestExternalAccess(con rt.Conversation) (out rt.PublisherOutput, err error)
 
 	// List all posts for this user
-	List(con rt.Conversation) ([]PostInfo, error)
+	List(con rt.Conversation) (out rt.PublisherOutput, err error)
 
 	// Delete one post according to the url
-	Delete(con rt.Conversation, cmd, params string) error
-}
-
-type PostInfo struct {
-	Title string
-	URL   string
+	Delete(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error)
 }
 
 type User interface {
-	SetAuthToken(token string)
-}
-
-// Result serves as type handle for arhat.dev/rs
-type Result interface {
-	// TODO: add methods
+	SetUsername(string)
+	SetPassword(string)
+	SetTOTPCode(string)
+	SetToken(string)
 }
 
 type configFactoryFunc = func() Config
 
 var (
-	supportedDrivers = map[string]configFactoryFunc{}
+	drivers = map[string]configFactoryFunc{}
 )
 
 func Register(name string, cf configFactoryFunc) {
@@ -91,11 +84,11 @@ func Register(name string, cf configFactoryFunc) {
 		return
 	}
 
-	supportedDrivers[name] = cf
+	drivers[name] = cf
 }
 
 func NewConfig(name string) (interface{}, error) {
-	cf, ok := supportedDrivers[name]
+	cf, ok := drivers[name]
 	if !ok {
 		return nil, fmt.Errorf("unknown publisher driver %q", name)
 	}

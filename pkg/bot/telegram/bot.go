@@ -87,17 +87,17 @@ func (c *tgBot) dispatchNewMessage(mc *messageContext) error {
 	// not containing bot command
 	// filter private message for special replies to this bot
 	if mc.src.Chat.IsPrivateChat() {
-		replyTo, ok := mc.msg.GetReplyTo()
+		replyToHdr, ok := mc.msg.GetReplyTo()
 		mc.logger.V("check potential input", log.Bool("do_check", ok))
 		if ok {
-			replyToMsgID := rt.MessageID(replyTo.ReplyToMsgID)
+			replyTo := rt.MessageID(replyToHdr.ReplyToMsgID)
 			for _, handle := range [...]inputHandleFunc{
 				c.tryToHandleInputForDiscussOrContinue,
 				c.tryToHandleInputForEditing,
 				c.tryToHandleInputForListing,
 				c.tryToHandleInputForDeleting,
 			} {
-				done, err := handle(mc, replyToMsgID)
+				done, err := handle(mc, replyTo)
 				if done {
 					return err
 				}
@@ -118,7 +118,7 @@ func (c *tgBot) appendSessionMessage(mc *messageContext) (err error) {
 	mc.logger.V("append session message")
 	m := newTelegramMessage(mc)
 
-	errCh, err := c.preprocessMessage(mc, s.Workflow(), &m)
+	errCh, err := c.preprocessMessage(mc, s.Workflow(), m)
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
@@ -142,7 +142,7 @@ func (c *tgBot) appendSessionMessage(mc *messageContext) (err error) {
 		}(mc.msg.GetID())
 	}
 
-	s.AppendMessage(&m)
+	s.AppendMessage(m)
 
 	return nil
 }
@@ -319,28 +319,19 @@ func (c *tgBot) handleBotCmd(
 				return fmt.Errorf("failed to render page header: %w", err)
 			}
 
-			var (
-				rd strings.Reader
-				in rt.Input
-			)
-			rd.Reset(pageHeader)
-			in = rt.NewInput(rd.Size(), &rd)
-
 			note, err := pub.CreateNew(
 				&mc.con,
 				wf.BotCommands.TextOf(rt.BotCmd_Discuss),
 				params,
-				&in,
+				&pageHeader,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to pre-publish page: %w", err)
 			}
 
-			if len(note) != 0 {
-				_, _ = c.sendTextMessage(
-					c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent(),
-					translateTextSpans(note)...,
-				)
+			switch {
+			case !note.SendMessage.IsNil():
+				mc.con.SendMessage(c.Context(), note.SendMessage.Get())
 			}
 
 			return nil
@@ -467,7 +458,13 @@ func (c *tgBot) handleBotCmd(
 		}
 
 		msgs := currentSession.GetMessages()
-		content, err := bot.GenerateContent(&mc.con, wf.Generator, msgs)
+		content, err := bot.GenerateContent(
+			wf.Generator,
+			&mc.con,
+			wf.BotCommands.TextOf(rt.BotCmd_End),
+			params,
+			msgs,
+		)
 		if err != nil {
 			mc.logger.I("failed to generate post content", log.Error(err))
 			_, _ = c.sendTextMessage(
@@ -480,19 +477,12 @@ func (c *tgBot) handleBotCmd(
 			return nil
 		}
 
-		var (
-			rd strings.Reader
-			in rt.Input
-		)
-		rd.Reset(content)
-		in = rt.NewInput(rd.Size(), &rd)
-
 		pub := currentSession.GetPublisher()
 		note, err := pub.AppendToExisting(
 			&mc.con,
 			wf.BotCommands.TextOf(rt.BotCmd_End),
 			params,
-			&in,
+			&content,
 		)
 		if err != nil {
 			mc.logger.I("failed to append content to post", log.Error(err))
@@ -523,10 +513,10 @@ func (c *tgBot) handleBotCmd(
 			return nil
 		}
 
-		_, _ = c.sendTextMessage(
-			&c.sender.To(mc.src.Chat.InputPeer()).Builder,
-			translateTextSpans(note)...,
-		)
+		switch {
+		case !note.SendMessage.IsNil():
+			mc.con.SendMessage(c.Context(), note.SendMessage.Get())
+		}
 
 		return nil
 	case rt.BotCmd_Include:

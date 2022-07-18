@@ -1,3 +1,4 @@
+// Package gotemplate implements a generator to gererate content using golang template language
 package gotemplate
 
 import (
@@ -19,8 +20,13 @@ type Driver struct {
 	templates tplExecutor
 }
 
+// Peek implements generator.Interface
+func (*Driver) Peek(con rt.Conversation, msg *rt.Message) (out rt.GeneratorOutput, err error) {
+	return
+}
+
 // New implements generator.Interface
-func (d *Driver) New(con rt.Conversation, cmd, params string) (_ string, err error) {
+func (d *Driver) New(con rt.Conversation, cmd, params string) (out rt.GeneratorOutput, err error) {
 	var buf strings.Builder
 
 	data := Data{
@@ -30,14 +36,16 @@ func (d *Driver) New(con rt.Conversation, cmd, params string) (_ string, err err
 
 	err = d.templates.ExecuteTemplate(&buf, "gen.new", &data)
 	if err != nil {
-		return "", fmt.Errorf("execute template gen.new: %w", err)
+		err = fmt.Errorf("execute template gen.new: %w", err)
+		return
 	}
 
-	return buf.String(), nil
+	out.Data.Set(buf.String())
+	return
 }
 
 // Continue implements generator.Interface
-func (d *Driver) Continue(con rt.Conversation, cmd string, params string) (_ string, err error) {
+func (d *Driver) Continue(con rt.Conversation, cmd, params string) (out rt.GeneratorOutput, err error) {
 	var buf strings.Builder
 
 	data := Data{
@@ -45,12 +53,14 @@ func (d *Driver) Continue(con rt.Conversation, cmd string, params string) (_ str
 		Params:  params,
 	}
 
-	err = d.templates.ExecuteTemplate(&buf, "gen.new", &data)
+	err = d.templates.ExecuteTemplate(&buf, "gen.continue", &data)
 	if err != nil {
-		return "", fmt.Errorf("execute template gen.continue: %w", err)
+		err = fmt.Errorf("execute template gen.continue: %w", err)
+		return
 	}
 
-	return buf.String(), nil
+	out.Data.Set(buf.String())
+	return
 }
 
 type Data struct {
@@ -60,7 +70,7 @@ type Data struct {
 }
 
 // RenderBody implements generator.Interface
-func (d *Driver) RenderBody(con rt.Conversation, msgs []*rt.Message) (_ string, err error) {
+func (d *Driver) Generate(con rt.Conversation, cmd, params string, msgs []*rt.Message) (out rt.GeneratorOutput, err error) {
 	var buf strings.Builder
 
 	data := Data{
@@ -69,8 +79,10 @@ func (d *Driver) RenderBody(con rt.Conversation, msgs []*rt.Message) (_ string, 
 
 	err = d.templates.ExecuteTemplate(&buf, "gen.body", &data)
 	if err != nil {
-		return "", fmt.Errorf("execute template gen.body: %w", err)
+		err = fmt.Errorf("execute template gen.body: %w", err)
+		return
 	}
 
-	return buf.String(), nil
+	out.Data.Set(buf.String())
+	return
 }

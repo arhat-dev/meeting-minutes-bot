@@ -45,11 +45,21 @@ func (c *Config) Create() (publisher.Interface, publisher.User, error) {
 	return &Driver{
 		bin:     c.Bin,
 		argTpls: argTpls,
-	}, &UserConfig{}, nil
+	}, &User{}, nil
 }
 
-var _ publisher.User = (*UserConfig)(nil)
+var _ publisher.User = (*User)(nil)
 
-type UserConfig struct{}
+type User struct{}
 
-func (u *UserConfig) SetAuthToken(token string) {}
+// SetPassword implements publisher.User
+func (*User) SetPassword(string) {}
+
+// SetTOTPCode implements publisher.User
+func (*User) SetTOTPCode(string) {}
+
+// SetToken implements publisher.User
+func (*User) SetToken(string) {}
+
+// SetUsername implements publisher.User
+func (*User) SetUsername(string) {}

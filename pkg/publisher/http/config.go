@@ -118,11 +118,21 @@ func (c *Config) Create() (publisher.Interface, publisher.User, error) {
 
 		headers: headers,
 		respTpl: respTpl,
-	}, &userConfig{}, nil
+	}, &User{}, nil
 }
 
-var _ publisher.User = (*userConfig)(nil)
+var _ publisher.User = (*User)(nil)
 
-type userConfig struct{}
+type User struct{}
 
-func (u *userConfig) SetAuthToken(token string) {}
+// SetPassword implements publisher.User
+func (*User) SetPassword(string) {}
+
+// SetTOTPCode implements publisher.User
+func (*User) SetTOTPCode(string) {}
+
+// SetToken implements publisher.User
+func (*User) SetToken(string) {}
+
+// SetUsername implements publisher.User
+func (*User) SetUsername(string) {}

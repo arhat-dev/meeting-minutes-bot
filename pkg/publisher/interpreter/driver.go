@@ -18,32 +18,34 @@ type Driver struct {
 }
 
 // CreateNew implements publisher.Interface
-func (d *Driver) CreateNew(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) ([]rt.Span, error) {
-	return []rt.Span{
-		{
-			Flags: rt.SpanFlag_PlainText,
-			Text:  fmt.Sprintf("You are using %s interpreter.", d.bin),
+func (d *Driver) CreateNew(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error) {
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{
+				Flags: rt.SpanFlag_PlainText,
+				Text:  fmt.Sprintf("You are using %s interpreter.", d.bin),
+			},
 		},
-	}, nil
+	})
+
+	return
 }
 
 // AppendToExisting implements publisher.Interface
-func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) (_ []rt.Span, err error) {
+func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error) {
 	var (
 		args []string
 		buf  bytes.Buffer
 	)
 
-	content, err := fromGenerator.String()
-	if err != nil {
-		return
-	}
+	content := in.Data.Get()
 
 	for i, tpl := range d.argTpls {
 		buf.Reset()
-		err := tpl.Execute(&buf, content)
+		err = tpl.Execute(&buf, content)
 		if err != nil {
-			return nil, fmt.Errorf("failed to execute #%d arg template: %w", i, err)
+			err = fmt.Errorf("execute #%d arg template: %w", i, err)
+			return
 		}
 		args = append(args, buf.String())
 	}
@@ -53,50 +55,60 @@ func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromG
 	output, err := execcmd.CombinedOutput()
 	if err != nil {
 		if len(output) != 0 {
-			return []rt.Span{
-				{
-					Flags: rt.SpanFlag_Pre,
-					Text:  fmt.Sprintf("%s\n%v", output, err),
+			out.SendMessage.Set(rt.SendMessageOptions{
+				Body: []rt.Span{
+					{
+						Flags: rt.SpanFlag_Pre,
+						Text:  fmt.Sprintf("%s\n%v", output, err),
+					},
 				},
-			}, nil
+			})
+			return
 		}
 
-		return []rt.Span{
-			{
-				Flags: rt.SpanFlag_Pre,
-				Text:  err.Error(),
+		out.SendMessage.Set(rt.SendMessageOptions{
+			Body: []rt.Span{
+				{
+					Flags: rt.SpanFlag_Pre,
+					Text:  err.Error(),
+				},
 			},
-		}, nil
+		})
+		return
 	}
 
-	return []rt.Span{
-		{
-			Flags: rt.SpanFlag_Pre,
-			Text:  string(output),
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{
+				Flags: rt.SpanFlag_Pre,
+				Text:  string(output),
+			},
 		},
-	}, nil
+	})
+
+	return
 }
 
 func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
 	return rt.LoginFlow_None, nil
 }
 
-func (d *Driver) Login(con rt.Conversation, user publisher.User) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) Login(con rt.Conversation, user publisher.User) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) RequestExternalAccess(con rt.Conversation) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) RequestExternalAccess(con rt.Conversation) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) Retrieve(con rt.Conversation, cmd, params string) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) Retrieve(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) List(con rt.Conversation) ([]publisher.PostInfo, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) List(con rt.Conversation) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) Delete(con rt.Conversation, cmd, params string) error {
-	return fmt.Errorf("unimplemented")
+func (d *Driver) Delete(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error) {
+	return
 }

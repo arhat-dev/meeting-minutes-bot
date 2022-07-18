@@ -6,17 +6,17 @@ require (
 	arhat.dev/pkg v0.9.1-0.20220527160521-12b7b771a58b
 	arhat.dev/rs v0.9.0
 	github.com/Masterminds/sprig/v3 v3.2.2
-	github.com/bmatcuk/doublestar/v4 v4.0.2
+	github.com/bmatcuk/doublestar/v4 v4.2.0
 	github.com/chromedp/chromedp v0.8.2
-	github.com/gotd/contrib v0.12.0
+	github.com/gotd/contrib v0.13.0
 	github.com/gotd/td v0.61.0
 	github.com/h2non/filetype v1.1.3
-	github.com/minio/minio-go/v7 v7.0.30
+	github.com/minio/minio-go/v7 v7.0.31
 	github.com/spf13/cobra v1.5.0
 	github.com/stretchr/testify v1.8.0
 	go.uber.org/multierr v1.8.0
 	go.uber.org/zap v1.21.0
-	golang.org/x/net v0.0.0-20220225172249-27dd8689420f
+	golang.org/x/net v0.0.0-20220708220712-1185a9018129
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -62,8 +62,8 @@ require (
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	go.opentelemetry.io/otel v1.7.0 // indirect
-	go.opentelemetry.io/otel/trace v1.7.0 // indirect
+	go.opentelemetry.io/otel v1.8.0 // indirect
+	go.opentelemetry.io/otel/trace v1.8.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
 	golang.org/x/crypto v0.0.0-20220507011949-2cf3adece122 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect

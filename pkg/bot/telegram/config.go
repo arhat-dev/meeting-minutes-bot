@@ -54,7 +54,7 @@ type Config struct {
 	BotToken string `yaml:"botToken"`
 }
 
-func (c *Config) Create(rtCtx rt.RTContext, bctx *bot.BotContext) (bot.Interface, error) {
+func (c *Config) Create(rtCtx rt.RTContext, bctx *bot.CreationContext) (bot.Interface, error) {
 	var (
 		publicKeys []telegram.PublicKey
 		dcList     dcs.List

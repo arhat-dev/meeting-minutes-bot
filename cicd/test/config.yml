@@ -9,8 +9,6 @@ generators:
     templatesDir: ./pkg/generator/gotemplate/templates/telegraph
     mode: html
 
-  file:foo: {}
-
 storage:
   router:foo:
     specs:
@@ -19,7 +17,6 @@ storage:
       telegraph: {}
     # - mimeMatch: .*
     #   s3: {}
-
 
 publishers:
   telegraph:foo: {}

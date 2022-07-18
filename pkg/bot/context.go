@@ -4,15 +4,10 @@ import (
 	"arhat.dev/mbot/pkg/generator"
 	"arhat.dev/mbot/pkg/publisher"
 	"arhat.dev/mbot/pkg/storage"
-	"arhat.dev/mbot/pkg/webarchiver"
-	"arhat.dev/rs"
 )
 
-type BotContext struct {
-	rs.BaseField
-
-	StorageSets  map[string]storage.Config     `yaml:"storage"`
-	WebArchivers map[string]webarchiver.Config `yaml:"webarchivers"`
-	Generators   map[string]generator.Config   `yaml:"generators"`
-	Publishers   map[string]publisher.Config   `yaml:"publishers"`
+type CreationContext struct {
+	Storage    map[string]storage.Interface
+	Generators map[string]generator.Interface
+	Publishers map[string]publisher.Config
 }

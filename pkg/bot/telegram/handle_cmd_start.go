@@ -183,10 +183,10 @@ func (c *tgBot) handleStartCommand(
 			return err2
 		}
 
-		_, err2 = c.sendTextMessage(
-			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage(),
-			translateTextSpans(token)...,
-		)
+		switch {
+		case !token.SendMessage.IsNil():
+			_, err2 = mc.con.SendMessage(c.Context(), token.SendMessage.Get())
+		}
 		if err2 != nil {
 			// best effort
 			_, _ = c.sendTextMessage(
@@ -200,7 +200,7 @@ func (c *tgBot) handleStartCommand(
 		content, err2 := wf.Generator.New(
 			&mc.con,
 			wf.BotCommands.TextOf(rt.BotCmd_Discuss),
-			"",
+			params,
 		)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
@@ -212,18 +212,11 @@ func (c *tgBot) handleStartCommand(
 			return err2
 		}
 
-		var (
-			rd strings.Reader
-			in rt.Input
-		)
-		rd.Reset(content)
-		in = rt.NewInput(rd.Size(), &rd)
-
 		note, err2 := pub.CreateNew(
 			&mc.con,
 			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
 			standbySession.Params,
-			&in,
+			&content,
 		)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
@@ -255,11 +248,10 @@ func (c *tgBot) handleStartCommand(
 			}
 		}(standbySession.Data.ID())
 
-		// error checked by `defer` section
-		_, err2 = c.sendTextMessage(
-			c.sender.To(origPeer).NoWebpage().Silent(),
-			translateTextSpans(note)...,
-		)
+		switch {
+		case !note.SendMessage.IsNil():
+			_, err2 = mc.con.SendMessage(c.Context(), note.SendMessage.Get())
+		}
 
 		return nil
 	case "enter":

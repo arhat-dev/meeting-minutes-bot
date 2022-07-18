@@ -30,19 +30,14 @@ type Driver struct {
 }
 
 // CreateNew implements publisher.Interface
-func (*Driver) CreateNew(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) ([]rt.Span, error) {
-	panic("unimplemented")
+func (*Driver) CreateNew(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error) {
+	return
 }
 
 // AppendToExisting implements publisher.Interface
 //
 // fromGenerator is expected to provide yaml spec of the http request
-func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) (_ []rt.Span, err error) {
-	content, err := fromGenerator.Bytes()
-	if err != nil {
-		return
-	}
-
+func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error) {
 	client := http.Client{
 		Transport: &http.Transport{
 			Proxy: http.ProxyFromEnvironment,
@@ -59,20 +54,23 @@ func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromG
 	}
 
 	var spec Spec
-	err = yaml.Unmarshal(content, &spec)
+	err = yaml.Unmarshal(stringhelper.ToBytes[byte, byte](in.Data.Get()), &spec)
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse request spec: %w", err)
+		err = fmt.Errorf("parse request spec: %w", err)
+		return
 	}
 
-	methodBytes, err := executeTemplate(d.methodTpl, spec)
+	method, err := executeTemplate(d.methodTpl, spec)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute method template: %w", err)
+		err = fmt.Errorf("execute method template: %w", err)
+		return
 	}
-	method := strings.ToUpper(string(methodBytes))
+	method = strings.ToUpper(method)
 
-	urlBytes, err := executeTemplate(d.urlTpl, spec)
+	url, err := executeTemplate(d.urlTpl, spec)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute url template: %w", err)
+		err = fmt.Errorf("execute url template: %w", err)
+		return
 	}
 
 	var (
@@ -89,15 +87,17 @@ func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromG
 	case http.MethodOptions:
 	}
 
-	req, err := http.NewRequest(method, string(urlBytes), body)
+	req, err := http.NewRequest(method, url, body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create http request: %w", err)
+		err = fmt.Errorf("create http request: %w", err)
+		return
 	}
 
 	for _, h := range d.headers {
 		name, value, err2 := h.render(spec)
 		if err2 != nil {
-			return nil, fmt.Errorf("failed to render headers: %w", err2)
+			err = fmt.Errorf("render headers: %w", err2)
+			return
 		}
 
 		req.Header.Add(name, value)
@@ -105,13 +105,15 @@ func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromG
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to do http request: %w", err)
+		err = fmt.Errorf("do http request: %w", err)
+		return
 	}
 	defer func() { _ = resp.Body.Close() }()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read response body: %w", err)
+		err = fmt.Errorf("read response body: %w", err)
+		return
 	}
 
 	if d.respTpl != nil {
@@ -129,62 +131,60 @@ func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromG
 
 		err = d.respTpl.Execute(&buf, &tplData)
 		if err != nil {
-			return nil, err
+			return
 		}
 
-		return []rt.Span{
-			{
-				Flags: rt.SpanFlag_Pre,
-				Text:  buf.String(),
+		out.SendMessage.Set(rt.SendMessageOptions{
+			Body: []rt.Span{
+				{
+					Flags: rt.SpanFlag_Pre,
+					Text:  buf.String(),
+				},
 			},
-		}, nil
+		})
+		return
 	}
 
-	return []rt.Span{
-		{
-			Flags: rt.SpanFlag_Pre,
-			Text:  stringhelper.Convert[string, byte](data),
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{
+				Flags: rt.SpanFlag_Pre,
+				Text:  stringhelper.Convert[string, byte](data),
+			},
 		},
-	}, nil
+	})
+
+	return
 }
 
 func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
 	return rt.LoginFlow_None, nil
 }
 
-func (d *Driver) Login(con rt.Conversation, user publisher.User) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) Login(con rt.Conversation, user publisher.User) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) RequestExternalAccess(con rt.Conversation) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) RequestExternalAccess(con rt.Conversation) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) Retrieve(con rt.Conversation, cmd, params string) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) Retrieve(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) List(con rt.Conversation) ([]publisher.PostInfo, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) List(con rt.Conversation) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) Delete(con rt.Conversation, cmd, params string) error {
-	return fmt.Errorf("unimplemented")
+func (d *Driver) Delete(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) Publish(title string, body *rt.Input) ([]rt.Span, error) {
-	return []rt.Span{
-		{
-			Flags: rt.SpanFlag_PlainText,
-			Text:  "HTTP publisher ready",
-		},
-	}, nil
-}
-
-func executeTemplate(tpl *template.Template, data interface{}) ([]byte, error) {
-	buf := &bytes.Buffer{}
-	err := tpl.Execute(buf, data)
-	return buf.Bytes(), err
+func executeTemplate(tpl *template.Template, data interface{}) (string, error) {
+	var buf strings.Builder
+	err := tpl.Execute(&buf, data)
+	return buf.String(), err
 }
 
 func parseTemplate(text string) (*template.Template, error) {

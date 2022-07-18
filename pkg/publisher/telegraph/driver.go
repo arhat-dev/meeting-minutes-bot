@@ -29,119 +29,134 @@ type Driver struct {
 }
 
 // CreateNew implements publisher.Interface
-func (t *Driver) CreateNew(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) (_ []rt.Span, err error) {
-	nodes, err := htmlToNodes(fromGenerator.Reader())
+func (d *Driver) CreateNew(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error) {
+	var rd strings.Reader
+	rd.Reset(in.Data.Get())
+	nodes, err := htmlToNodes(&rd)
 	if err != nil {
 		return
 	}
 
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if len(t.account.AccessToken) == 0 {
-		return nil, fmt.Errorf("account not set")
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if len(d.account.AccessToken) == 0 {
+		err = fmt.Errorf("account not set")
+		return
 	}
 
-	t.page, err = t.client.CreatePage(createPageOptions{
-		AccessToken: t.account.AccessToken,
-		AuthorName:  t.account.AuthorName,
-		AuthorURL:   t.account.AuthorURL,
+	d.page, err = d.client.CreatePage(createPageOptions{
+		AccessToken: d.account.AccessToken,
+		AuthorName:  d.account.AuthorName,
+		AuthorURL:   d.account.AuthorURL,
 
 		Title:   params,
 		Content: nodes,
 	})
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	return []rt.Span{
-		{
-			Flags: rt.SpanFlag_PlainText,
-			Text:  "The post for your session around ",
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{
+				Flags: rt.SpanFlag_PlainText,
+				Text:  "The post for your session around ",
+			},
+			{
+				Flags: rt.SpanFlag_Bold,
+				Text:  params,
+			},
+			{
+				Flags: rt.SpanFlag_PlainText,
+				Text:  " created ",
+			},
+			{
+				Flags: rt.SpanFlag_URL,
+				Text:  "here",
+				URL:   d.page.URL,
+			},
 		},
-		{
-			Flags: rt.SpanFlag_Bold,
-			Text:  params,
-		},
-		{
-			Flags: rt.SpanFlag_PlainText,
-			Text:  " created ",
-		},
-		{
-			Flags: rt.SpanFlag_URL,
-			Text:  "here",
-			URL:   t.page.URL,
-		},
-	}, nil
+	})
+
+	return
 }
 
 // AppendToExisting implements publisher.Interface
-func (t *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) (_ []rt.Span, err error) {
-	nodes, err := htmlToNodes(fromGenerator.Reader())
+func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error) {
+	var rd strings.Reader
+	rd.Reset(in.Data.Get())
+	nodes, err := htmlToNodes(&rd)
 	if err != nil {
 		return
 	}
 
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	if len(t.account.AccessToken) == 0 {
-		return nil, fmt.Errorf("account not set")
+	if len(d.account.AccessToken) == 0 {
+		err = fmt.Errorf("account not set")
+		return
 	}
 
-	if len(t.page.Path) == 0 {
-		return nil, fmt.Errorf("page not set")
+	if len(d.page.Path) == 0 {
+		err = fmt.Errorf("page not set")
+		return
 	}
 
 	// backup old page content
-	buf := make([]telegraphNode, len(t.page.Content)+len(nodes))
-	copy(buf, t.page.Content)
+	buf := make([]telegraphNode, len(d.page.Content)+len(nodes))
+	copy(buf, d.page.Content)
 	copy(buf[len(buf)-len(nodes):], nodes)
 
-	updatedPage, err := t.client.EditPage(t.page.Path, createPageOptions{
-		AccessToken: t.account.AccessToken,
-		Title:       t.page.Title,
-		AuthorName:  t.page.AuthorName,
-		AuthorURL:   t.page.AuthorURL,
+	updatedPage, err := d.client.EditPage(d.page.Path, createPageOptions{
+		AccessToken: d.account.AccessToken,
+		Title:       d.page.Title,
+		AuthorName:  d.page.AuthorName,
+		AuthorURL:   d.page.AuthorURL,
 		Content:     buf,
 	})
 	if err != nil {
-		t.page.Content = buf
-		return nil, err
+		d.page.Content = buf
+		return
 	}
 
-	t.page = updatedPage
+	d.page = updatedPage
 
-	return []rt.Span{
-		{
-			Flags: rt.SpanFlag_PlainText,
-			Text:  "Your session around ",
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{
+				Flags: rt.SpanFlag_PlainText,
+				Text:  "Your session around ",
+			},
+			{
+				Flags: rt.SpanFlag_Bold,
+				Text:  updatedPage.Title,
+			},
+			{
+				Flags: rt.SpanFlag_PlainText,
+				Text:  " has ended, view and edit your post ",
+			},
+			{
+				Flags: rt.SpanFlag_URL,
+				Text:  "here",
+				URL:   updatedPage.URL,
+			},
 		},
-		{
-			Flags: rt.SpanFlag_Bold,
-			Text:  updatedPage.Title,
-		},
-		{
-			Flags: rt.SpanFlag_PlainText,
-			Text:  " has ended, view and edit your post ",
-		},
-		{
-			Flags: rt.SpanFlag_URL,
-			Text:  "here",
-			URL:   updatedPage.URL,
-		},
-	}, nil
+	})
+
+	return
 }
 
-func (t *Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
+func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
 	if len(params) == 0 {
 		return rt.LoginFlow_Token, nil
 	}
 
-	user := userConfig{
+	user := User{
 		authToken: params,
 	}
 
-	_, err := t.Login(con, &user)
+	_, err := d.Login(con, &user)
 	if err == nil {
 		return rt.LoginFlow_None, nil
 	}
@@ -149,70 +164,78 @@ func (t *Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.Login
 	return rt.LoginFlow_None, err
 }
 
-func (t *Driver) Login(con rt.Conversation, config publisher.User) ([]rt.Span, error) {
-	user, ok := config.(*userConfig)
+func (d *Driver) Login(con rt.Conversation, user publisher.User) (out rt.PublisherOutput, err error) {
+	u, ok := user.(*User)
 	if !ok {
-		return nil, fmt.Errorf("unexpected user type %T", config)
+		err = fmt.Errorf("unexpected user type %T", user)
+		return
 	}
 
 	var (
 		account telegraphAccount
-		err     error
 	)
 
-	if len(user.authToken) != 0 { // login
-		account, err = t.client.GetAccountInfo(user.authToken)
+	if len(u.authToken) != 0 { // login
+		account, err = d.client.GetAccountInfo(u.authToken)
 		if err == nil {
-			account.AccessToken = user.authToken
+			account.AccessToken = u.authToken
 		}
 	} else { // no token, create a new account
-		shortName := user.shortName
+		shortName := u.shortName
 		if len(shortName) == 0 {
-			shortName = t.defaultAccountShortName
+			shortName = d.defaultAccountShortName
 		}
-		account, err = t.client.CreateAccount(createAccountOptions{
+		account, err = d.client.CreateAccount(createAccountOptions{
 			ShortName:  shortName,
-			AuthorName: user.authorName,
-			AuthorURL:  user.authorURL,
+			AuthorName: u.authorName,
+			AuthorURL:  u.authorURL,
 		})
 	}
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	t.account = account
-	return []rt.Span{
-		{Text: "Here is your "},
-		{Flags: rt.SpanFlag_Bold, Text: Name},
-		{Text: " token, token, keep it for future use:\n\n"},
-		{Flags: rt.SpanFlag_Code, Text: account.AccessToken},
-	}, nil
+	d.account = account
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{Text: "Here is your "},
+			{Flags: rt.SpanFlag_Bold, Text: Name},
+			{Text: " token, token, keep it for future use:\n\n"},
+			{Flags: rt.SpanFlag_Code, Text: account.AccessToken},
+		},
+	})
+	return
 }
 
 // RequestExternalAccess implements publisher.Interface
-func (t *Driver) RequestExternalAccess(con rt.Conversation) ([]rt.Span, error) {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
+func (d *Driver) RequestExternalAccess(con rt.Conversation) (out rt.PublisherOutput, err error) {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 
-	if len(t.account.AuthURL) == 0 {
-		return nil, fmt.Errorf("account not set")
+	if len(d.account.AuthURL) == 0 {
+		err = fmt.Errorf("account not set")
+		return
 	}
 
-	return []rt.Span{
-		{Text: "Click this "},
-		{
-			Flags: rt.SpanFlag_URL,
-			Text:  "link",
-			URL:   t.account.AuthURL,
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{Text: "Click this "},
+			{
+				Flags: rt.SpanFlag_URL,
+				Text:  "link",
+				URL:   d.account.AuthURL,
+			},
+			{Text: " to get authorized"},
 		},
-		{Text: " to get authorized"},
-	}, nil
+	})
+
+	return
 }
 
-func (t *Driver) Retrieve(con rt.Conversation, cmd, params string) (_ []rt.Span, err error) {
+func (d *Driver) Retrieve(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error) {
 	u, err := urlpkg.Parse(params)
 	if err != nil {
 		return
@@ -220,11 +243,12 @@ func (t *Driver) Retrieve(con rt.Conversation, cmd, params string) (_ []rt.Span,
 
 	path := strings.TrimLeft(u.Path, "/")
 
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	if len(t.account.AccessToken) == 0 {
-		return nil, fmt.Errorf("account not created")
+	if len(d.account.AccessToken) == 0 {
+		err = fmt.Errorf("account not created")
+		return
 	}
 
 	const LIMIT int64 = 20
@@ -232,89 +256,108 @@ func (t *Driver) Retrieve(con rt.Conversation, cmd, params string) (_ []rt.Span,
 	for offset := int64(0); offset < max; offset += LIMIT {
 		const URL = apiBaseURL + "getPageList"
 
-		list, err := t.client.GetPageList(getPageListOptions{
-			AccessToken: t.account.AccessToken,
+		var list telegraphPageList
+		list, err = d.client.GetPageList(getPageListOptions{
+			AccessToken: d.account.AccessToken,
 			Offset:      offset,
 			Limit:       LIMIT,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("get page list: %w", err)
+			err = fmt.Errorf("get page list: %w", err)
+			return
 		}
 
 		max = list.TotalCount
 
 		for _, p := range list.Pages {
 			if path == p.Path {
-				page, err2 := t.client.GetPage(p.Path)
-				if err2 != nil {
-					return nil, err2
+				var page telegraphPage
+				page, err = d.client.GetPage(p.Path)
+				if err != nil {
+					return
 				}
 
-				t.page = page
-				return []rt.Span{
-					{
-						Flags: rt.SpanFlag_PlainText,
-						Text:  "You can continue your session now.",
+				d.page = page
+
+				out.SendMessage.Set(rt.SendMessageOptions{
+					Body: []rt.Span{
+						{
+							Flags: rt.SpanFlag_PlainText,
+							Text:  "You can continue your session now.",
+						},
 					},
-				}, nil
+				})
+
+				return
 			}
 		}
 	}
 
-	return nil, fmt.Errorf("not found")
+	err = fmt.Errorf("not found")
+	return
 }
 
 // List all posts for this user
-func (t *Driver) List(con rt.Conversation) ([]publisher.PostInfo, error) {
-	t.mu.Lock()
-	defer t.mu.Unlock()
+func (d *Driver) List(con rt.Conversation) (out rt.PublisherOutput, err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	if len(t.account.AccessToken) == 0 {
-		return nil, fmt.Errorf("account not set")
+	if len(d.account.AccessToken) == 0 {
+		err = fmt.Errorf("account not set")
+		return
 	}
 
 	const LIMIT int64 = 20
 	max := LIMIT
-	var result []publisher.PostInfo
+	var result rt.SendMessageOptions
 	for i := int64(0); i < max; i += LIMIT {
-		list, err := t.client.GetPageList(getPageListOptions{
-			AccessToken: t.account.AccessToken,
+		var list telegraphPageList
+		list, err = d.client.GetPageList(getPageListOptions{
+			AccessToken: d.account.AccessToken,
 			Offset:      i,
 			Limit:       LIMIT,
 		})
 		if err != nil {
-			return result, fmt.Errorf("failed to get page list: %w", err)
+			err = fmt.Errorf("failed to get page list: %w", err)
+			return
 		}
 
 		max = list.TotalCount
 
 		for _, p := range list.Pages {
-			result = append(result, publisher.PostInfo{
-				Title: p.Title,
-				URL:   p.URL,
-			})
+			result.Body = append(result.Body,
+				rt.Span{Text: "- "},
+				rt.Span{
+					Flags: rt.SpanFlag_URL,
+					Text:  p.Title,
+					URL:   p.URL,
+				},
+				rt.Span{Text: "\n"},
+			)
 		}
 	}
 
-	for i, j := 0, len(result)-1; i < j; i, j = i+1, j-1 {
-		result[i], result[j] = result[j], result[i]
+	for i, j := 1, len(result.Body)-2; i < j; i, j = i+3, j-3 {
+		result.Body[i], result.Body[j] = result.Body[j], result.Body[i]
 	}
 
-	return result, nil
+	out.SendMessage.Set(result)
+	return
 }
 
 // Delete one post according to the url, however we cannot delete telegraph posts
 // we just make it empty
-func (t *Driver) Delete(con rt.Conversation, cmd, params string) error {
+func (d *Driver) Delete(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error) {
 	if len(params) == 0 {
-		return nil
+		return
 	}
 
-	t.mu.Lock()
-	defer t.mu.Unlock()
+	d.mu.Lock()
+	defer d.mu.Unlock()
 
-	if len(t.account.AccessToken) == 0 {
-		return fmt.Errorf("account not set")
+	if len(d.account.AccessToken) == 0 {
+		err = fmt.Errorf("account not set")
+		return
 	}
 
 	const LIMIT int64 = 20
@@ -340,14 +383,16 @@ func (t *Driver) Delete(con rt.Conversation, cmd, params string) error {
 		}
 	}
 
+	var list telegraphPageList
 	for i := int64(0); i < max; i += LIMIT {
-		list, err := t.client.GetPageList(getPageListOptions{
-			AccessToken: t.account.AccessToken,
+		list, err = d.client.GetPageList(getPageListOptions{
+			AccessToken: d.account.AccessToken,
 			Offset:      i,
 			Limit:       LIMIT,
 		})
 		if err != nil {
-			return fmt.Errorf("failed to get page list: %w", err)
+			err = fmt.Errorf("get page list: %w", err)
+			return
 		}
 
 		max = list.TotalCount
@@ -358,8 +403,8 @@ func (t *Driver) Delete(con rt.Conversation, cmd, params string) error {
 				continue
 			}
 
-			_, err = t.client.EditPage(p.Path, createPageOptions{
-				AccessToken: t.account.AccessToken,
+			_, err = d.client.EditPage(p.Path, createPageOptions{
+				AccessToken: d.account.AccessToken,
 				Title:       "[Removed]",
 				AuthorName:  "",
 				AuthorURL:   "",
@@ -374,10 +419,17 @@ func (t *Driver) Delete(con rt.Conversation, cmd, params string) error {
 				}},
 			})
 			if err != nil {
-				return fmt.Errorf("remove post content: %w", err)
+				err = fmt.Errorf("remove post content: %w", err)
+				return
 			}
 		}
 	}
 
-	return nil
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{Text: "Posts deleted."},
+		},
+	})
+
+	return
 }

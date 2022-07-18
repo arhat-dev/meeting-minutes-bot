@@ -127,6 +127,18 @@ func (c *conversationImpl) SendMessage(ctx context.Context, opts rt.SendMessageO
 		}
 	}
 
+	if opts.NoForward {
+		builder = builder.NoForwards()
+	}
+
+	if opts.NoNotification {
+		builder = builder.Silent()
+	}
+
+	if opts.NoWebPreview {
+		builder = builder.NoWebpage()
+	}
+
 	// if there is media span, send media first
 	switch len(media) {
 	case 0: // no media spans

@@ -65,7 +65,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 		return true, nil
 	}
 
-	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
+	userConfig.SetToken(strings.TrimSpace(mc.msg.GetMessage()))
 	_, err = pub.Login(&mc.con, userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
@@ -80,7 +80,7 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 	}
 
 	var (
-		note []rt.Span
+		note rt.PublisherOutput
 	)
 
 	if standbySession.IsDiscuss {
@@ -89,24 +89,17 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 		content, err2 := standbySession.Workflow().Generator.New(
 			&mc.con,
 			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
-			"",
+			standbySession.Params,
 		)
 		if err2 != nil {
 			return true, fmt.Errorf("failed to generate initial page: %w", err2)
 		}
 
-		var (
-			rd strings.Reader
-			in rt.Input
-		)
-		rd.Reset(content)
-		in = rt.NewInput(rd.Size(), &rd)
-
 		note, err2 = pub.CreateNew(
 			&mc.con,
 			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
 			standbySession.Params,
-			&in,
+			&content,
 		)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
@@ -173,10 +166,12 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 		msgIDShouldReplyTo,
 	)
 
-	_, err = c.sendTextMessage(
-		c.sender.To(origPeer).NoWebpage().Silent().Reply(mc.msg.GetID()),
-		translateTextSpans(note)...,
-	)
+	switch {
+	case !note.SendMessage.IsNil():
+		con := mc.con
+		con.peer = origPeer
+		_, err = con.SendMessage(c.Context(), note.SendMessage.Get())
+	}
 	if err != nil {
 		return true, nil
 	}
@@ -222,7 +217,7 @@ func (c *tgBot) tryToHandleInputForEditing(mc *messageContext, replyTo rt.Messag
 		return true, nil
 	}
 
-	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
+	userConfig.SetToken(strings.TrimSpace(mc.msg.GetMessage()))
 	_, err = pub.Login(&mc.con, userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
@@ -249,10 +244,11 @@ func (c *tgBot) tryToHandleInputForEditing(mc *messageContext, replyTo rt.Messag
 
 	c.sessions.ResolvePendingRequest(userID)
 
-	msgID, _ := c.sendTextMessage(
-		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-		translateTextSpans(authURL)...,
-	)
+	var msgIDs []rt.MessageID
+	switch {
+	case !authURL.SendMessage.IsNil():
+		msgIDs, _ = mc.con.SendMessage(c.Context(), authURL.SendMessage.Get())
+	}
 
 	// delete user provided token related messages
 	c.scheduleMessageDelete(
@@ -262,7 +258,7 @@ func (c *tgBot) tryToHandleInputForEditing(mc *messageContext, replyTo rt.Messag
 	)
 
 	// delete auth url later
-	c.scheduleMessageDelete(&mc.src.Chat, 5*time.Minute, msgID)
+	c.scheduleMessageDelete(&mc.src.Chat, 5*time.Minute, msgIDs...)
 
 	return true, nil
 }
@@ -306,7 +302,7 @@ func (c *tgBot) tryToHandleInputForListing(mc *messageContext, replyTo rt.Messag
 		return
 	}
 
-	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
+	userConfig.SetToken(strings.TrimSpace(mc.msg.GetMessage()))
 	_, err = pub.Login(&mc.con, userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
@@ -321,11 +317,10 @@ func (c *tgBot) tryToHandleInputForListing(mc *messageContext, replyTo rt.Messag
 	}
 
 	posts, err := pub.List(&mc.con)
-	if err != nil && len(posts) == 0 {
+	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-			styling.Bold(req.Workflow().PublisherName()),
-			styling.Plain(" unable to list posts: "),
+			styling.Plain("Internal bot error: "),
 			styling.Bold(err.Error()),
 		)
 		return
@@ -333,19 +328,10 @@ func (c *tgBot) tryToHandleInputForListing(mc *messageContext, replyTo rt.Messag
 
 	c.sessions.ResolvePendingRequest(userID)
 
-	entities := make([]styling.StyledTextOption, 0, len(posts)*3)
-	for _, p := range posts {
-		entities = append(entities,
-			styling.Plain("- "),
-			styling.TextURL(p.Title, p.URL),
-			styling.Plain("\n"),
-		)
+	switch {
+	case !posts.SendMessage.IsNil():
+		_, _ = mc.con.SendMessage(c.Context(), posts.SendMessage.Get())
 	}
-
-	_, _ = c.sendTextMessage(
-		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent(),
-		entities...,
-	)
 
 	// delete user provided token related messages
 	c.scheduleMessageDelete(
@@ -398,7 +384,7 @@ func (c *tgBot) tryToHandleInputForDeleting(mc *messageContext, replyTo rt.Messa
 		return
 	}
 
-	userConfig.SetAuthToken(strings.TrimSpace(mc.msg.GetMessage()))
+	userConfig.SetToken(strings.TrimSpace(mc.msg.GetMessage()))
 	_, err = pub.Login(&mc.con, userConfig)
 	if err != nil {
 		_, _ = c.sendTextMessage(
@@ -412,7 +398,7 @@ func (c *tgBot) tryToHandleInputForDeleting(mc *messageContext, replyTo rt.Messa
 		return
 	}
 
-	err = pub.Delete(
+	note, err := pub.Delete(
 		&mc.con,
 		req.Workflow().BotCommands.TextOf(rt.BotCmd_Delete),
 		req.Params,
@@ -420,8 +406,7 @@ func (c *tgBot) tryToHandleInputForDeleting(mc *messageContext, replyTo rt.Messa
 	if err != nil {
 		_, _ = c.sendTextMessage(
 			c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent().Reply(mc.msg.GetID()),
-			styling.Bold(req.Workflow().PublisherName()),
-			styling.Plain(": "),
+			styling.Plain("Internal bot error: "),
 			styling.Plain(err.Error()),
 		)
 		return
@@ -429,10 +414,10 @@ func (c *tgBot) tryToHandleInputForDeleting(mc *messageContext, replyTo rt.Messa
 
 	c.sessions.ResolvePendingRequest(userID)
 
-	_, _ = c.sendTextMessage(
-		c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Silent(),
-		styling.Plain("The post(s) has been deleted"),
-	)
+	switch {
+	case !note.SendMessage.IsNil():
+		_, _ = mc.con.SendMessage(c.Context(), note.SendMessage.Get())
+	}
 
 	// delete user provided token related messages
 	c.scheduleMessageDelete(

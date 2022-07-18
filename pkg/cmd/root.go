@@ -1,20 +1,4 @@
-/*
-Copyright 2020 The arhat.dev Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-	http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
-*/
-
-package conf
+package cmd
 
 import (
 	"context"
@@ -26,17 +10,69 @@ import (
 
 	"arhat.dev/pkg/log"
 	"arhat.dev/pkg/rshelper"
+	"arhat.dev/rs"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
-	"arhat.dev/mbot/pkg/constant"
+	"arhat.dev/mbot/pkg/conf"
+	"arhat.dev/mbot/pkg/server"
 )
 
-func ReadConfig(
+// nolint:revive
+const (
+	DefaultConfigFile = "/etc/mbot/config.yaml"
+)
+
+func NewRootCmd() *cobra.Command {
+	var (
+		appCtx       context.Context
+		configFile   string
+		config       conf.Config
+		cliLogConfig log.Config
+	)
+
+	rs.Init(&config, &rs.Options{
+		InterfaceTypeHandler: newConfigIfaceHandler(),
+	})
+
+	rootCmd := &cobra.Command{
+		Use:           "mbot",
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			if cmd.Use == "version" {
+				return nil
+			}
+
+			var err error
+			appCtx, err = readConfig(cmd, &configFile, &cliLogConfig, &config)
+			if err != nil {
+				return err
+			}
+
+			return nil
+		},
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return run(appCtx, &config)
+		},
+	}
+
+	flags := rootCmd.PersistentFlags()
+
+	flags.StringVarP(&configFile, "config", "c", DefaultConfigFile, "path to the config file")
+
+	return rootCmd
+}
+
+func run(appCtx context.Context, config *conf.Config) error {
+	return server.Run(appCtx, config)
+}
+
+func readConfig(
 	cmd *cobra.Command,
 	configFile *string,
 	cliLogConfig *log.Config,
-	config *Config,
+	config *conf.Config,
 ) (context.Context, error) {
 	flags := cmd.Flags()
 	configBytes, err := os.ReadFile(*configFile)
@@ -87,7 +123,7 @@ func ReadConfig(
 		return nil, fmt.Errorf("failed to set default logger: %w", err)
 	}
 
-	appCtx, exit := context.WithCancel(context.WithValue(context.Background(), constant.ContextKeyConfig, config))
+	appCtx, exit := context.WithCancel(context.Background())
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)

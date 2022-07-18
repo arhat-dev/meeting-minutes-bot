@@ -2,18 +2,12 @@ package bot
 
 import (
 	"fmt"
-	"net/http"
 
 	"arhat.dev/rs"
 
 	"arhat.dev/mbot/pkg/publisher"
 	"arhat.dev/mbot/pkg/rt"
 )
-
-// Mux is just an interface alternative to http.ServeMux
-type Mux interface {
-	HandleFunc(pattern string, handleFunc func(http.ResponseWriter, *http.Request))
-}
 
 // Interface of a single bot
 type Interface interface {
@@ -23,7 +17,7 @@ type Interface interface {
 	// Start the bot in background
 	//
 	// NOTE: implementation MUST be non-blocking
-	Start(baseURL string, mux Mux) error
+	Start(baseURL string, mux rt.Mux) error
 }
 
 type PublisherFactoryFunc = func() (publisher.Interface, publisher.User, error)
@@ -31,7 +25,7 @@ type PublisherFactoryFunc = func() (publisher.Interface, publisher.User, error)
 // Config type for single bot config
 type Config interface {
 	// Create a bot with this config
-	Create(ctx rt.RTContext, bctx *BotContext) (Interface, error)
+	Create(ctx rt.RTContext, bctx *CreationContext) (Interface, error)
 }
 
 // CommonConfig commonly used config for single bot config
@@ -46,7 +40,7 @@ type CommonConfig struct {
 }
 
 // Resolve workflows
-func (c *CommonConfig) Resolve(bctx *BotContext) (ret WorkflowSet, err error) {
+func (c *CommonConfig) Resolve(bctx *CreationContext) (ret WorkflowSet, err error) {
 	if !c.Enabled || len(c.Workflows) == 0 {
 		return
 	}

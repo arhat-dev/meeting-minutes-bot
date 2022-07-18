@@ -10,7 +10,6 @@ import (
 	"arhat.dev/mbot/pkg/publisher"
 	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/mbot/pkg/storage"
-	"arhat.dev/mbot/pkg/webarchiver"
 )
 
 // WorkflowConfig represents a self-contained service for bot
@@ -22,9 +21,6 @@ type WorkflowConfig struct {
 	// Storage config name
 	Storage string `yaml:"storage"`
 
-	// WebArchiver config name
-	WebArchiver string `yaml:"webarchiver"`
-
 	// Generator config name
 	Generator string `yaml:"generator"`
 
@@ -32,46 +28,24 @@ type WorkflowConfig struct {
 	Publisher string `yaml:"publisher"`
 }
 
-func (wfc *WorkflowConfig) Resolve(bctx *BotContext) (ret Workflow, err error) {
+func (wfc *WorkflowConfig) Resolve(bctx *CreationContext) (ret Workflow, err error) {
 	var (
-		wa webarchiver.Interface
 		st storage.Interface
 		gn generator.Interface
+
+		ok bool
 	)
 
-	gnConf, ok := bctx.Generators[wfc.Generator]
+	gn, ok = bctx.Generators[wfc.Generator]
 	if !ok {
 		err = fmt.Errorf("unknown generator %q", wfc.Generator)
 		return
 	}
 
-	gn, err = gnConf.Create()
-	if err != nil {
-		return
-	}
-
-	stConf, ok := bctx.StorageSets[wfc.Storage]
+	st, ok = bctx.Storage[wfc.Storage]
 	if !ok {
-		err = fmt.Errorf("unknown storage set %q", wfc.Storage)
+		err = fmt.Errorf("unknown storage %q", wfc.Storage)
 		return
-	}
-
-	st, err = stConf.Create()
-	if err != nil {
-		return
-	}
-
-	if len(wfc.WebArchiver) != 0 {
-		waConf, ok := bctx.WebArchivers[wfc.WebArchiver]
-		if !ok {
-			err = fmt.Errorf("unknown webarchiver %q", wfc.WebArchiver)
-			return
-		}
-
-		wa, err = waConf.Create()
-		if err != nil {
-			return
-		}
 	}
 
 	pbConf, ok := bctx.Publishers[wfc.Publisher]
@@ -89,9 +63,8 @@ func (wfc *WorkflowConfig) Resolve(bctx *BotContext) (ret Workflow, err error) {
 	ret = Workflow{
 		BotCommands: wfc.CmdMapping.Resovle(),
 
-		Storage:     st,
-		WebArchiver: wa,
-		Generator:   gn,
+		Storage:   st,
+		Generator: gn,
 
 		pbFactoryFunc: pbConf.Create,
 	}
@@ -120,9 +93,8 @@ func (w *WorkflowSet) WorkflowFor(cmd string) (ret *Workflow, ok bool) {
 type Workflow struct {
 	BotCommands rt.BotCommands
 
-	Storage     storage.Interface
-	WebArchiver webarchiver.Interface
-	Generator   generator.Interface
+	Storage   storage.Interface
+	Generator generator.Interface
 
 	pbName        string
 	pbFactoryFunc PublisherFactoryFunc

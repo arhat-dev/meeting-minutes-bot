@@ -12,8 +12,11 @@ import (
 	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/internal/multipart"
 	"arhat.dev/mbot/pkg/rt"
+	"arhat.dev/mbot/pkg/storage"
 	"arhat.dev/pkg/stringhelper"
 )
+
+var _ storage.Interface = (*Driver)(nil)
 
 type Driver struct{ client http.Client }
 
@@ -25,38 +28,32 @@ func unescapeQuotes(s string) string {
 	return quoteUnescaper.Replace(s)
 }
 
-func (d *Driver) Upload(
-	con rt.Conversation,
-	filename string,
-	contentType mime.MIME,
-	in *rt.Input,
-) (url string, err error) {
+func (d *Driver) Upload(con rt.Conversation, in *rt.StorageInput) (out rt.StorageOutput, err error) {
 	var (
 		hb multipart.HeaderBuilder
 		pb multipart.Builder
 	)
 
-	_ = filename
-
-	switch contentType.Type() {
+	switch in.Type() {
 	case mime.MIMEType_Video:
 	case mime.MIMEType_Audio:
 	case mime.MIMEType_Image:
 	default:
 		// TODO: fake it as a png file?
-		err = fmt.Errorf("unsupported content type %q", contentType.Value)
+		err = fmt.Errorf("unsupported content type %q", in.ContentType())
 		return
 	}
 
 	multipartContentType, body := pb.CreatePart(
 		hb.Add("Content-Disposition", `form-data; name="file"; filename="blob"`).
-			Add("Content-Type", contentType.Value).Build(),
+			Add("Content-Type", in.ContentType()).Build(),
 		in.Reader(),
 	).Build()
 
 	req, err := http.NewRequestWithContext(con.Context(), http.MethodPost, "https://telegra.ph/upload", &body)
 	if err != nil {
-		return "", fmt.Errorf("failed to create upload request: %w", err)
+		err = fmt.Errorf("create http request: %w", err)
+		return
 	}
 
 	req.Header.Set("Content-Type", multipartContentType)
@@ -67,7 +64,8 @@ func (d *Driver) Upload(
 
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("failed to request file upload: %w", err)
+		err = fmt.Errorf("do file upload request: %w", err)
+		return
 	}
 
 	defer func() {
@@ -77,21 +75,24 @@ func (d *Driver) Upload(
 	if resp.StatusCode != http.StatusOK {
 		respBody, _ := io.ReadAll(resp.Body)
 		if err != nil {
-			return "", fmt.Errorf("read response: %w", err)
+			err = fmt.Errorf("read response: %w", err)
+			return
 		}
 
-		return "", fmt.Errorf(
+		err = fmt.Errorf(
 			"failed to upload file, code %d: %s",
 			resp.StatusCode,
 			stringhelper.Convert[string, byte](respBody),
 		)
+		return
 	}
 
 	var result UploadResponse
 	dec := json.NewDecoder(resp.Body)
 	err = dec.Decode(&result)
 	if err != nil {
-		return "", fmt.Errorf("parse upload response: %w", err)
+		err = fmt.Errorf("parse upload response: %w", err)
+		return
 	}
 
 	if len(result.Err.Error) != 0 {
@@ -104,7 +105,7 @@ func (d *Driver) Upload(
 		return
 	}
 
-	url = "https://telegra.ph/" + strings.TrimLeft(unescapeQuotes(result.Sources[0].Src), "/")
+	out.URL = "https://telegra.ph/" + strings.TrimLeft(unescapeQuotes(result.Sources[0].Src), "/")
 	return
 }
 

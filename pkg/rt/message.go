@@ -5,10 +5,30 @@ import (
 	"time"
 )
 
+func NewMessage() *Message {
+	return &Message{}
+}
+
+type MessageFlag uint32
+
+const (
+	MessageFlag_Private MessageFlag = 1 << iota
+	MessageFlag_Forwarded
+	MessageFlag_Reply
+)
+
+func (f MessageFlag) IsPrivate() bool   { return f&MessageFlag_Private != 0 }
+func (f MessageFlag) IsForwarded() bool { return f&MessageFlag_Forwarded != 0 }
+func (f MessageFlag) IsReply() bool     { return f&MessageFlag_Reply != 0 }
+
 // Message defines a message
 type Message struct {
 	// ID of the message
-	ID MessageID
+	ID      MessageID
+	ReplyTo MessageID
+
+	// Flags
+	Flags MessageFlag
 
 	// MessageLink is a link to this message
 	MessageLink string
@@ -26,40 +46,32 @@ type Message struct {
 	AuthorLink string
 
 	// when the message was forwarded by the sender, following info describes the original sender
-	IsForwarded         bool
 	OriginalChatName    string
 	OriginalChatLink    string
 	OriginalAuthor      string
 	OriginalAuthorLink  string
 	OriginalMessageLink string
 
-	IsPrivateMessage bool
-
-	IsReply          bool
-	ReplyToMessageID MessageID
-
 	Spans []Span
 
 	// Timestamp when the message sent
 	Timestamp time.Time
 
-	ready     uint32
-	mediaSpan *Span
-	textSpans []Span
+	// Text of all text spans
+	Text string
 
-	cancelBgJob func()
-	wait        <-chan struct{}
+	workers int32
+
+	wait <-chan struct{}
 }
 
-const (
-	readyState_NotReady = iota
-	readyState_Finalizing
-	readyState_Ready
-)
+func (m *Message) IsForwarded() bool { return m.Flags.IsForwarded() }
+func (m *Message) IsPrivate() bool   { return m.Flags.IsPrivate() }
+func (m *Message) IsReply() bool     { return m.Flags.IsReply() }
 
 // Ready returns true if the message is ready for content generation
 func (m *Message) Ready() bool {
-	return atomic.LoadUint32(&m.ready) == readyState_Ready
+	return atomic.LoadInt32(&m.workers) == 0
 }
 
 // Wait returns true until this message is ready, false when canceled
@@ -69,7 +81,7 @@ func (m *Message) Wait(until <-chan struct{}, cancelBgJobAfterUntil bool) (jobFi
 	select {
 	case <-until:
 		if cancelBgJobAfterUntil {
-			m.cancelBgJob()
+			// m.cancelBgJob()
 		}
 		return false
 	case <-m.wait:
@@ -88,35 +100,14 @@ func (m *Message) Dispose() {
 	}
 }
 
-func (m *Message) MarkReady() {
-	if atomic.CompareAndSwapUint32(&m.ready, 0, readyState_Finalizing) {
-		if m.mediaSpan == nil {
-			m.Spans = m.textSpans
-		} else if len(m.textSpans) != 0 {
-			m.Spans = append(m.textSpans, *m.mediaSpan)
-		} else {
-			m.Spans = []Span{*m.mediaSpan}
-		}
+type Signal <-chan struct{}
 
-		m.textSpans = nil
-		m.mediaSpan = nil
+func (m *Message) AddWorker(do func(cancel Signal)) {
+	atomic.AddInt32(&m.workers, 1)
 
-		atomic.StoreUint32(&m.ready, readyState_Ready)
-	}
-}
+	go func() {
+		defer atomic.AddInt32(&m.workers, -1)
 
-// SetMediaSpan
-//
-// NOTE: MUST be called before MarkReady() if there is media span
-func (m *Message) SetMediaSpan(media *Span) { m.mediaSpan = media }
-
-// SetTextSpans
-//
-// NOTE: MUST be called before MarkReady() if there is text spans
-func (m *Message) SetTextSpans(s []Span) { m.textSpans = s }
-
-// NOTE: MUST be called before Wait()
-func (m *Message) SetBackgroundJob(wait <-chan struct{}, cancel func()) {
-	m.wait = wait
-	m.cancelBgJob = cancel
+		do(nil)
+	}()
 }

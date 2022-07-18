@@ -6,7 +6,6 @@ import (
 
 	"github.com/minio/minio-go/v7"
 
-	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/mbot/pkg/storage"
 )
@@ -23,13 +22,12 @@ type Driver struct {
 
 func (s *Driver) Name() string { return Name }
 
-func (s *Driver) Upload(
-	con rt.Conversation, filename string, contentType mime.MIME, in *rt.Input,
-) (url string, err error) {
+func (s *Driver) Upload(con rt.Conversation, in *rt.StorageInput) (out rt.StorageOutput, err error) {
 	if len(s.bucket) != 0 {
 		hasBucket, err2 := s.client.BucketExists(con.Context(), s.bucket)
 		if err2 != nil {
-			return "", fmt.Errorf("failed to check bucket existence: %w", err2)
+			err = fmt.Errorf("check bucket existence: %w", err2)
+			return
 		}
 
 		if !hasBucket {
@@ -37,12 +35,13 @@ func (s *Driver) Upload(
 				Region: s.region,
 			})
 			if err != nil {
-				return "", fmt.Errorf("failed to create bucket: %w", err)
+				err = fmt.Errorf("create bucket: %w", err)
+				return
 			}
 		}
 	}
 
-	objectKey := path.Join(s.basePath, filename)
+	objectKey := path.Join(s.basePath, in.Filename())
 	info, err := s.client.PutObject(
 		con.Context(),
 		s.bucket,
@@ -50,15 +49,17 @@ func (s *Driver) Upload(
 		in.Reader(),
 		in.Size(),
 		minio.PutObjectOptions{
-			ContentType: contentType.Value,
+			ContentType: in.ContentType(),
 		},
 	)
 	if err != nil {
-		return "", fmt.Errorf("failed to put object: %w", err)
+		err = fmt.Errorf("put object: %w", err)
+		return
 	}
 
 	// we cannot use presign url, since max expiry time is 7 days
 	// so if you want this file accessible from browser, update your
 	// bucket settings
-	return s.formatPublicURL(con.Context(), info.Key), nil
+	out.URL = s.formatPublicURL(con.Context(), info.Key)
+	return
 }

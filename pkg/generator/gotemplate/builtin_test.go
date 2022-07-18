@@ -23,6 +23,7 @@ func testMessages() []*rt.Message {
 		},
 		{ /* basic reply */
 			ID:       2,
+			Flags:    rt.MessageFlag_Reply,
 			ChatName: "basic-chat-name",
 			Author:   "basic-author-2",
 			Spans: []rt.Span{
@@ -31,8 +32,7 @@ func testMessages() []*rt.Message {
 					Text:  "reply-to-basic",
 				},
 			},
-			IsReply:          true,
-			ReplyToMessageID: 1,
+			ReplyTo: 1,
 		},
 	}
 }
@@ -57,11 +57,11 @@ func TestBuiltinTemplates(t *testing.T) {
 
 			hdr, err := gen.New(nil, "", "")
 			assert.NoError(t, err)
-			t.Log("header", string(hdr))
+			t.Log("header", string(hdr.Data.Get()))
 
-			body, err := gen.RenderBody(nil, testMessages())
+			body, err := gen.Generate(nil, "", "", testMessages())
 			assert.NoError(t, err)
-			t.Log("body", string(body))
+			t.Log("body", string(body.Data.Get()))
 		})
 	}
 }

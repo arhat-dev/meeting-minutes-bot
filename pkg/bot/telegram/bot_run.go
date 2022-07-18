@@ -9,7 +9,6 @@ import (
 	"github.com/gotd/contrib/bg"
 	"github.com/gotd/td/tg"
 
-	"arhat.dev/mbot/pkg/bot"
 	"arhat.dev/mbot/pkg/rt"
 )
 
@@ -85,7 +84,7 @@ func (c *tgBot) Configure() (err error) {
 }
 
 // nolint:gocyclo
-func (c *tgBot) Start(baseURL string, mux bot.Mux) error {
+func (c *tgBot) Start(baseURL string, mux rt.Mux) error {
 	c.msgDelQ.Start(c.Context().Done())
 	go func() {
 		msgDelCh := c.msgDelQ.TakeCh()

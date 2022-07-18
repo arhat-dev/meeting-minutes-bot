@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"path"
-	"sync"
 	"time"
 
 	"arhat.dev/pkg/log"
@@ -12,7 +11,6 @@ import (
 	"github.com/h2non/filetype"
 	"github.com/h2non/filetype/types"
 
-	"arhat.dev/mbot/internal/mime"
 	"arhat.dev/mbot/pkg/bot"
 	"arhat.dev/mbot/pkg/rt"
 )
@@ -20,15 +18,19 @@ import (
 // errCh can be nil when there is no background pre-process worker
 // nolint:gocyclo
 func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Message) (errCh chan error, err error) {
+	if len(m.Text) != 0 {
+		m.Spans = parseTextEntities(m.Text, mc.msg.Entities)
+	}
+
+	media, ok := mc.msg.GetMedia()
+	if !ok {
+		return
+	}
+
 	var (
 		nonText    rt.Span
 		doDownload func() (_ rt.CacheReader, contentType, ext string, sz int64, err error)
 	)
-
-	media, ok := mc.msg.GetMedia()
-	if !ok {
-		return c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, nil)
-	}
 
 	switch t := media.(type) {
 	case *tg.MessageMediaPhoto:
@@ -96,12 +98,12 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 				return c.download(fileLoc, int64(maxSize), "")
 			}
 		default:
-			return c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, nil)
+			return
 		}
 	case *tg.MessageMediaDocument:
 		doc, ok := t.GetDocument()
 		if !ok {
-			return c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, nil)
+			return
 		}
 
 		switch d := doc.(type) {
@@ -147,7 +149,7 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 				return c.download(fileLoc, sz, ct)
 			}
 		default:
-			return c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, nil)
+			return
 		}
 
 	// case *tg.MessageMediaGeo:
@@ -162,42 +164,15 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 	// case *tg.MessageMediaDice:
 	default:
 		c.Logger().I("unhandled telegram message", log.Any("msg", mc.msg))
-		m.MarkReady()
 		return nil, nil
 	}
 
-	var wg sync.WaitGroup
+	m.Spans = append(m.Spans, nonText)
+	mediaSpan := &m.Spans[len(m.Spans)-1]
 
-	if len(mc.msg.GetMessage()) != 0 {
-		errCh, err = c.preprocessText(&mc.con, wf, m, mc.msg.GetMessage(), mc.msg.Entities, &wg)
-		if err != nil {
-			return
-		}
-	}
-
-	wg.Add(1) // add for the goroutine spawned at last
-
-	noBgTextProcessing := errCh == nil
-	if noBgTextProcessing { // no background job for text processing
-		errCh = make(chan error, 1)
-	} else {
-		// goroutine to wait file downloading and caption handling
-		go func() {
-			wg.Wait()
-			close(errCh)
-			m.MarkReady()
-		}()
-	}
-
-	go func(wg *sync.WaitGroup) {
-		defer func() {
-			wg.Done()
-
-			if noBgTextProcessing { // no background job for text processing, errCh is managed by us
-				close(errCh)
-				m.MarkReady()
-			}
-		}()
+	errCh = make(chan error, 1)
+	m.AddWorker(func(cancel rt.Signal) {
+		defer close(errCh)
 
 		cacheRD, contentType, ext, sz, err := doDownload()
 		if err != nil {
@@ -233,17 +208,17 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 		}
 
 		if len(contentType) != 0 {
-			nonText.ContentType = contentType
+			mediaSpan.ContentType = contentType
 		} else {
 			// provide default mime type for storage driver
-			nonText.ContentType = "application/octet-stream"
+			mediaSpan.ContentType = "application/octet-stream"
 		}
 
 		var filename string
-		if len(nonText.Filename) == 0 { // no filename set
+		if len(mediaSpan.Filename) == 0 { // no filename set
 			filename = cacheRD.ID().String() + "." + ext
 		} else {
-			filename = nonText.Filename
+			filename = mediaSpan.Filename
 			if len(path.Ext(filename)) == 0 {
 				filename += "." + ext
 			}
@@ -255,8 +230,8 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 			log.Int64("size", sz),
 		)
 
-		input := rt.NewInput(sz, cacheRD)
-		storageURL, err := wf.Storage.Upload(&mc.con, filename, mime.New(contentType), &input)
+		input := rt.NewStorageInput(filename, sz, cacheRD, contentType)
+		sout, err := wf.Storage.Upload(&mc.con, &input)
 		if err != nil {
 			c.Logger().I("failed to upload file", log.Error(err))
 			c.sendErrorf(errCh, "unable to upload file: %w", err)
@@ -273,11 +248,9 @@ func (c *tgBot) preprocessMessage(mc *messageContext, wf *bot.Workflow, m *rt.Me
 			return
 		}
 
-		nonText.URL = storageURL
-		nonText.Data = cacheRD
-
-		m.SetMediaSpan(&nonText)
-	}(&wg)
+		mediaSpan.URL = sout.URL
+		mediaSpan.Data = cacheRD
+	})
 
 	return errCh, nil
 }
@@ -289,78 +262,21 @@ func (c *tgBot) sendErrorf(errCh chan<- error, format string, args ...any) {
 	}
 }
 
-// preprocessText
-//
-// when wg is not nil, there is other worker working on the same message
-func (c *tgBot) preprocessText(
-	con *conversationImpl,
-	wf *bot.Workflow,
-	m *rt.Message,
-	text string,
-	entities []tg.MessageEntityClass,
-	wg *sync.WaitGroup,
-) (errCh chan error, err error) {
-	spans := parseTextEntities(text, entities)
-
-	if !bot.NeedPreProcess(spans) {
-		m.SetTextSpans(spans)
-
-		if wg == nil {
-			m.MarkReady()
-		}
-
-		return nil, nil
-	}
-
-	errCh = make(chan error, 1)
-	if wg != nil {
-		wg.Add(1)
-	}
-
-	go func() {
-		defer func() {
-			if wg == nil {
-				close(errCh)
-				m.MarkReady()
-			} else {
-				wg.Done()
-			}
-		}()
-
-		err2 := bot.PreprocessText(con, wf, spans)
-		if err2 != nil {
-			c.sendErrorf(errCh, "Message pre-process error: %w", err2)
-		}
-
-		m.SetTextSpans(spans)
-	}()
-
-	return
-}
-
 func (c *tgBot) download(
 	loc tg.InputFileLocationClass, sz int64, suggestContentType string,
 ) (cacheRD rt.CacheReader, contentType, ext string, actualSize int64, err error) {
 	cacheRD, actualSize, err = bot.Download(c.Cache(), func(cacheWR rt.CacheWriter) (err2 error) {
-		fileHashes, err2 := c.client.API().UploadGetFileHashes(c.Context(), &tg.UploadGetFileHashesRequest{
-			Location: loc,
-			Offset:   0,
-		})
-
-		for _, h := range fileHashes {
-			h.GetOffset()
-			h.GetLimit()
-		}
-
 		var resp tg.StorageFileTypeClass
 		switch {
 		case sz < 5*1024*1024: // < 5MB
 			resp, err2 = c.downloader.Download(c.client.API(), loc).
+				WithVerify(true).
 				Stream(c.Context(), cacheWR)
 		default:
 			// 3 threads is optimal for multi-thread downloading
 			resp, err2 = c.downloader.Download(c.client.API(), loc).
 				WithThreads(3).
+				WithVerify(true).
 				Parallel(c.Context(), cacheWR)
 		}
 

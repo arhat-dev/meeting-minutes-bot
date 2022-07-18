@@ -22,34 +22,37 @@ type Driver struct {
 }
 
 // AppendToExisting implements publisher.Interface
-func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) (_ []rt.Span, err error) {
+func (d *Driver) AppendToExisting(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error) {
 	filename := normalizeFilename(d.currentFilename.Load().(string))
 	f, err := os.OpenFile(filepath.Join(d.dir, filename), os.O_APPEND|os.O_WRONLY, 0640)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	defer func() { _ = f.Close() }()
 
-	_, err = f.ReadFrom(fromGenerator.Reader())
+	_, err = f.WriteString(in.Data.Get())
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	return []rt.Span{
-		{
-			Flags: rt.SpanFlag_PlainText,
-			Text:  "Your messages have been rendered into ",
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{
+				Flags: rt.SpanFlag_PlainText,
+				Text:  "Your messages have been rendered into ",
+			},
+			{
+				Flags: rt.SpanFlag_Pre,
+				Text:  filename,
+			},
 		},
-		{
-			Flags: rt.SpanFlag_Pre,
-			Text:  filename,
-		},
-	}, nil
+	})
+	return
 }
 
 // CreateNew implements publisher.Interface
-func (d *Driver) CreateNew(con rt.Conversation, cmd, params string, fromGenerator *rt.Input) (_ []rt.Span, err error) {
+func (d *Driver) CreateNew(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error) {
 	filename := normalizeFilename(params)
 	d.currentFilename.Store(filename)
 
@@ -60,60 +63,68 @@ func (d *Driver) CreateNew(con rt.Conversation, cmd, params string, fromGenerato
 
 	defer f.Close()
 
-	_, err = f.ReadFrom(fromGenerator.Reader())
+	_, err = f.WriteString(in.Data.Get())
 	if err != nil {
 		return
 	}
 
-	return []rt.Span{
-		{
-			Flags: rt.SpanFlag_PlainText,
-			Text:  "Your messages will be rendered into ",
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{
+				Flags: rt.SpanFlag_PlainText,
+				Text:  "Your messages will be rendered into ",
+			},
+			{
+				Flags: rt.SpanFlag_Code,
+				Text:  filename,
+			},
 		},
-		{
-			Flags: rt.SpanFlag_Code,
-			Text:  filename,
-		},
-	}, nil
+	})
+
+	return
 }
 
 func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string) (rt.LoginFlow, error) {
 	return rt.LoginFlow_None, nil
 }
 
-func (d *Driver) Login(con rt.Conversation, user publisher.User) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) Login(con rt.Conversation, user publisher.User) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) RequestExternalAccess(con rt.Conversation) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) RequestExternalAccess(con rt.Conversation) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) Retrieve(con rt.Conversation, cmd, params string) ([]rt.Span, error) {
-	return nil, fmt.Errorf("unimplemented")
+func (d *Driver) Retrieve(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error) {
+	return
 }
 
-func (d *Driver) List(con rt.Conversation) ([]publisher.PostInfo, error) {
+func (d *Driver) List(con rt.Conversation) (out rt.PublisherOutput, err error) {
 	entries, err := os.ReadDir(d.dir)
 	if err != nil {
-		return nil, err
+		return
 	}
-	var result []publisher.PostInfo
+	var result rt.SendMessageOptions
 	for _, f := range entries {
 		if f.IsDir() {
 			continue
 		}
 
-		result = append(result, publisher.PostInfo{
-			Title: f.Name(),
-			URL:   f.Name(),
-		})
+		result.Body = append(result.Body,
+			rt.Span{Text: "- "},
+			rt.Span{
+				Flags: rt.SpanFlag_Code,
+				Text:  f.Name(),
+			},
+			rt.Span{Text: "\n"},
+		)
 	}
-	return result, nil
+	out.SendMessage.Set(result)
+	return
 }
 
-func (d *Driver) Delete(con rt.Conversation, cmd, params string) error {
-	var err error
+func (d *Driver) Delete(con rt.Conversation, cmd, params string) (out rt.PublisherOutput, err error) {
 	keys := strings.Split(params, " ")
 	for _, filename := range keys {
 		path := filepath.Join(d.dir, filename)
@@ -125,7 +136,13 @@ func (d *Driver) Delete(con rt.Conversation, cmd, params string) error {
 		err = multierr.Append(err, os.Remove(path))
 	}
 
-	return err
+	out.SendMessage.Set(rt.SendMessageOptions{
+		Body: []rt.Span{
+			{Text: "File(s) deleted."},
+		},
+	})
+
+	return
 }
 
 func normalizeFilename(title string) string {
