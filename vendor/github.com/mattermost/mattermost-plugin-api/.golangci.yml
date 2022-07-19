@@ -1,0 +1,72 @@
+run:
+  timeout: 5m
+  skip-files:
+     - example.*.go
+
+linters:
+  disable-all: true
+  enable:
+    - bodyclose
+    - deadcode
+    - errcheck
+    - exportloopref
+    - goconst
+    - gocritic
+    - gofmt
+    - goimports
+    - gosec
+    - gosimple
+    - govet
+    - ineffassign
+    - lll
+    - misspell
+    - revive
+    - staticcheck
+    - structcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unconvert
+    - unused
+    - unparam
+    - varcheck
+    - whitespace
+
+linters-settings:
+  goconst:
+    min-len: 2
+    min-occurrences: 3
+  gocritic:
+    enabled-tags:
+      - diagnostic
+      - experimental
+      - opinionated
+      - performance
+      - style
+    disabled-checks:
+      - hugeParam
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: github.com/mattermost/mattermost-plugin-api
+  govet:
+    check-shadowing: true
+    enable-all: true
+    disable:
+      - fieldalignment
+      - unusedwrite
+  lll:
+    line-length: 150
+  misspell:
+    locale: US
+  revive:
+    min-confidence: 0
+
+issues:
+  exclude:
+    - G404
+  exclude-rules:
+    # Exclude some linters from running on tests files.
+    - path: _test\.go
+      linters:
+        - goconst
