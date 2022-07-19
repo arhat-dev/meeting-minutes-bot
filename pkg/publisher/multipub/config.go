@@ -48,9 +48,9 @@ type User struct {
 	underlay []pair
 }
 
-func (u *User) NextExepcted() (flow rt.LoginFlow) {
+func (u *User) NextCredential() (flow rt.LoginFlow) {
 	for u.index < len(u.underlay) {
-		flow = u.underlay[u.index].user.NextExepcted()
+		flow = u.underlay[u.index].user.NextCredential()
 		if flow != rt.LoginFlow_None {
 			return
 		}

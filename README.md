@@ -47,7 +47,10 @@ Build your chat bot declaratively.
   - [ ] `exec`
   - [ ] `filter`
   - [x] `gotemplate`
+  - [ ] `js`
+  - [ ] `lua`
   - [x] `multigen`
+  - [ ] `tengo`
 
 - [Publishers](./docs/publisher/README.md)
   - [x] `authorized`
@@ -85,7 +88,23 @@ __NOTE:__ You have to manage `POST_KEY`s for your `TOPIC`s
 ## State Machine
 
 ```mermaid
-<!-- TODO -->
+stateDiagram-v2
+  discuss: botcmd `/discuss ...`
+  continue: bot cmd `/continue ...`
+  cancel: botcmd `/cancel`
+  state "user login" as login
+  state login_state <<choice>>
+
+  [*] --> discuss
+  discuss --> login: redirect to private chat
+  [*] --> continue
+  continue --> login: redirect to private chat
+  login --> login_state
+  login_state --> Success: re
+  login_state --> Fail: re
+  Fail --> login
+  login_state --> cancel
+  cancel --> [*]
 ```
 
 ## Run

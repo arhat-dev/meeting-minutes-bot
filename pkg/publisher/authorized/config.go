@@ -2,6 +2,7 @@ package authorized
 
 import (
 	"fmt"
+	"time"
 
 	"arhat.dev/mbot/pkg/publisher"
 	"arhat.dev/rs"
@@ -18,12 +19,22 @@ func init() {
 type Config struct {
 	rs.BaseField
 
-	Username   string `yaml:"username"`
-	Password   string `yaml:"password"`
-	TOTPSecret string `yaml:"totpSecret"`
-	Token      string `yaml:"token"`
+	// Token for publishers expecting token
+	Token string `yaml:"token"`
 
-	// For sets a config
+	// Username for publishers expecting username input
+	Username string `yaml:"username"`
+	// Password for publishers expecting password input
+	Password string `yaml:"password"`
+
+	// TOTPToken and TOTPCodeDigits for publishers expecting totp code input
+	TOTPToken string `yaml:"totpToken"`
+	// TOTPCodeDigits and TOTPToken for publishers expecting totp code input
+	//
+	// Defaults to 6
+	TOTPCodeDigits int `yaml:"totpCodeDigits"`
+
+	// For is the underlay publisher (expect exact one entry)
 	For map[string]publisher.Config `yaml:"for"`
 }
 
@@ -31,6 +42,7 @@ type Config struct {
 func (c *Config) Create() (_ publisher.Interface, user publisher.User, err error) {
 	if len(c.For) != 1 {
 		err = fmt.Errorf("unexpected count of config items %d (want exact one config)", len(c.For))
+		return
 	}
 
 	var (
@@ -44,11 +56,26 @@ func (c *Config) Create() (_ publisher.Interface, user publisher.User, err error
 		}
 	}
 
+	if len(c.TOTPToken) != 0 {
+		var (
+			totpCode string
+			digits   = c.TOTPCodeDigits
+		)
+		if digits == 0 {
+			digits = 6
+		}
+
+		totpCode, err = generateTOTPCode(c.TOTPToken, time.Now(), digits)
+		if err != nil {
+			return
+		}
+
+		user.SetTOTPCode(totpCode)
+	}
+
+	user.SetToken(c.Token)
 	user.SetUsername(c.Username)
 	user.SetPassword(c.Password)
-	// TODO: generate totp code from totp secret
-	// user.SetTOTPCode("")
-	user.SetToken(c.Token)
 
 	return &Driver{Interface: impl}, user, nil
 }

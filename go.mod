@@ -10,6 +10,8 @@ require (
 	github.com/bmatcuk/doublestar/v4 v4.2.0
 	github.com/bwmarrin/discordgo v0.25.0
 	github.com/chromedp/chromedp v0.8.2
+	github.com/d5/tengo/v2 v2.12.0
+	github.com/dop251/goja v0.0.0-20220714114325-87952593a54c
 	github.com/google/go-github/v45 v45.2.0
 	github.com/gotd/contrib v0.13.0
 	github.com/gotd/td v0.61.0
@@ -24,6 +26,7 @@ require (
 	github.com/stretchr/testify v1.8.0
 	github.com/vartanbeno/go-reddit/v2 v2.0.1
 	github.com/xanzy/go-gitlab v0.69.0
+	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64
 	go.mau.fi/whatsmeow v0.0.0-20220715134127-5e6b9804193a
 	go.uber.org/multierr v1.8.0
 	go.uber.org/zap v1.21.0
@@ -51,6 +54,7 @@ require (
 	github.com/cncf/xds/go v0.0.0-20211130200136-a8f946100490 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect
+	github.com/dlclark/regexp2 v1.4.1-0.20201116162257-a2a8dda75c91 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/dyatlov/go-opengraph v0.0.0-20210112100619-dae8665a5b09 // indirect
 	github.com/envoyproxy/go-control-plane v0.10.1 // indirect
@@ -62,6 +66,7 @@ require (
 	github.com/go-faster/errors v0.6.1 // indirect
 	github.com/go-faster/jx v0.38.0 // indirect
 	github.com/go-faster/xor v0.3.0 // indirect
+	github.com/go-sourcemap/sourcemap v2.1.3+incompatible // indirect
 	github.com/go-sql-driver/mysql v1.6.0 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect

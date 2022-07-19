@@ -65,7 +65,7 @@ func (c *tgBot) handleBotCmd_Discuss(
 
 	// skip login when not required
 	pub, user, _ := wf.CreatePublisher()
-	if user.NextExepcted() == rt.LoginFlow_None {
+	if user.NextCredential() == rt.LoginFlow_None {
 		// no login required
 
 		_, err := c.sessions.ActivateSession(wf, userID, chatID, pub)
@@ -105,7 +105,7 @@ func (c *tgBot) handleBotCmd_Discuss(
 
 	// login is required, redirect user to private dialog
 
-	_, err := pub.RequireLogin(&mc.con, cmd, params, user)
+	_, err := pub.CheckLogin(&mc.con, cmd, params, user)
 	if err != nil {
 		return nil
 	}

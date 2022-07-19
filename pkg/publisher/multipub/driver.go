@@ -76,11 +76,12 @@ func (d *Driver) RequestExternalAccess(con rt.Conversation) (out rt.PublisherOut
 }
 
 // RequireLogin implements publisher.Interface
-func (d *Driver) RequireLogin(
+func (d *Driver) CheckLogin(
 	con rt.Conversation, cmd, params string, user publisher.User,
 ) (out rt.PublisherOutput, err error) {
-	// TODO
-	return
+	return forEach(d.underlay, func(p *pair) (rt.PublisherOutput, error) {
+		return p.impl.CheckLogin(con, cmd, params, user)
+	})
 }
 
 // Retrieve implements publisher.Interface

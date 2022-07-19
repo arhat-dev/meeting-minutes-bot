@@ -47,10 +47,10 @@ type Interface interface {
 	//   for blog publishers, append generated content to the existing blog post
 	AppendToExisting(con rt.Conversation, cmd, params string, in *rt.GeneratorOutput) (out rt.PublisherOutput, err error)
 
-	// RequireLogin returns true when the publisher requires login, if false, there will be no login process presented to user
+	// CheckLogin checks login status of the user
 	//
 	// this method is called on BotCmd_Discuss, BotCmd_Continue, BotCmd_List, BotCmd_Delete
-	RequireLogin(con rt.Conversation, cmd, params string, user User) (out rt.PublisherOutput, err error)
+	CheckLogin(con rt.Conversation, cmd, params string, user User) (out rt.PublisherOutput, err error)
 
 	// Login as user of the publisher
 	Login(con rt.Conversation, user User) (out rt.PublisherOutput, err error)
@@ -66,8 +66,8 @@ type Interface interface {
 }
 
 type User interface {
-	// NextExepcted returns next expected login credential
-	NextExepcted() rt.LoginFlow
+	// NextCredential returns next expected user credential
+	NextCredential() rt.LoginFlow
 
 	SetToken(string)
 	SetUsername(string)

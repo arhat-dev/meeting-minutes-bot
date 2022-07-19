@@ -84,7 +84,7 @@ func (d *Driver) CreateNew(con rt.Conversation, cmd, params string, in *rt.Gener
 	return
 }
 
-func (d *Driver) RequireLogin(con rt.Conversation, cmd, params string, user publisher.User) (out rt.PublisherOutput, err error) {
+func (d *Driver) CheckLogin(con rt.Conversation, cmd, params string, user publisher.User) (out rt.PublisherOutput, err error) {
 	return
 }
 

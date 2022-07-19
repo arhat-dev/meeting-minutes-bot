@@ -8,5 +8,8 @@ import (
 	_ "arhat.dev/mbot/pkg/generator/exec"
 	_ "arhat.dev/mbot/pkg/generator/filter"
 	_ "arhat.dev/mbot/pkg/generator/gotemplate"
+	_ "arhat.dev/mbot/pkg/generator/js"
+	_ "arhat.dev/mbot/pkg/generator/lua"
 	_ "arhat.dev/mbot/pkg/generator/multigen"
+	_ "arhat.dev/mbot/pkg/generator/tengo"
 )

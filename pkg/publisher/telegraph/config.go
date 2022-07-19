@@ -51,7 +51,8 @@ type User struct {
 	authToken string
 }
 
-func (u *User) NextExepcted() (flow rt.LoginFlow) {
+// NextCredential implements publisher.User
+func (u *User) NextCredential() (flow rt.LoginFlow) {
 	switch {
 	case len(u.authToken) == 0:
 		return rt.LoginFlow_Token
