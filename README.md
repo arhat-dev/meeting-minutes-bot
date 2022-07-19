@@ -21,13 +21,19 @@ Build your chat bot declaratively.
 ## Support Matrix
 
 - Chat Platforms
-  - [x] `telegram`
-  - [ ] `matrix`
-  - [ ] `gitlab`
-  - [ ] `github`
-  - [ ] `slack`
   - [ ] `discord`
+  - [ ] `github`
+  - [ ] `gitlab`
+  - [ ] `gitter`
+  - [ ] `irc`
+  - [ ] `line`
+  - [ ] `matrix`
+  - [ ] `mattermost`
   - [ ] `reddit`
+  - [ ] `slack`
+  - [x] `telegram`
+  - [ ] `vk`
+  - [ ] `whatsapp`
 
 - [Storage backends](./docs/storage/README.md)
   - [x] `router`

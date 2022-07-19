@@ -6,7 +6,6 @@ require (
 	arhat.dev/pkg v0.9.1-0.20220527160521-12b7b771a58b
 	arhat.dev/rs v0.9.0
 	github.com/Masterminds/sprig/v3 v3.2.2
-	github.com/Philipp15b/go-steam v1.0.0
 	github.com/SevereCloud/vksdk/v2 v2.15.0
 	github.com/bmatcuk/doublestar/v4 v4.2.0
 	github.com/bwmarrin/discordgo v0.25.0
@@ -16,6 +15,7 @@ require (
 	github.com/gotd/td v0.61.0
 	github.com/h2non/filetype v1.1.3
 	github.com/line/line-bot-sdk-go/v7 v7.16.0
+	github.com/lrstanley/girc v0.0.0-20220711132230-08c71bdb944f
 	github.com/mattermost/mattermost-plugin-api v0.0.27
 	github.com/mattermost/mattermost-plugin-apps v1.1.0
 	github.com/minio/minio-go/v7 v7.0.31
