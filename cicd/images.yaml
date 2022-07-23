@@ -1,0 +1,33 @@
+workflow:run:
+# build container images
+# required by ci job
+- name: build-images
+  jobs:
+  - task:
+      ref: buildah:xbuild(app)
+      matrix_filter: {}
+
+# push built container images
+# required by ci job
+- name: push-images
+  jobs:
+  - task:
+      ref: buildah:login(ghcr)
+      matrix_filter: {}
+  - task:
+      ref: buildah:push(app)
+      matrix_filter: {}
+
+# sign container images
+# required by ci job
+- name: sign-images
+  jobs:
+  - if@tlang: &github all (eq env.GITHUB_ACTIONS "true") git.tag
+    task:
+      ref: docker:login(ghcr)
+      matrix_filter: {}
+
+  - if@tlang: *github
+    task:
+      ref: cosign:sign-image(app)
+      matrix_filter: {}

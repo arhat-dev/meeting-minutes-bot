@@ -3,8 +3,7 @@ workflow:run:
   jobs:
   - env:
     - name: GOBIN
-      value@tpl: &gobin |-
-        {{- fs.Join dukkha.CacheDir "bin" -}}
+      value@tlang: &gobin fs.Join dukkha.CacheDir "bin"
     shell:
       go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.11.0
 
@@ -18,10 +17,9 @@ workflow:run:
   jobs:
   - env:
     - name: PATH
-      value@tpl: *gobin
+      value@tlang: *gobin
     - name: CONFIG_FILE
-      value@tpl: |-
-        {{- fs.Join dukkha.CacheDir matrix.platform -}}.gen.yaml
+      value@tlang: fs.Join dukkha.CacheDir matrix.platform; ".gen.yaml"
 
     shell: |-
       tpl:fs.WriteFile "${CONFIG_FILE}" <<EOF

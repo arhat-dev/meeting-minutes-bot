@@ -1,0 +1,49 @@
+workflow:run:
+# required by ci
+- name: build-artifacts
+  jobs:
+  - task:
+      ref: golang:build(app)
+      matrix_filter: {}
+
+# required by ci
+- name: sign-artifacts
+  jobs:
+  # generate dukkha-{kernel}-{arch}.sig
+  - task:
+      ref: cosign:sign(app)
+      matrix_filter: {}
+
+# upload signed artifacts to ghcr.io
+# required by ci
+- name: upload-artifacts
+  jobs:
+  - task:
+      ref: docker:login(ghcr)
+      matrix_filter: {}
+  - task:
+      ref: cosign:upload(app)
+      matrix_filter: {}
+
+# required by ci
+- name: create-release
+  jobs:
+  - task:
+      ref: archive:create(app)
+      matrix_filter: {}
+
+  # generate checksums for archives
+  - chdir: build
+    shell: |-
+      hashes="sha256 sha512 md5"
+      for hash in $hashes ; do
+        printf "" >"$hash.txt"
+        for file in *.tar* *.zip; do
+          printf "%s  %s\n" "$("tmpl:$hash" <"$file")" "$file" >> "$hash.txt"
+        done
+      done
+
+  # create github release
+  - task:
+      ref: github:release(fake)
+      matrix_filter: {}

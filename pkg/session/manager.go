@@ -158,7 +158,7 @@ func (c *Manager[C]) MarkSessionStandby(
 			Data: data,
 
 			Params:    params,
-			IsDiscuss: isDiscuss,
+			IsNew: isDiscuss,
 		},
 	)
 	if !loaded {

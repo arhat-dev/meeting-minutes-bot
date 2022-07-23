@@ -7,8 +7,9 @@ import (
 	"arhat.dev/mbot/pkg/rt"
 )
 
+// Config defines public methods of a generator config
 type Config interface {
-	// Create a generation based on this config
+	// Create a generator
 	Create() (Interface, error)
 }
 
@@ -20,7 +21,7 @@ type Interface interface {
 	// params is the parameters to the cmd
 	//
 	// this method is called on BotCmd_Discuss
-	New(con rt.Conversation, cmd, params string) (out rt.GeneratorOutput, err error)
+	New(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error)
 
 	// Continue generates content for previously generated content
 	//
@@ -28,15 +29,15 @@ type Interface interface {
 	// params is the parameters to the cmd
 	//
 	// this method is called on BotCmd_Continue
-	Continue(con rt.Conversation, cmd, params string) (out rt.GeneratorOutput, err error)
+	Continue(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error)
 
 	// Peek a newly received message
-	Peek(con rt.Conversation, msg *rt.Message) (out rt.GeneratorOutput, err error)
+	Peek(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error)
 
 	// Generate generates the body of this conversation
 	//
 	// this method is called on BotCmd_End
-	Generate(con rt.Conversation, cmd, params string, msgs []*rt.Message) (out rt.GeneratorOutput, err error)
+	Generate(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error)
 }
 
 type configFactoryFunc = func() Config

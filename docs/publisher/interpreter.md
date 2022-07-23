@@ -15,7 +15,7 @@ args:
 ## Reference Commands Mapping
 
 ```yaml
-/discuss:
+/new:
   as: /prepare
   description: prepare script for interpreter execution
 
@@ -32,7 +32,7 @@ args:
 /list: {}
 /delete: {}
 /start: {}
-/continue: {}
+/resume: {}
 /ignore: {}
 /include: {}
 ```

@@ -1,42 +1,10 @@
 include:
+# add renderer `presets`
+- text@http?str: https://raw.githubusercontent.com/arhat-dev/dukkha-presets/dev/setup-dev.yml
 - path: cicd
-
-tools:
-  workflow:
-  - name: local
-  golang:
-  - name: local
-    cmd:
-    - go
 
 renderers:
 - http:
     cache:
       enabled: true
       timeout: 5h
-  tpl:
-    include:
-    - path: cicd/artifacts/bin-name.tpl
-
-# offline mode switch when network connection is not available
-#
-# to activate offline mode:
-# - set LOCAL_PRESETS_PATH to some local dir (a empty value will use ${PWD}/.dukkha/cache/dukkha-presets)
-# - git clone https://github.com/arhat-dev/dukkha-presets "${LOCAL_PRESETS_PATH}"
-#   or `git clone https://github.com/arhat-dev/dukkha-presets "${PWD}/.dukkha/cache/dukkha-presets"` when LOCAL_PRESETS_PATH is set to empty
-- file:dukkha-presets:
-    alias@tpl: |-
-      {{- if env.LOCAL_PRESETS_PATH -}}
-        presets
-      {{- end -}}
-    base_path@env: ${LOCAL_PRESETS_PATH:-".dukkha/cache/dukkha-presets"}
-
-  http:dukkha-presets:
-    alias@tpl: |-
-      {{- if not env.LOCAL_PRESETS_PATH -}}
-        presets
-      {{- end -}}
-    cache:
-      enabled: true
-      timeout: 2h
-    base_url: https://raw.githubusercontent.com/arhat-dev/dukkha-presets/dev/

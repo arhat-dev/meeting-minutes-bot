@@ -475,9 +475,9 @@ func (c *tgBot) handleBotCmd(
 	}
 
 	switch bc := wf.BotCommands.Parse(cmd); bc {
-	case rt.BotCmd_Discuss:
+	case rt.BotCmd_New:
 		return c.handleBotCmd_Discuss(mc, wf, cmd, params)
-	case rt.BotCmd_Continue:
+	case rt.BotCmd_Resume:
 		return c.handleBotCmd_Continue(mc, wf, cmd, params)
 	case rt.BotCmd_Start:
 		return c.handleBotCmd_Start(mc, wf, params)

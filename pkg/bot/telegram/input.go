@@ -83,21 +83,22 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 		note rt.PublisherOutput
 	)
 
-	if standbySession.IsDiscuss {
-		// is /discuss, create a new post
+	if standbySession.IsNew {
+		// is /new
 
-		content, err2 := standbySession.Workflow().Generator.New(
-			&mc.con,
-			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
-			standbySession.Params,
-		)
+		in := rt.GeneratorInput{
+			Cmd:    standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_New),
+			Params: standbySession.Params,
+		}
+
+		content, err2 := standbySession.Workflow().Generator.New(&mc.con, &in)
 		if err2 != nil {
 			return true, fmt.Errorf("failed to generate initial page: %w", err2)
 		}
 
 		note, err2 = pub.CreateNew(
 			&mc.con,
-			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
+			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_New),
 			standbySession.Params,
 			&content,
 		)
@@ -111,11 +112,11 @@ func (c *tgBot) tryToHandleInputForDiscussOrContinue(mc *messageContext, replyTo
 			return true, err2
 		}
 	} else {
-		// is /continue, find existing post to edit
+		// is /resume, find existing post to edit
 
 		note, err = pub.Retrieve(
 			&mc.con,
-			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Continue),
+			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Resume),
 			standbySession.Params,
 		)
 		if err != nil {

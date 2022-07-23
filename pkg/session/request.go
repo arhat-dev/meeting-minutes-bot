@@ -43,8 +43,8 @@ type (
 
 		Data T
 
-		Params    string
-		IsDiscuss bool
+		Params string
+		IsNew  bool
 	}
 
 	EditRequest struct {
@@ -72,10 +72,10 @@ func GetCommandFromRequest[T any](req any) rt.BotCmd {
 		return rt.BotCmd_Edit
 	case *SessionRequest[T]:
 		if len(r.Params) != 0 {
-			return rt.BotCmd_Discuss
+			return rt.BotCmd_New
 		}
 
-		return rt.BotCmd_Continue
+		return rt.BotCmd_Resume
 	default:
 		return rt.BotCmd_Unknown
 	}

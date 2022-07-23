@@ -7,3 +7,9 @@ type GeneratorOutput struct {
 
 	Other []GeneratorOutput
 }
+
+type GeneratorInput struct {
+	Cmd      string
+	Params   string
+	Messages []*Message
+}

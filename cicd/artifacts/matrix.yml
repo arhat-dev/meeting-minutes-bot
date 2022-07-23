@@ -1,4 +1,0 @@
-__@!:
-  value@presets: matrix/golang/1.18/common.yml
-  select: |-
-    .include.[].cmd = ["mbot"] | .cmd = ["mbot"]

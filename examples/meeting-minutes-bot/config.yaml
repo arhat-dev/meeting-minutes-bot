@@ -4,12 +4,11 @@ app:
     file: stderr
 
 generators:
-  gotemplate:test:
-    templatesDir: ./pkg/generator/gotemplate/templates/telegraph
-    mode: html
+  gotemplate:foo:
+    useBuiltIn: telegraph
 
 storage:
-  router:test:
+  router:foo:
     specs:
     - mimeMatch: (image|video)
       maxSize: 5242880 # 5MB
@@ -18,26 +17,22 @@ storage:
     #   s3: {}
 
 publishers:
-  telegraph:test: {}
+  telegraph:foo: {}
 
 bots:
-  telegram:test:
+  telegram:foo:
     enabled: true
 
-    dc: 2
-    servers: []
+    appID@env: $TG_APP_ID
+    appHash@env: $TG_APP_HASH
+    appPubKey@env: $TG_APP_PUBKEY
 
-    appID@file: ./private/telegram-app-id.txt
-    appHash@file: ./private/telegram-app-hash.txt
-    appPubKey@file: ./private/telegram-app-pubkey-prod.txt
-
-    botToken@file: ./private/telegram-bot-token.txt
+    botToken@env: $TG_BOT_TOKEN
 
     workflows:
-    # meeting minutes
-    - generator: gotemplate:test
-      storage: router:test
-      publisher: telegraph:test
+    - generator: gotemplate:foo
+      storage: router:foo
+      publisher: telegraph:foo
 
       adminOnly: true
       downloadMedia: true
@@ -48,4 +43,3 @@ bots:
         /resume:
           as: /continue
           description: continue previous discussion
-

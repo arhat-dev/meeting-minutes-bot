@@ -37,14 +37,19 @@ func GenerateContent(
 	con rt.Conversation,
 	cmd, params string,
 	msgs []*rt.Message,
-) (result rt.GeneratorOutput, err error) {
+) (rt.GeneratorOutput, error) {
 	for _, m := range msgs {
 		for !m.Ready() {
-			// TODO: m.Wait()
+			// TODO: implement m.Wait()?
 			time.Sleep(time.Second)
 		}
 	}
 
-	result, err = gen.Generate(con, cmd, params, msgs)
-	return
+	in := rt.GeneratorInput{
+		Cmd:      cmd,
+		Params:   params,
+		Messages: msgs,
+	}
+
+	return gen.Generate(con, &in)
 }

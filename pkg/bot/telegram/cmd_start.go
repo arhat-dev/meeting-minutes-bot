@@ -208,11 +208,12 @@ func (c *tgBot) handleBotCmd_Start(
 			return err2
 		}
 
-		content, err2 := wf.Generator.New(
-			&mc.con,
-			wf.BotCommands.TextOf(rt.BotCmd_Discuss),
-			params,
-		)
+		in := rt.GeneratorInput{
+			Cmd:    wf.BotCommands.TextOf(rt.BotCmd_New),
+			Params: params,
+		}
+
+		content, err2 := wf.Generator.New(&mc.con, &in)
 		if err2 != nil {
 			_, _ = c.sendTextMessage(
 				c.sender.To(mc.src.Chat.InputPeer()).NoWebpage().Reply(mc.msg.GetID()),
@@ -225,7 +226,7 @@ func (c *tgBot) handleBotCmd_Start(
 
 		note, err2 := pub.CreateNew(
 			&mc.con,
-			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_Discuss),
+			standbySession.Workflow().BotCommands.TextOf(rt.BotCmd_New),
 			standbySession.Params,
 			&content,
 		)

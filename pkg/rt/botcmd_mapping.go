@@ -10,12 +10,12 @@ type CommandsMapping struct {
 	Help  *CmdMapping `yaml:"/help"`
 	Start *CmdMapping `yaml:"/start"`
 
-	Discuss  *CmdMapping `yaml:"/discuss"`
-	Continue *CmdMapping `yaml:"/continue"`
-	Ignore   *CmdMapping `yaml:"/ignore"`
-	Include  *CmdMapping `yaml:"/include"`
-	End      *CmdMapping `yaml:"/end"`
-	Cancel   *CmdMapping `yaml:"/cancel"`
+	New     *CmdMapping `yaml:"/new"`
+	Resume  *CmdMapping `yaml:"/resume"`
+	Ignore  *CmdMapping `yaml:"/ignore"`
+	Include *CmdMapping `yaml:"/include"`
+	End     *CmdMapping `yaml:"/end"`
+	Cancel  *CmdMapping `yaml:"/cancel"`
 
 	Edit   *CmdMapping `yaml:"/edit"`
 	List   *CmdMapping `yaml:"/list"`
@@ -46,16 +46,16 @@ loop:
 			ret.Descriptions[BotCmd_Start-1] = c.Start.Description
 			c.Start = nil
 
-		case c.Discuss != nil:
-			ret.botCmd_Discuss = c.Discuss.As
-			ret.Commands[BotCmd_Discuss-1] = c.Discuss.As
-			ret.Descriptions[BotCmd_Discuss-1] = c.Discuss.Description
-			c.Discuss = nil
-		case c.Continue != nil:
-			ret.botCmd_Continue = c.Continue.As
-			ret.Commands[BotCmd_Continue-1] = c.Continue.As
-			ret.Descriptions[BotCmd_Continue-1] = c.Continue.Description
-			c.Continue = nil
+		case c.New != nil:
+			ret.botCmd_New = c.New.As
+			ret.Commands[BotCmd_New-1] = c.New.As
+			ret.Descriptions[BotCmd_New-1] = c.New.Description
+			c.New = nil
+		case c.Resume != nil:
+			ret.botCmd_Resume = c.Resume.As
+			ret.Commands[BotCmd_Resume-1] = c.Resume.As
+			ret.Descriptions[BotCmd_Resume-1] = c.Resume.Description
+			c.Resume = nil
 		case c.Ignore != nil:
 			ret.botCmd_Ignore = c.Ignore.As
 			ret.Commands[BotCmd_Ignore-1] = c.Ignore.As

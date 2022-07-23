@@ -16,7 +16,7 @@ func fakeFuncMap() map[string]any {
 }
 
 // realFuncMap creates actual template funcs
-func realFuncMap(data *Data) map[string]any {
+func realFuncMap(data *rt.GeneratorInput) map[string]any {
 	return map[string]any{
 		"jq": func(query string, data any) (string, error) {
 			switch t := data.(type) {

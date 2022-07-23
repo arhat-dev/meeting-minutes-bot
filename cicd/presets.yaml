@@ -1,0 +1,76 @@
+include:
+# add tools
+
+- text@presets?str: golang/setup.yml
+- text@presets?str: cosign/setup.yml
+- text@presets?str: buildah/setup.yml
+
+# add common tasks
+
+- text@presets?str: golang/test/task-pkg.yml
+- text@presets?str: golang/build/task-app.yml
+
+- text@presets?str: archive/create/task-app.yml
+
+- text@presets?str: buildah/xbuild/golang/task-app.yml
+- text@presets?str: buildah/login/task-ghcr.yml
+
+- text@presets?str: docker/login/task-ghcr.yml # docker login is required for cosign upload
+
+- text@presets?str: cosign/sign/task-app.yml
+- text@presets?str: cosign/sign/task-fake.yml
+- text@presets?str: cosign/upload/task-app.yml
+- text@presets?str: cosign/sign-image/task-app.yml
+
+- text@presets?str: github/release/task-app.yml
+- text@presets?str: github/release/task-fake.yml
+
+tools:
+  workflow:
+  - name: local
+  - name: in-ctr
+  docker:
+  - name: local
+  archive:
+  - name: local
+
+global:
+  default_git_branch: master
+  values:
+    cmd:
+      # set commands to run container
+      run_ctr@presets?str|tlang: templates/run-ctr.tl
+
+    golang:
+      version: "1.18"
+
+    cosign:
+      public_key_url: https://arhat.dev/.well-known/cosign.pub
+
+    test:
+      profile_dir: build/test-profile
+
+    artifacts:
+      names: |-
+        - image: ghcr.io/arhat-dev/dist/mbot
+
+      labels: &labels |-
+        - name: org.opencontainers.image.source
+          value: https://github.com/arhat-dev/mbot
+      matrix@?str!:
+        value@presets: matrix/golang/1.18/common.yml
+        select: |-
+          .include.[].cmd = ["mbot"] | .cmd = ["mbot"]
+
+    images:
+      names: |-
+        - image: ghcr.io/arhat-dev/mbot
+          manifest: ghcr.io/arhat-dev/mbot
+      labels: *labels
+      matrix@?str!:
+        value:
+          kernel:
+          - linux
+          arch@presets: matrix/container/linux/common.yml
+        select: |-
+          .cmd = ["mbot"]

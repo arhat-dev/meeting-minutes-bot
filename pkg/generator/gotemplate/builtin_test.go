@@ -55,11 +55,13 @@ func TestBuiltinTemplates(t *testing.T) {
 				return
 			}
 
-			hdr, err := gen.New(nil, "", "")
+			hdr, err := gen.New(nil, nil)
 			assert.NoError(t, err)
 			t.Log("header", string(hdr.Data.Get()))
 
-			body, err := gen.Generate(nil, "", "", testMessages())
+			body, err := gen.Generate(nil, &rt.GeneratorInput{
+				Messages: testMessages(),
+			})
 			assert.NoError(t, err)
 			t.Log("body", string(body.Data.Get()))
 		})

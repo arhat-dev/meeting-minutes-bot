@@ -21,20 +21,15 @@ type Driver struct {
 }
 
 // Peek implements generator.Interface
-func (*Driver) Peek(con rt.Conversation, msg *rt.Message) (out rt.GeneratorOutput, err error) {
+func (*Driver) Peek(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error) {
 	return
 }
 
 // New implements generator.Interface
-func (d *Driver) New(con rt.Conversation, cmd, params string) (out rt.GeneratorOutput, err error) {
+func (d *Driver) New(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error) {
 	var buf strings.Builder
 
-	data := Data{
-		Command: cmd,
-		Params:  params,
-	}
-
-	err = d.templates.ExecuteTemplate(&buf, "gen.new", &data)
+	err = d.templates.ExecuteTemplate(&buf, "gen.new", in)
 	if err != nil {
 		err = fmt.Errorf("execute template gen.new: %w", err)
 		return
@@ -45,15 +40,10 @@ func (d *Driver) New(con rt.Conversation, cmd, params string) (out rt.GeneratorO
 }
 
 // Continue implements generator.Interface
-func (d *Driver) Continue(con rt.Conversation, cmd, params string) (out rt.GeneratorOutput, err error) {
+func (d *Driver) Continue(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error) {
 	var buf strings.Builder
 
-	data := Data{
-		Command: cmd,
-		Params:  params,
-	}
-
-	err = d.templates.ExecuteTemplate(&buf, "gen.continue", &data)
+	err = d.templates.ExecuteTemplate(&buf, "gen.continue", in)
 	if err != nil {
 		err = fmt.Errorf("execute template gen.continue: %w", err)
 		return
@@ -70,14 +60,10 @@ type Data struct {
 }
 
 // RenderBody implements generator.Interface
-func (d *Driver) Generate(con rt.Conversation, cmd, params string, msgs []*rt.Message) (out rt.GeneratorOutput, err error) {
+func (d *Driver) Generate(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error) {
 	var buf strings.Builder
 
-	data := Data{
-		Messages: msgs,
-	}
-
-	err = d.templates.ExecuteTemplate(&buf, "gen.body", &data)
+	err = d.templates.ExecuteTemplate(&buf, "gen.body", in)
 	if err != nil {
 		err = fmt.Errorf("execute template gen.body: %w", err)
 		return

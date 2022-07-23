@@ -1,3 +1,3 @@
-# Generator
+# Generators
 
-A `generator` is a component to generate text content from chat messages
+A `generator` is a component translating messages into various kinds of data.

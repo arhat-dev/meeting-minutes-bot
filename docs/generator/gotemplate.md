@@ -15,7 +15,7 @@ Render messages with [go template](https://golang.org/pkg/text/template/)
   - The `gen.new` template is executed when calling `generator.New()`
     - It will be executed only once for each post
   - The `gen.body` template will be executed when calling `generator.Append()`
-    - It will be executed multiple times if you `/continue` the session
+    - It will be executed multiple times if you `/resume` the session
 
 ## Config
 

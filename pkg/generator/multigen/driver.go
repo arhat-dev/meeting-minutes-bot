@@ -33,29 +33,29 @@ func (d *Driver) forEach(do func(generator.Interface) (rt.GeneratorOutput, error
 }
 
 // New implements generator.Interface
-func (d *Driver) New(con rt.Conversation, cmd string, params string) (out rt.GeneratorOutput, err error) {
+func (d *Driver) New(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error) {
 	return d.forEach(func(impl generator.Interface) (rt.GeneratorOutput, error) {
-		return impl.New(con, cmd, params)
+		return impl.New(con, in)
 	})
 }
 
 // Continue implements generator.Interface
-func (d *Driver) Continue(con rt.Conversation, cmd string, params string) (out rt.GeneratorOutput, err error) {
+func (d *Driver) Continue(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error) {
 	return d.forEach(func(impl generator.Interface) (rt.GeneratorOutput, error) {
-		return impl.Continue(con, cmd, params)
+		return impl.Continue(con, in)
 	})
 }
 
 // Generate implements generator.Interface
-func (d *Driver) Generate(con rt.Conversation, cmd string, params string, msgs []*rt.Message) (out rt.GeneratorOutput, err error) {
+func (d *Driver) Generate(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error) {
 	return d.forEach(func(impl generator.Interface) (rt.GeneratorOutput, error) {
-		return impl.Generate(con, cmd, params, msgs)
+		return impl.Generate(con, in)
 	})
 }
 
 // Peek implements generator.Interface
-func (d *Driver) Peek(con rt.Conversation, msg *rt.Message) (out rt.GeneratorOutput, err error) {
+func (d *Driver) Peek(con rt.Conversation, in *rt.GeneratorInput) (out rt.GeneratorOutput, err error) {
 	return d.forEach(func(impl generator.Interface) (rt.GeneratorOutput, error) {
-		return impl.Peek(con, msg)
+		return impl.Peek(con, in)
 	})
 }

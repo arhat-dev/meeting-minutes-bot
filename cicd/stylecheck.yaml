@@ -1,5 +1,24 @@
 workflow:run:
 # required by ci job
+- name: tidy
+  jobs:
+  - task:
+      ref: workflow:run(tidy-go-mod)
+      matrix_filter: {}
+
+# ensure tidy go mod
+- name: tidy-go-mod
+  env:
+  - name: GOPROXY
+    value: direct
+  - name: GOSUMDB
+    value: "off"
+  jobs:
+  - shell: |-
+      go mod tidy
+      go mod vendor
+
+# required by ci job
 - name: lint
   matrix:
     include:
@@ -14,4 +33,4 @@ workflow:run:
       config:
       - __@presets#cached-file?str: tools/golangci-lint/config.vendor.yaml
   jobs:
-  - cmd@presets?str|tpl#use-spec: tools/presets.tpl
+  - cmd@presets?str|tmpl#use-spec: tools/presets.tmpl

@@ -1,3 +1,3 @@
 # Storage
 
-Storage provides support for content sharing for users outside the chat
+A `storage` is a component saving media content received in messages.

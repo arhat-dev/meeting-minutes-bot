@@ -11,10 +11,10 @@ dir: /path/to/some/directory
 ## Reference Commands Mapping
 
 ```yaml
-/discuss:
+/new:
   as: /new
   description: create a new file
-/continue:
+/resume:
   as: /open
   description: open the file
 /list:

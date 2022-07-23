@@ -11,16 +11,17 @@ import (
 	"github.com/Masterminds/sprig/v3"
 	"github.com/bmatcuk/doublestar/v4"
 
+	"arhat.dev/mbot/pkg/rt"
 	"arhat.dev/pkg/stringhelper"
 )
 
 type tplExecutor interface {
-	ExecuteTemplate(wr io.Writer, name string, data *Data) error
+	ExecuteTemplate(wr io.Writer, name string, data *rt.GeneratorInput) error
 }
 
 type hTemplate struct{ htpl.Template }
 
-func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *Data) error {
+func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *rt.GeneratorInput) error {
 	clone, err := ht.Template.Clone()
 	if err != nil {
 		return err
@@ -31,7 +32,7 @@ func (ht *hTemplate) ExecuteTemplate(wr io.Writer, name string, data *Data) erro
 
 type tTemplate struct{ ttpl.Template }
 
-func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *Data) error {
+func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *rt.GeneratorInput) error {
 	clone, err := tt.Template.Clone()
 	if err != nil {
 		return err

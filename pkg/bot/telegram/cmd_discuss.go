@@ -85,7 +85,11 @@ func (c *tgBot) handleBotCmd_Discuss(
 			}
 		}()
 
-		pageHeader, err := wf.Generator.New(&mc.con, cmd, params)
+		in := rt.GeneratorInput{
+			Cmd:    cmd,
+			Params: params,
+		}
+		pageHeader, err := wf.Generator.New(&mc.con, &in)
 		if err != nil {
 			return fmt.Errorf("failed to render page header: %w", err)
 		}

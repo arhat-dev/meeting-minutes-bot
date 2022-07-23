@@ -1,0 +1,52 @@
+app:
+  log:
+  - level: verbose
+    file: stderr
+
+generators:
+  chain:dl:
+  # exec output is a json encoded stdout/stderr
+  - exec:lux:
+      workdir@env: ${HOME}/downloads
+      executable: /path/to/lux
+      args:
+      - ""
+  - gotemplate:
+
+storage:
+  # we do not accept any media content
+  router:discard: {}
+
+publishers:
+  bot:telegram:foo:
+    name: telegram:foo
+
+bots:
+  telegram:foo:
+    enabled: true
+
+    appID@env: $TG_APP_ID
+    appHash@env: $TG_APP_HASH
+    appPubKey@env: $TG_APP_PUBKEY
+
+    botToken@env: $TG_BOT_TOKEN
+
+    workflows:
+    - generator: exec:lux
+      storage: router:discard
+      publisher: bot:telegram:foo
+
+      adminOnly: false
+      downloadMedia: false
+
+      cmdMapping:
+        /new:
+          as: /download
+          description: download video from specified url
+        # turn off all other commands
+        /resume: {}
+        /cancel: {}
+        /end: {}
+        /edit: {}
+        /list: {}
+        /delete: {}

@@ -53,7 +53,7 @@ responseTemplate: |
 ## Reference Commands Mapping
 
 ```yaml
-/discuss:
+/new:
   as: /prepare
   description: prepare a http request
 /end:
@@ -68,7 +68,7 @@ responseTemplate: |
 /list: {}
 /delete: {}
 /start: {}
-/continue: {}
+/resume: {}
 /ignore: {}
 /include: {}
 ```
