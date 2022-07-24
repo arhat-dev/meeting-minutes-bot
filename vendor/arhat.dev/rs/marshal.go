@@ -12,12 +12,12 @@ import (
 // known to BaseField
 //
 // You can opt-out with build tag `rs_noyamlmarshaler`
-func (f *BaseField) MarshalYAML() (interface{}, error) {
+func (f *BaseField) MarshalYAML() (any, error) {
 	if !f.initialized() {
 		return nil, fmt.Errorf("rs: struct not intialized before marshaling")
 	}
 
-	ret := make(map[string]interface{})
+	ret := make(map[string]any)
 
 	// handle catch other fields first, so they can be overridden
 	// by normal fields

@@ -2,6 +2,7 @@ package rs
 
 import (
 	"fmt"
+	"unsafe"
 
 	"gopkg.in/yaml.v3"
 )
@@ -33,33 +34,38 @@ func prepareYamlNode(n *yaml.Node) *yaml.Node {
 }
 
 // fakeMap constructs a single entry map node from two yaml nodes
-func fakeMap(k, v *yaml.Node) *yaml.Node {
-	return &yaml.Node{
-		Kind:    yaml.MappingNode,
-		Value:   "",
-		Content: []*yaml.Node{k, v},
-	}
+func fakeMap(out, k, v *yaml.Node) {
+	out.Kind = yaml.MappingNode
+	out.Value = ""
+	out.Content = []*yaml.Node{k, v}
 }
 
-func unmarshalYamlMap(content []*yaml.Node) ([][]*yaml.Node, error) {
-	var ret [][]*yaml.Node
-	for i := 0; i < len(content); i += 2 {
+func unmarshalYamlMap(content []*yaml.Node) (ret []*[2]*yaml.Node, err error) {
+	var (
+		sz         = len(content)
+		szSub      int
+		j          int
+		subContent []*yaml.Node
+	)
+
+	for i := 0; i < sz; i += 2 {
 		if !isMerge(content[i]) {
-			ret = append(ret, content[i:i+2])
+			ret = append(ret, (*[2]*yaml.Node)(unsafe.Pointer(&content[i])))
 			continue
 		}
 
-		subContent, err := merge(content[i+1])
+		subContent, err = merge(content[i+1])
 		if err != nil {
-			return nil, err
+			return
 		}
 
-		for j := 0; j < len(subContent); j += 2 {
-			ret = append(ret, subContent[j:j+2])
+		szSub = len(subContent)
+		for j = 0; j < szSub; j += 2 {
+			ret = append(ret, (*[2]*yaml.Node)(unsafe.Pointer(&subContent[j])))
 		}
 	}
 
-	return ret, nil
+	return
 }
 
 func merge(n *yaml.Node) ([]*yaml.Node, error) {

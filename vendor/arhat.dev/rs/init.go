@@ -5,8 +5,13 @@ import (
 )
 
 type Options struct {
-	// InterfaceTypeHandler handles interface value creation for any inner field
+	// InterfaceTypeHandler handles interface value creation for any field
 	// with a interface{...} type (including []interface{...} and map[string]interface{...})
+	//
+	// for example, define a interface type Foo:
+	// 		type Foo interface{ Bar() string }
+	//
+	// with InterfaceTypeHandler you can return values whose type impelemts Foo during unmarshaling
 	//
 	// defaults to `nil`
 	InterfaceTypeHandler InterfaceTypeHandler
@@ -47,49 +52,47 @@ type Options struct {
 // 			rs.BaseField // or *rs.BaseField
 // 		}
 //
-// if the arg `in` doesn't contain BaseField or the BaseField is not the first element
+// NOTE: if the arg `in` doesn't contain BaseField or the BaseField is not the first element
 // it does nothing and will return `in` as is.
 func Init(in Field, opts *Options) Field {
-	return initInterface(in, opts).(Field)
+	_ = InitReflectValue(reflect.ValueOf(in), opts)
+	return in
 }
 
-func initInterface(in interface{}, opts *Options) interface{} {
-	parentVal := reflect.ValueOf(in)
-	parentType := reflect.TypeOf(in)
-
-	switch parentVal.Kind() {
+// InitReflectValue returns true when BaseField of `in` is initilized after the call
+func InitReflectValue(in reflect.Value, opts *Options) bool {
+	switch in.Kind() {
 	case reflect.Struct:
 	case reflect.Ptr:
 		// no pointer to pointer support
-		parentVal = parentVal.Elem()
-		parentType = parentType.Elem()
+		in = in.Elem()
 
-		if parentType.Kind() != reflect.Struct {
+		if in.Kind() != reflect.Struct {
 			// the target is not a struct, not using BaseField
-			return in
+			return false
 		}
 	default:
-		return in
+		return false
 	}
 
-	if !parentVal.CanAddr() {
+	if !in.CanAddr() {
 		panic("invalid non addressable value")
 	}
 
-	if parentVal.NumField() == 0 {
+	if in.NumField() == 0 {
 		// empty struct, no BaseField
-		return in
+		return false
 	}
 
-	firstField := parentVal.Field(0)
+	firstField := in.Field(0)
 
 	var baseField *BaseField
 	switch firstField.Type() {
-	case baseFieldStructType:
+	case typeStruct_BaseField:
 		// using BaseField
 
 		baseField = firstField.Addr().Interface().(*BaseField)
-	case baseFieldPtrType:
+	case typePtr_BaseField:
 		// using *BaseField
 
 		if firstField.IsZero() {
@@ -101,66 +104,66 @@ func initInterface(in interface{}, opts *Options) interface{} {
 		}
 	default:
 		// BaseField is not the first field
-		return in
+		return false
 	}
 
-	err := baseField.init(parentType, parentVal, opts)
+	err := baseField.init(in, opts)
 	if err != nil {
 		panic(err)
 	}
 
-	return in
+	return true
 }
 
 // InitRecursively trys to call Init on all fields implementing Field interface
 func InitRecursively(fv reflect.Value, opts *Options) {
 	switch fv.Type() {
-	case baseFieldPtrType, baseFieldStructType:
+	case typePtr_BaseField, typeStruct_BaseField:
 		return
 	}
 
-	target := fv
 findStruct:
-	switch target.Kind() {
+	switch fv.Kind() {
 	case reflect.Struct:
 		_ = tryInit(fv, opts)
 	case reflect.Ptr:
-		if !target.IsValid() || target.IsZero() || target.IsNil() {
+		if !fv.IsValid() || fv.IsZero() || fv.IsNil() {
 			return
 		}
 
-		target = target.Elem()
+		fv = fv.Elem()
 		goto findStruct
 	default:
 		return
 	}
 
-	for i := 0; i < target.NumField(); i++ {
-		InitRecursively(target.Field(i), opts)
+	for i := 0; i < fv.NumField(); i++ {
+		InitRecursively(fv.Field(i), opts)
 	}
 }
 
+// return true when Init called on fieldValue
 // nolint:unparam
-func tryInit(fieldValue reflect.Value, opts *Options) bool {
-	if fieldValue.CanInterface() {
-		fVal, canCallInit := fieldValue.Interface().(Field)
+func tryInit(fv reflect.Value, opts *Options) bool {
+	if fv.CanInterface() {
+		fVal, canCallInit := fv.Interface().(Field)
 		if canCallInit {
 			_ = Init(fVal, opts)
 			return true
 		}
 	}
 
-	if !fieldValue.CanAddr() {
+	if !fv.CanAddr() {
 		return false
 	}
 
-	fieldValue = fieldValue.Addr()
+	fv = fv.Addr()
 
-	if !fieldValue.CanInterface() {
+	if !fv.CanInterface() {
 		return false
 	}
 
-	fVal, canCallInit := fieldValue.Interface().(Field)
+	fVal, canCallInit := fv.Interface().(Field)
 	if canCallInit {
 		_ = Init(fVal, opts)
 		return true

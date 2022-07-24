@@ -46,7 +46,7 @@ func (ofs *OSFS) matchFileSysinfo(opts *FindOptions, path string, f any) (_ bool
 				STATX_BTIME = 0x00000800
 			)
 
-			_, path, err = ofs.getRealPath(path)
+			_, path, err = ofs.getRealPath(Op_Abs, path)
 			if err != nil {
 				return
 			}

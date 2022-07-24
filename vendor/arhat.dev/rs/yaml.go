@@ -6,6 +6,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// nolint:revive
 const (
 	nullTag      = "!!null"
 	boolTag      = "!!bool"
@@ -17,40 +18,49 @@ const (
 	mapTag       = "!!map"
 	binaryTag    = "!!binary"
 	mergeTag     = "!!merge"
+
+	nullTag_long      = "tag:yaml.org,2002:null"
+	boolTag_long      = "tag:yaml.org,2002:bool"
+	strTag_long       = "tag:yaml.org,2002:str"
+	intTag_long       = "tag:yaml.org,2002:int"
+	floatTag_long     = "tag:yaml.org,2002:float"
+	timestampTag_long = "tag:yaml.org,2002:timestamp"
+	seqTag_long       = "tag:yaml.org,2002:seq"
+	mapTag_long       = "tag:yaml.org,2002:map"
+	binaryTag_long    = "tag:yaml.org,2002:binary"
+	mergeTag_long     = "tag:yaml.org,2002:merge"
 )
 
-var longTags = make(map[string]string)
-var shortTags = make(map[string]string)
-
-func init() {
-	for _, stag := range []string{
-		nullTag, boolTag, strTag, intTag, floatTag,
-		timestampTag, seqTag, mapTag, binaryTag, mergeTag,
-	} {
-		ltag := longTag(stag)
-		longTags[stag] = ltag
-		shortTags[ltag] = stag
-	}
-}
-
-const longTagPrefix = "tag:yaml.org,2002:"
+const (
+	longTagPrefix = "tag:yaml.org,2002:"
+)
 
 func shortTag(tag string) string {
 	if strings.HasPrefix(tag, longTagPrefix) {
-		if stag, ok := shortTags[tag]; ok {
-			return stag
+		switch tag {
+		case nullTag_long:
+			return nullTag
+		case boolTag_long:
+			return boolTag
+		case strTag_long:
+			return strTag
+		case intTag_long:
+			return intTag
+		case floatTag_long:
+			return floatTag
+		case timestampTag_long:
+			return timestampTag
+		case seqTag_long:
+			return seqTag
+		case mapTag_long:
+			return mapTag
+		case binaryTag_long:
+			return binaryTag
+		case mergeTag_long:
+			return mergeTag
+		default:
+			return "!!" + tag[len(longTagPrefix):]
 		}
-		return "!!" + tag[len(longTagPrefix):]
-	}
-	return tag
-}
-
-func longTag(tag string) string {
-	if strings.HasPrefix(tag, "!!") {
-		if ltag, ok := longTags[tag]; ok {
-			return ltag
-		}
-		return longTagPrefix + tag[2:]
 	}
 	return tag
 }
@@ -61,6 +71,11 @@ func isMerge(n *yaml.Node) bool {
 		(n.Tag == "" || n.Tag == "!" || shortTag(n.Tag) == mergeTag)
 }
 
+// is empty returns true when
+// - n is nil
+// - n is a document node and contains nothing
+// - n is a scalar node and isNullScalar
+// - n is a document node and its only child isEmpty
 func isEmpty(n *yaml.Node) bool {
 	for n != nil {
 		switch n.Kind {

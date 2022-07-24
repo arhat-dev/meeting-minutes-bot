@@ -16,14 +16,12 @@ limitations under the License.
 
 package wellknownerrors
 
-type errString string
-
-func (s errString) Error() string { return string(s) }
+import "arhat.dev/pkg/errhelper"
 
 // Common errors
 const (
-	ErrNotFound         errString = "not found"
-	ErrAlreadyExists    errString = "already exists"
-	ErrNotSupported     errString = "not supported"
-	ErrInvalidOperation errString = "invalid operation"
+	ErrNotFound         errhelper.ErrString = "not found"
+	ErrAlreadyExists    errhelper.ErrString = "already exists"
+	ErrNotSupported     errhelper.ErrString = "not supported"
+	ErrInvalidOperation errhelper.ErrString = "invalid operation"
 )

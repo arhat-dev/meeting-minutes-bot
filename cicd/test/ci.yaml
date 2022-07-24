@@ -4,3 +4,12 @@ workflow:run:
   - task:
       ref: golang:test(pkg)
       matrix_filter: {}
+
+- name: report
+  matrix:
+    tool:
+    - sonar-scanner
+  jobs:
+  # only run sonar scan on linux and darwin during CI
+  - cmd@presets?str|tmpl#use-spec: tools/presets.tmpl
+    continue_on_error: true

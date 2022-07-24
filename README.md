@@ -1,10 +1,9 @@
 # mbot
 
-[![CI](https://github.com/arhat-dev/mbot/workflows/CI/badge.svg)](https://github.com/arhat-dev/mbot/actions?query=workflow%3ACI)
-[![Build](https://github.com/arhat-dev/mbot/workflows/Build/badge.svg)](https://github.com/arhat-dev/mbot/actions?query=workflow%3ABuild)
+[![CICD](https://github.com/arhat-dev/mbot/workflows/CI/badge.svg)](https://github.com/arhat-dev/mbot/actions?query=workflow%3ACI)
 [![PkgGoDev](https://pkg.go.dev/badge/arhat.dev/mbot)](https://pkg.go.dev/arhat.dev/mbot)
 [![GoReportCard](https://goreportcard.com/badge/arhat.dev/mbot)](https://goreportcard.com/report/arhat.dev/mbot)
-[![codecov](https://codecov.io/gh/arhat-dev/mbot/branch/master/graph/badge.svg)](https://codecov.io/gh/arhat-dev/mbot)
+[![Coverage](https://badge.arhat.dev/sonar/coverage/arhat-dev_mbot?branch=master&token=5ef94767c23a62c0c9ee2584887506d7)](https://sonar.arhat.dev/dashboard?id=arhat-dev_mbot)
 
 Build your chat bot declaratively.
 

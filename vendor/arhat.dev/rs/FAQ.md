@@ -100,7 +100,7 @@ remote_host_script: |-
 - Solution 2: Expand environment variables before unmarshaling
   - What would you do with `${ENV_WITH_DIFFERENT_CONTEXT}`? Well, you can unmarshal the config into two config, one with environment variables expanded, another not, and merge them into one.
   - Looks like a effective solution, but now you have to do the merge in compiled code.
-- Solution 3: Unmarshal yaml as `map[string]interface{}` first, then do custom handling for every field
+- Solution 3: Unmarshal yaml as `map[string]any` first, then do custom handling for every field
   - Now you have to work with types manually, tedious yet error prone job starts now.
 - Solution 4: Create a new DSL, add some keywords...
   - We have already seen so many DSLs created just for configuration purpose, almost none of them really simplified the configuration management, and usually only useful for development not deployment.

@@ -40,7 +40,7 @@ type CacheReader interface {
 }
 
 func NewCache(cacheDir string) (_ Cache, err error) {
-	osfs := fshelper.NewOSFS(false, func() (string, error) {
+	osfs := fshelper.NewOSFS(false, func(fshelper.Op, string) (string, error) {
 		return cacheDir, nil
 	})
 

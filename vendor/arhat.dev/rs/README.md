@@ -62,16 +62,16 @@ As you may also be wondering how can `foo@env` be resolved as `foo` since they a
   - Add a suffix starts with `@`, followed by some renderer name, to your yaml field name as rendering suffix (e.g. `foo@<renderer-name>: bar`)
 - Type hinting: keep you data as what it supposed to be
   - Add a type hint suffix `?<some-type>` to your renderer (e.g. `foo@<renderer-name>?[]obj: bar` suggests `foo` should be an array of objects using result from `<renderer-name>` generated with input `bar`)
-  - See [list of supported type hints](https://github.com/arhat-dev/rs/blob/v0.5.1/typehint.go#L209)
+  - See [list of supported type hints](https://github.com/arhat-dev/rs/blob/master/typehint.go#L29)
 - Data merging and patching made esay: create patching spec in yaml doc
   - Add a patching suffix `!` to your renderer (after the type hint if any), feed it a [patch spec](https://pkg.go.dev/arhat.dev/rs#PatchSpec) object
   - Built-in `jq` (as `select` field) and rfc6902 json-patch (as `patch[*]`) support to select partial data from the incoming data.
 - Renderer chaining: render you data with a rendering pipeline
   - Concatenate you renderers with pipes (`|`), get your data rendered through the pipeline (e.g. join three renderers `a`, `b`, `c` -> `a|b|c`)
 - Supports arbitraty yaml doc without type definition in your own code.
-  - Use [`AnyObject`](https://pkg.go.dev/arhat.dev/rs#AnyObject) as `interface{}`.
-  - Use [`AnyObjectMap`](https://pkg.go.dev/arhat.dev/rs#AnyObjectMap) as `map[string]interface{}`.
-- Everything (except `map`s using `interface{}` key) `gopkg.in/yaml.v3` supports are supported.
+  - Use [`AnyObject`](https://pkg.go.dev/arhat.dev/rs#AnyObject) as `any`.
+  - Use [`AnyObjectMap`](https://pkg.go.dev/arhat.dev/rs#AnyObjectMap) as `map[string]any`.
+- Everything (except `map`s using `any` key) `gopkg.in/yaml.v3` supports are supported.
 - Extended but still vanilla yaml, your yaml doc stays valid for all standard yaml parser.
 
 Sample YAML doc with all features mentioned above:
@@ -134,7 +134,7 @@ __NOTE:__ You can find more examples in [`arhat-dev/dukkha`][dukkha]
 See [known_limitation_test.go](./known_limitation_test.go) for sample code and workaround.
 
 - Golang built-in map with rendering suffix applied to map key are treated as is, rendering suffix won't be recognized.
-  - For `map[string]interface{}`, `foo@foo: bar` is just a map item with key `foo@foo`, value `bar`, no data to be resolved.
+  - For `map[string]any`, `foo@foo: bar` is just a map item with key `foo@foo`, value `bar`, no data to be resolved.
   - The reason for this limitation is obvious since built-in map types don't have `BaseField` embedded, but it can be counterintuitive when you have a map field in a struct having `BaseField` embedded.
 
 ## How it works?

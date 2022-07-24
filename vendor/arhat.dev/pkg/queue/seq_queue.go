@@ -26,27 +26,26 @@ import (
 	"sync/atomic"
 )
 
-type SeqDataHandleFunc func(seq uint64, d interface{})
+type SeqDataHandleFunc[T any] func(seq uint64, d T)
 
 // NewSeqQueue returns a empty SeqQueue
-func NewSeqQueue(handleData SeqDataHandleFunc) *SeqQueue {
-	return &SeqQueue{
+func NewSeqQueue[T any](handleData SeqDataHandleFunc[T]) *SeqQueue[T] {
+	return &SeqQueue[T]{
 		next: 0,
 		max:  math.MaxUint64,
 
+		m:            new(sync.Map),
 		handleData:   handleData,
 		_snapshoting: 0,
-
-		m: new(sync.Map),
 	}
 }
 
 // SeqQueue is the sequence queue for unordered data
-type SeqQueue struct {
+type SeqQueue[T any] struct {
 	next uint64
 	max  uint64
 
-	handleData   SeqDataHandleFunc
+	handleData   SeqDataHandleFunc[T]
 	_snapshoting uint32
 
 	m *sync.Map
@@ -54,7 +53,7 @@ type SeqQueue struct {
 	mu sync.Mutex
 }
 
-func (q *SeqQueue) handleExpectedNext(seq, max uint64, data interface{}) bool {
+func (q *SeqQueue[T]) handleExpectedNext(seq, max uint64, data T) bool {
 	q.mu.Lock()
 	if !atomic.CompareAndSwapUint64(&q.next, seq, seq+1) {
 		// lost competition, discard
@@ -77,7 +76,7 @@ func (q *SeqQueue) handleExpectedNext(seq, max uint64, data interface{}) bool {
 
 		q.m.Delete(seq)
 
-		q.handleData(seq, v)
+		q.handleData(seq, v.(T))
 	}
 	q.mu.Unlock()
 
@@ -85,7 +84,7 @@ func (q *SeqQueue) handleExpectedNext(seq, max uint64, data interface{}) bool {
 }
 
 // Offer an unordered data with its sequence
-func (q *SeqQueue) Offer(seq uint64, data interface{}) (complete bool) {
+func (q *SeqQueue[T]) Offer(seq uint64, data T) (complete bool) {
 	var (
 		next, max uint64
 	)
@@ -119,7 +118,7 @@ func (q *SeqQueue) Offer(seq uint64, data interface{}) (complete bool) {
 }
 
 // SetMaxSeq set when should this queue stop enqueuing data
-func (q *SeqQueue) SetMaxSeq(maxSeq uint64) (complete bool) {
+func (q *SeqQueue[T]) SetMaxSeq(maxSeq uint64) (complete bool) {
 	if next := atomic.LoadUint64(&q.next); next > maxSeq {
 		// existing seq data already exceeds maxSeq
 		atomic.StoreUint64(&q.max, next)
@@ -131,13 +130,13 @@ func (q *SeqQueue) SetMaxSeq(maxSeq uint64) (complete bool) {
 }
 
 // Reset the SeqQueue for new sequential data
-func (q *SeqQueue) Reset() {
+func (q *SeqQueue[T]) Reset() {
 	q.next = 0
 	q.max = math.MaxUint64
 	q.m = new(sync.Map)
 }
 
-func (q *SeqQueue) doSnapshot(f func()) {
+func (q *SeqQueue[T]) doSnapshot(f func()) {
 	for !atomic.CompareAndSwapUint32(&q._snapshoting, 0, 1) {
 		runtime.Gosched()
 	}

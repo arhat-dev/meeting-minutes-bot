@@ -13,8 +13,8 @@ func DefaultRenderingManager(env map[string]string, funcMap template.FuncMap) *R
 		m: make(map[string]rs.RenderingHandler),
 	}
 
-	m.Add(&EnvRenderingHandler{Env: env, AllowNotFound: false}, "env", "env-strict")
-	m.Add(&EnvRenderingHandler{Env: env, AllowNotFound: true}, "env-loose")
+	m.Add(&EnvRenderingHandler{Env: env, AllowNotFound: false}, "mustenv")
+	m.Add(&EnvRenderingHandler{Env: env, AllowNotFound: true}, "env")
 
 	m.Add(&FileHandler{}, "file")
 

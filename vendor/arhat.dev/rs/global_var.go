@@ -1,13 +1,16 @@
 package rs
 
-import "reflect"
+import (
+	"reflect"
+)
 
+// nolint:revive
 var (
-	stringType = reflect.TypeOf("")
+	type_string = reflect.TypeOf("")
 
-	baseFieldPtrType    = reflect.TypeOf((*BaseField)(nil))
-	baseFieldStructType = baseFieldPtrType.Elem()
+	typePtr_BaseField    = reflect.TypeOf((*BaseField)(nil))
+	typeStruct_BaseField = typePtr_BaseField.Elem()
 
-	fieldInterfaceType = reflect.TypeOf((*Field)(nil)).Elem()
-	rawInterfaceType   = reflect.TypeOf((*interface{})(nil)).Elem()
+	typeEface_Field = reflect.TypeOf((*Field)(nil)).Elem()
+	typeEface_Any   = reflect.TypeOf((*any)(nil)).Elem()
 )

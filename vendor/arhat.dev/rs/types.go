@@ -45,40 +45,40 @@ type (
 		//
 		// rawData is the input to your renderer, which can have one of following types
 		// - golang primitive types (e.g. int, float32)
-		// - map[string]interface{}
-		// - []interface{}
+		// - map[string]any
+		// - []any
 		// - *yaml.Node
 		// when it's not *yaml.Node type, it was patched by built-in data patching support
 		// (as indicated by the `!` suffix to your renderer)
 		//
 		// Your renderer is responsible for casting it to its desired data type
-		RenderYaml(renderer string, rawData interface{}) (result []byte, err error)
+		RenderYaml(renderer string, rawData any) (result []byte, err error)
 	}
 
 	// RenderingHandleFunc is a helper type to wrap your function as RenderingHandler
-	RenderingHandleFunc func(renderer string, rawData interface{}) (result []byte, err error)
+	RenderingHandleFunc func(renderer string, rawData any) (result []byte, err error)
 )
 
-func (f RenderingHandleFunc) RenderYaml(renderer string, rawData interface{}) (result []byte, err error) {
+func (f RenderingHandleFunc) RenderYaml(renderer string, rawData any) (result []byte, err error) {
 	return f(renderer, rawData)
 }
 
 type (
-	// InterfaceTypeHandler is used when setting values for interface{} typed field
+	// InterfaceTypeHandler is used when setting values for any typed field
 	InterfaceTypeHandler interface {
 		// Create request interface type using yaml information
-		Create(typ reflect.Type, yamlKey string) (interface{}, error)
+		Create(typ reflect.Type, yamlKey string) (any, error)
 	}
 
 	// InterfaceTypeHandleFunc is a helper type to wrap your function as InterfaceTypeHandler
-	InterfaceTypeHandleFunc func(typ reflect.Type, yamlKey string) (interface{}, error)
+	InterfaceTypeHandleFunc func(typ reflect.Type, yamlKey string) (any, error)
 )
 
-func (f InterfaceTypeHandleFunc) Create(typ reflect.Type, yamlKey string) (interface{}, error) {
+func (f InterfaceTypeHandleFunc) Create(typ reflect.Type, yamlKey string) (any, error) {
 	return f(typ, yamlKey)
 }
 
-func NormalizeRawData(rawData interface{}) (interface{}, error) {
+func NormalizeRawData(rawData any) (any, error) {
 	if n, ok := rawData.(*yaml.Node); ok && n != nil {
 		if isStrScalar(n) {
 			return n.Value, nil
@@ -91,7 +91,7 @@ func NormalizeRawData(rawData interface{}) (interface{}, error) {
 			return base64.StdEncoding.DecodeString(n.Value)
 		}
 
-		var data interface{}
+		var data any
 		err := n.Decode(&data)
 		if err != nil {
 			return nil, err

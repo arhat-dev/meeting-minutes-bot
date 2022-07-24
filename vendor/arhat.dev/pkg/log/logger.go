@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"arhat.dev/pkg/wellknownerrors"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -44,11 +45,11 @@ func init() {
 	var err error
 	// initial nop logger
 	NoOpLogger, err = New("", ConfigSet{})
-	Log = NoOpLogger
-
 	if err != nil {
 		panic(err)
 	}
+
+	Log = NoOpLogger
 }
 
 func getLevelEnablerFunc(targetLevel zapcore.Level) zap.LevelEnablerFunc {
@@ -144,8 +145,8 @@ func New(name string, config ConfigSet) (*Logger, error) {
 	return &Logger{name: name, core: core}, nil
 }
 
-func SetDefaultLogger(cs ConfigSet) error {
-	var err error
+func SetDefaultLogger(cs ConfigSet) (err error) {
+	err = wellknownerrors.ErrAlreadyExists
 	once.Do(func() {
 		Log, err = New("", cs)
 		if err != nil {
@@ -182,7 +183,7 @@ func (l *Logger) WithFields(fields ...Field) Interface {
 func (l *Logger) getEntry(level Level, msg string) zapcore.Entry {
 	var stack string
 	if level >= LevelError {
-		stack = takeStacktrace()
+		stack = takeStacktrace(4)
 	}
 
 	return zapcore.Entry{

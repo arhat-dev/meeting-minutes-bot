@@ -20,19 +20,20 @@ limitations under the License.
 package queue
 
 import (
-	"errors"
 	"runtime"
 	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"arhat.dev/pkg/errhelper"
 )
 
 // Errors for timeout queue
-var (
-	ErrNotStarted    = errors.New("not started")
-	ErrStopped       = errors.New("stopped")
-	ErrKeyNotAllowed = errors.New("key not allowed")
+const (
+	ErrNotStarted    errhelper.ErrString = "not started"
+	ErrStopped       errhelper.ErrString = "stopped"
+	ErrKeyNotAllowed errhelper.ErrString = "key not allowed"
 )
 
 // NewTimeoutQueue returns an idle TimeoutQueue
@@ -46,7 +47,6 @@ func NewTimeoutQueue[K comparable, V any]() *TimeoutQueue[K, V] {
 		stop:    nil,
 		running: 0,
 
-		mu:             new(sync.RWMutex),
 		hasExpiredData: make(chan struct{}),
 
 		blackList: make(map[K]struct{}),
@@ -81,8 +81,6 @@ type TimeoutQueue[K comparable, V any] struct {
 	hasExpiredData chan struct{}
 	expiredData    []*TimeoutData[K, V]
 
-	mu *sync.RWMutex
-
 	nextSort  int64 // utc unix nano
 	blackList map[K]struct{}
 	index     map[K]int
@@ -93,6 +91,8 @@ type TimeoutQueue[K comparable, V any] struct {
 	timeGot uint32
 
 	timeoutCh chan *TimeoutData[K, V]
+
+	mu sync.RWMutex
 }
 
 // Start routine to generate timeout data

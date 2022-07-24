@@ -15,49 +15,88 @@ import (
 	"github.com/bmatcuk/doublestar/v4"
 )
 
+type Op uint32
+
+const (
+	Op_Unknown Op = iota
+
+	Op_Abs // operation to get absolute path
+	Op_Sub // operation to create sub fs
+
+	Op_Create  // operation to create file
+	Op_Symlink // operation to create symlink
+
+	Op_Mkdir    // operation to create dir
+	Op_MkdirAll // operation to create dir recursively
+
+	Op_OpenFile // operation to open file with options
+	Op_Open     // operation to open file for reading
+
+	Op_Lstat // operation to lstat
+	Op_Stat  // operation to stat
+
+	Op_ReadFile // operation to read file content
+	Op_ReadDir  // operation to read dir file list
+	Op_Readlink // operation to read link destination
+
+	Op_WriteFile // operation to write content to file
+
+	Op_Chmod   // operation to change permission flags of file
+	Op_Chown   // operation to change owner flags of file
+	Op_Chtimes // operation to change time values of file
+
+	Op_Rename // operation to rename file
+
+	Op_Remove    // operation to remove file
+	Op_RemoveAll // operation to remove files recursively
+)
+
+// op and name are operation and path value triggered this func,
+// return value is the absolute path of current working dir
+//
+// when operation involves more than one path value (e.g. Op_Symlink),
+// name is the old path value
+type CwdGetFunc = func(op Op, name string) (string, error)
+
+func sysCwd(Op, string) (string, error) {
+	return os.Getwd()
+}
+
 // NewOSFS creates a new filesystem abstraction for real filesystem
 // set strictIOFS to true to only allow fs path value
-// getCwd is used to determine current working dir, the string return value should be valid system
-// file path
-func NewOSFS(
-	strictIOFS bool,
-	getCwd func() (string, error),
-) *OSFS {
+//
+// getCwd is
+func NewOSFS(strictIOFS bool, getCwd CwdGetFunc) *OSFS {
 	if getCwd == nil {
-		getCwd = os.Getwd
+		getCwd = sysCwd
 	}
 
 	return &OSFS{
-		strict: strictIOFS,
-		getCwd: getCwd,
+		Strict: strictIOFS,
+		GetCwd: getCwd,
 	}
 }
 
 // OSFS is a context aware filesystem abstration for afero.FS and io/fs.FS
 type OSFS struct {
-	strict    bool
-	getCwd    func() (string, error)
-	lookupFHS func(string) (string, error)
-}
+	// Strict when set to true, adhere to io/fs.FS path value requirements
+	// otherwise accepts all system path values
+	Strict bool
 
-// SetStrict sets strict mode to require io/fs.FS path value
-func (ofs *OSFS) SetStrict(s bool) *OSFS {
-	ofs.strict = s
-	return ofs
-}
+	// used to determine current working dir, the string return value should be valid system
+	// file path
+	GetCwd CwdGetFunc
 
-// SetWindowsFHSLookup sets custom handler for unix style path
-func (ofs *OSFS) SetWindowsFHSLookup(lookup func(path string) (string, error)) *OSFS {
-	ofs.lookupFHS = lookup
-	return ofs
+	// LookupFHS is the custom handler for unix style path on windows
+	LookupFHS func(string) (string, error)
 }
 
 // getRealPath of name by joining current working dir when name is relative path
 // name MUST be valid fs path value in strict mode
 //
 // the returned rpath value is always system file path
-func (ofs *OSFS) getRealPath(name string) (cwd, rpath string, err error) {
-	if (!fs.ValidPath(name) || runtime.GOOS == kernelconst.Windows && strings.ContainsAny(name, `\:`)) && ofs.strict {
+func (ofs *OSFS) getRealPath(op Op, name string) (cwd, rpath string, err error) {
+	if (!fs.ValidPath(name) || runtime.GOOS == kernelconst.Windows && strings.ContainsAny(name, `\:`)) && ofs.Strict {
 		return "", "", &fs.PathError{
 			Op:   "",
 			Err:  fs.ErrInvalid,
@@ -79,12 +118,12 @@ func (ofs *OSFS) getRealPath(name string) (cwd, rpath string, err error) {
 		// - /cygdrive/c/foo is the same as /c/foo, but with extra /cygdrive prefix
 		// - /usr/foo is the path inside msys2/mingw64/cygwin root
 
-		cwd, err = ofs.getCwd()
+		cwd, err = ofs.GetCwd(op, name)
 		if err != nil {
 			return "", "", err
 		}
 
-		lookupFHS := ofs.lookupFHS
+		lookupFHS := ofs.LookupFHS
 		if lookupFHS == nil {
 			lookupFHS = func(path string) (string, error) {
 				ret, err := exec.Command("cygpath", "-w", path).CombinedOutput()
@@ -113,7 +152,7 @@ func (ofs *OSFS) getRealPath(name string) (cwd, rpath string, err error) {
 
 	// is relative path for both windows and unix
 
-	cwd, err = ofs.getCwd()
+	cwd, err = ofs.GetCwd(op, name)
 	if err != nil {
 		return "", "", err
 	}
@@ -123,7 +162,7 @@ func (ofs *OSFS) getRealPath(name string) (cwd, rpath string, err error) {
 
 // WriteFile is the os.WriteFile equivalent
 func (ofs *OSFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_WriteFile, name)
 	if err != nil {
 		return err
 	}
@@ -134,7 +173,7 @@ func (ofs *OSFS) WriteFile(name string, data []byte, perm fs.FileMode) error {
 // ReadDir is the os.ReadDir equivalent
 // implements fs.ReadDirFS
 func (ofs *OSFS) ReadDir(name string) ([]fs.DirEntry, error) {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_ReadDir, name)
 	if err != nil {
 		return nil, err
 	}
@@ -145,7 +184,7 @@ func (ofs *OSFS) ReadDir(name string) ([]fs.DirEntry, error) {
 // ReadFile is the os.ReadFile equivalent
 // implements fs.ReadFileFS
 func (ofs *OSFS) ReadFile(name string) ([]byte, error) {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_ReadFile, name)
 	if err != nil {
 		return nil, err
 	}
@@ -160,17 +199,17 @@ func (ofs *OSFS) Glob(pattern string) ([]string, error) {
 
 // Sub implements fs.SubFS
 func (ofs *OSFS) Sub(dir string) (fs.FS, error) {
-	_, path, err := ofs.getRealPath(dir)
+	_, path, err := ofs.getRealPath(Op_Sub, dir)
 	if err != nil {
 		return nil, err
 	}
 
-	return NewOSFS(ofs.strict, func() (string, error) { return path, nil }), nil
+	return NewOSFS(ofs.Strict, func(op Op, name string) (string, error) { return path, nil }), nil
 }
 
 // Create is the os.Create equivalent
 func (ofs *OSFS) Create(name string) (fs.File, error) {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Create, name)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +219,7 @@ func (ofs *OSFS) Create(name string) (fs.File, error) {
 
 // Mkdir is the os.Mkdir equivalent
 func (ofs *OSFS) Mkdir(name string, perm fs.FileMode) error {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Mkdir, name)
 	if err != nil {
 		return err
 	}
@@ -190,7 +229,7 @@ func (ofs *OSFS) Mkdir(name string, perm fs.FileMode) error {
 
 // MkdirAll is the os.MkdirAll equivalent
 func (ofs *OSFS) MkdirAll(name string, perm fs.FileMode) error {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_MkdirAll, name)
 	if err != nil {
 		return err
 	}
@@ -201,7 +240,7 @@ func (ofs *OSFS) MkdirAll(name string, perm fs.FileMode) error {
 // Open is the os.Open equivalent
 // implements fs.FS
 func (ofs *OSFS) Open(name string) (fs.File, error) {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Open, name)
 	if err != nil {
 		return nil, err
 	}
@@ -211,7 +250,7 @@ func (ofs *OSFS) Open(name string) (fs.File, error) {
 
 // OpenFile is the os.OpenFile equivalent
 func (ofs *OSFS) OpenFile(name string, flag int, perm fs.FileMode) (fs.File, error) {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_OpenFile, name)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +260,7 @@ func (ofs *OSFS) OpenFile(name string, flag int, perm fs.FileMode) (fs.File, err
 
 // Remove is the os.Remove equivalent
 func (ofs *OSFS) Remove(name string) error {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Remove, name)
 	if err != nil {
 		return err
 	}
@@ -231,7 +270,7 @@ func (ofs *OSFS) Remove(name string) error {
 
 // RemoveAll is the os.RemoveAll equivalent
 func (ofs *OSFS) RemoveAll(name string) error {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_RemoveAll, name)
 	if err != nil {
 		return err
 	}
@@ -241,12 +280,12 @@ func (ofs *OSFS) RemoveAll(name string) error {
 
 // Rename is the os.Rename equivalent
 func (ofs *OSFS) Rename(oldname, newname string) error {
-	_, oldPath, err := ofs.getRealPath(oldname)
+	_, oldPath, err := ofs.getRealPath(Op_Rename, oldname)
 	if err != nil {
 		return err
 	}
 
-	_, newPath, err := ofs.getRealPath(newname)
+	_, newPath, err := ofs.getRealPath(Op_Rename, newname)
 	if err != nil {
 		return err
 	}
@@ -256,7 +295,7 @@ func (ofs *OSFS) Rename(oldname, newname string) error {
 
 // Stat is the os.Stat equivalent
 func (ofs *OSFS) Stat(name string) (fs.FileInfo, error) {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Stat, name)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +305,7 @@ func (ofs *OSFS) Stat(name string) (fs.FileInfo, error) {
 
 // Chmod is the os.Chmod equivalent
 func (ofs *OSFS) Chmod(name string, mode fs.FileMode) error {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Chmod, name)
 	if err != nil {
 		return err
 	}
@@ -276,7 +315,7 @@ func (ofs *OSFS) Chmod(name string, mode fs.FileMode) error {
 
 // Chown is the os.Chown equivalent
 func (ofs *OSFS) Chown(name string, uid, gid int) error {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Chown, name)
 	if err != nil {
 		return err
 	}
@@ -286,7 +325,7 @@ func (ofs *OSFS) Chown(name string, uid, gid int) error {
 
 // Chtimes is the os.Chtimes equivalent
 func (ofs *OSFS) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Chtimes, name)
 	if err != nil {
 		return err
 	}
@@ -296,7 +335,7 @@ func (ofs *OSFS) Chtimes(name string, atime time.Time, mtime time.Time) error {
 
 // Lstat is the os.Lstat equivalent
 func (ofs *OSFS) Lstat(name string) (fs.FileInfo, error) {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Lstat, name)
 	if err != nil {
 		return nil, err
 	}
@@ -307,7 +346,7 @@ func (ofs *OSFS) Lstat(name string) (fs.FileInfo, error) {
 // Symlink is the os.Symlink equivalent
 func (ofs *OSFS) Symlink(oldname, newname string) error {
 	if path.IsAbs(oldname) && path.IsAbs(newname) {
-		if ofs.strict {
+		if ofs.Strict {
 			return &fs.PathError{
 				Op:   "",
 				Path: oldname,
@@ -319,7 +358,7 @@ func (ofs *OSFS) Symlink(oldname, newname string) error {
 		return os.Symlink(oldname, newname)
 	}
 
-	if ofs.strict {
+	if ofs.Strict {
 		if !fs.ValidPath(oldname) {
 			return &fs.PathError{
 				Op:   "",
@@ -337,7 +376,7 @@ func (ofs *OSFS) Symlink(oldname, newname string) error {
 		}
 	}
 
-	cwd, err := ofs.getCwd()
+	cwd, err := ofs.GetCwd(Op_Symlink, oldname)
 	if err != nil {
 		return err
 	}
@@ -349,7 +388,7 @@ func (ofs *OSFS) Symlink(oldname, newname string) error {
 
 // Readlink is the os.Readlink equivalent
 func (ofs *OSFS) Readlink(name string) (string, error) {
-	_, path, err := ofs.getRealPath(name)
+	_, path, err := ofs.getRealPath(Op_Readlink, name)
 	if err != nil {
 		return "", err
 	}
@@ -359,7 +398,7 @@ func (ofs *OSFS) Readlink(name string) (string, error) {
 
 // Abs is the filepath.Abs equivalent
 func (ofs *OSFS) Abs(name string) (path string, err error) {
-	_, path, err = ofs.getRealPath(name)
+	_, path, err = ofs.getRealPath(Op_Abs, name)
 	if err != nil {
 		return
 	}

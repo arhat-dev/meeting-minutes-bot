@@ -58,9 +58,10 @@ type PatchSpec struct {
 	// Select part of the data as final result
 	//
 	// this action happens after merge and patch
+	// TODO: support jq variables
 	Select string `yaml:"select"`
 
-	// TODO: give following options proper name
+	// TODO: give following options proper names
 
 	// Unique to make sure elements in the sequence is unique
 	//
@@ -75,20 +76,22 @@ type PatchSpec struct {
 	MapListAppend bool `yaml:"map_list_append"`
 }
 
-func runJQ(query string, data interface{}) (interface{}, error) {
+func runJQ(query string, data any) (any, error) {
 	q, err := gojq.Parse(query)
 	if err != nil {
 		return nil, fmt.Errorf("invalid jq query: %w", err)
 	}
 
 	var (
-		ret interface{}
-		idx int
+		ret any
+		n   int
+		ok  bool
 	)
 
 	iter := q.Run(data)
 	for {
-		v, ok := iter.Next()
+		var v any
+		v, ok = iter.Next()
 		if !ok {
 			break
 		}
@@ -97,25 +100,25 @@ func runJQ(query string, data interface{}) (interface{}, error) {
 			return nil, fmt.Errorf("jq query failed: %w", err)
 		}
 
-		switch idx {
+		switch n {
 		case 0:
 			ret = v
 		case 1:
-			ret = []interface{}{ret, v}
+			ret = []any{ret, v}
 		default:
-			ret = append(ret.([]interface{}), v)
+			ret = append(ret.([]any), v)
 		}
 
-		idx++
+		n++
 	}
 
 	return ret, nil
 }
 
-func (s *PatchSpec) merge(rc RenderingHandler, valueData interface{}) (interface{}, error) {
-	mergeSrc := make([]interface{}, len(s.Merge))
+func (s *PatchSpec) merge(rc RenderingHandler, valueData any) (any, error) {
+	mergeSrc := make([]any, len(s.Merge))
 	for i, m := range s.Merge {
-		v, err := handleOptionalRenderingSuffixResolving(rc, m.Value, m.Resolve)
+		v, err := handleOptionalRenderingSuffixResolving(m.Value, m.Resolve, rc)
 		if err != nil {
 			return nil, err
 		}
@@ -124,7 +127,7 @@ func (s *PatchSpec) merge(rc RenderingHandler, valueData interface{}) (interface
 			v, err = runJQ(m.Select, v)
 			if err != nil {
 				return nil, fmt.Errorf(
-					"failed to run select over merge#%d: %w",
+					"run select over merge#%d: %w",
 					i, err,
 				)
 			}
@@ -135,10 +138,10 @@ func (s *PatchSpec) merge(rc RenderingHandler, valueData interface{}) (interface
 
 doMerge:
 	switch dt := valueData.(type) {
-	case []interface{}:
+	case []any:
 		for _, merge := range mergeSrc {
 			switch mt := merge.(type) {
-			case []interface{}:
+			case []any:
 				dt = append(dt, mt...)
 
 				if s.Unique {
@@ -153,14 +156,14 @@ doMerge:
 		}
 
 		return dt, nil
-	case map[string]interface{}:
+	case map[string]any:
 		var err error
 		for _, merge := range mergeSrc {
 			switch mt := merge.(type) {
-			case map[string]interface{}:
+			case map[string]any:
 				dt, err = MergeMap(dt, mt, s.MapListAppend, s.MapListItemUnique)
 				if err != nil {
-					return nil, fmt.Errorf("failed to merge map value: %w", err)
+					return nil, fmt.Errorf("merge map value: %w", err)
 				}
 			case nil:
 				// no value to merge, skip
@@ -197,58 +200,56 @@ doMerge:
 }
 
 // Apply Merge and Patch to Value, Unique is ensured if set to true
-func (s *PatchSpec) Apply(rc RenderingHandler) (interface{}, error) {
-	valueData, err := handleOptionalRenderingSuffixResolving(rc, s.Value, s.Resolve)
+func (s *PatchSpec) Apply(rc RenderingHandler) (_ any, err error) {
+	valueData, err := handleOptionalRenderingSuffixResolving(s.Value, s.Resolve, rc)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	data, err := s.merge(rc, valueData)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	type resolvedJSONPatchSpec struct {
-		Operation string      `json:"op"`
-		Path      string      `json:"path"`
-		Value     interface{} `json:"value,omitempty"`
+		Operation string `json:"op"`
+		Path      string `json:"path"`
+		Value     any    `json:"value,omitempty"`
 	}
 
 	// apply select action to patches
-	patchSrc := make([]*resolvedJSONPatchSpec, len(s.Patch))
+	patchSrc := make([]resolvedJSONPatchSpec, len(s.Patch))
 	for i, p := range s.Patch {
-		var v interface{}
+		var v any
 		v, err = handleOptionalRenderingSuffixResolving(
-			rc, p.Value, p.Resolve,
+			p.Value, p.Resolve, rc,
 		)
 		if err != nil {
-			return nil, err
+			return
 		}
 
-		spec := &resolvedJSONPatchSpec{
+		patchSrc[i] = resolvedJSONPatchSpec{
 			Path:      p.Path,
 			Operation: p.Operation,
 			Value:     v,
 		}
 
 		if len(p.Select) != 0 {
-			spec.Value, err = runJQ(p.Select, spec.Value)
+			patchSrc[i].Value, err = runJQ(p.Select, patchSrc[i].Value)
 			if err != nil {
 				return nil, fmt.Errorf(
-					"failed to run select over patch#%d: %w",
+					"run select over patch#%d: %w",
 					i, err,
 				)
 			}
 		}
-
-		patchSrc[i] = spec
 	}
 
 	if len(patchSrc) == 0 {
 		if len(s.Select) != 0 {
 			data, err = runJQ(s.Select, data)
 			if err != nil {
-				return nil, err
+				return
 			}
 		}
 
@@ -257,33 +258,36 @@ func (s *PatchSpec) Apply(rc RenderingHandler) (interface{}, error) {
 
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	patchData, err := json.Marshal(patchSrc)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	patch, err := jsonpatch.DecodePatch(patchData)
 	if err != nil {
-		return nil, err
+		return
 	}
 
-	patchedDoc, err := patch.ApplyIndentWithOptions(jsonData, "", &jsonpatch.ApplyOptions{
+	options := jsonpatch.ApplyOptions{
 		SupportNegativeIndices:   true,
 		EnsurePathExistsOnAdd:    false,
 		AccumulatedCopySizeLimit: 0,
 		AllowMissingPathOnRemove: true,
-	})
-	if err != nil {
-		return nil, err
 	}
 
-	var ret interface{}
+	patchedDoc, err := patch.ApplyIndentWithOptions(jsonData, "", &options)
+	if err != nil {
+		return
+	}
+
+	var ret any
 	err = json.Unmarshal(patchedDoc, &ret)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unmarshal patched value: %w", err)
+		err = fmt.Errorf("unmarshal patched value: %w", err)
+		return
 	}
 
 	if len(s.Select) == 0 {
@@ -299,13 +303,13 @@ func (s *PatchSpec) Apply(rc RenderingHandler) (interface{}, error) {
 }
 
 func MergeMap(
-	original, additional map[string]interface{},
+	original, additional map[string]any,
 
 	// options
 	appendList bool,
 	uniqueInListItems bool,
-) (map[string]interface{}, error) {
-	out := make(map[string]interface{}, len(original))
+) (map[string]any, error) {
+	out := make(map[string]any, len(original))
 	for k, v := range original {
 		out[k] = v
 	}
@@ -313,9 +317,9 @@ func MergeMap(
 	var err error
 	for k, v := range additional {
 		switch newVal := v.(type) {
-		case map[string]interface{}:
+		case map[string]any:
 			if originalVal, ok := out[k]; ok {
-				if orignalMap, ok := originalVal.(map[string]interface{}); ok {
+				if orignalMap, ok := originalVal.(map[string]any); ok {
 					out[k], err = MergeMap(orignalMap, newVal, appendList, uniqueInListItems)
 					if err != nil {
 						return nil, err
@@ -328,9 +332,9 @@ func MergeMap(
 			} else {
 				out[k] = newVal
 			}
-		case []interface{}:
+		case []any:
 			if originalVal, ok := out[k]; ok {
-				if originalList, ok := originalVal.([]interface{}); ok {
+				if originalList, ok := originalVal.([]any); ok {
 					if appendList {
 						originalList = append(originalList, newVal...)
 					} else {
@@ -358,8 +362,8 @@ func MergeMap(
 	return out, nil
 }
 
-func UniqueList(dt []interface{}) []interface{} {
-	var ret []interface{}
+func UniqueList(dt []any) []any {
+	var ret []any
 	dupAt := make(map[int]struct{})
 	for i := range dt {
 		_, isDup := dupAt[i]

@@ -3,8 +3,9 @@ module arhat.dev/mbot
 go 1.18
 
 require (
-	arhat.dev/pkg v0.9.1-0.20220527160521-12b7b771a58b
-	arhat.dev/rs v0.9.0
+	arhat.dev/pkg v0.10.1
+	arhat.dev/pkg/rshelper v0.0.0-20220724112502-b58c9c50e900
+	arhat.dev/rs v0.10.0
 	github.com/Masterminds/sprig/v3 v3.2.2
 	github.com/SevereCloud/vksdk/v2 v2.15.0
 	github.com/bmatcuk/doublestar/v4 v4.2.0
@@ -24,7 +25,7 @@ require (
 	github.com/slack-go/slack v0.11.0
 	github.com/spf13/cobra v1.5.0
 	github.com/stretchr/testify v1.8.0
-	github.com/vartanbeno/go-reddit/v2 v2.0.1
+	github.com/vartanbeno/go-reddit/v2 v2.0.0
 	github.com/xanzy/go-gitlab v0.69.0
 	github.com/yuin/gopher-lua v0.0.0-20220504180219-658193537a64
 	go.mau.fi/whatsmeow v0.0.0-20220715134127-5e6b9804193a
@@ -95,7 +96,7 @@ require (
 	github.com/huandu/xstrings v1.3.2 // indirect
 	github.com/imdario/mergo v0.3.12 // indirect
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
-	github.com/itchyny/gojq v0.12.7 // indirect
+	github.com/itchyny/gojq v0.12.8 // indirect
 	github.com/itchyny/timefmt-go v0.1.3 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
@@ -144,10 +145,10 @@ require (
 	go.opentelemetry.io/otel v1.8.0 // indirect
 	go.opentelemetry.io/otel/trace v1.8.0 // indirect
 	go.uber.org/atomic v1.9.0 // indirect
-	golang.org/x/crypto v0.0.0-20220622213112-05595931fe9d // indirect
+	golang.org/x/crypto v0.0.0-20220722155217-630584e8d5aa // indirect
 	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5 // indirect
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20220520151302-bc2c85ada10a // indirect
+	golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/time v0.0.0-20220411224347-583f2d630306 // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect

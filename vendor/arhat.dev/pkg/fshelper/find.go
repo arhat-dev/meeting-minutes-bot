@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"unsafe"
 
+	"arhat.dev/pkg/pathhelper"
 	"github.com/bmatcuk/doublestar/v4"
 )
 
@@ -137,6 +139,13 @@ func pathDepth(s string) (n int32) {
 
 // Find all matched files by walking from startpath
 func (ofs *OSFS) Find(fopts *FindOptions, startpath string) (ret []string, err error) {
+	var (
+		_buffer   [256]byte
+		buf       []byte
+		slashPath string
+	)
+
+	buf = _buffer[:]
 	checkDepth := fopts.Ops&FindOp_CheckDepth != 0
 	minDepth, maxDepth := fopts.MinDepth, fopts.MaxDepth
 
@@ -189,10 +198,11 @@ func (ofs *OSFS) Find(fopts *FindOptions, startpath string) (ret []string, err e
 		}
 
 		// ent is not nil when dirErr is nil
+		slashPath, buf = pathhelper.ToSlash(buf, path)
 
 		if checkDepth {
 			if notFirst {
-				depth = pathDepth(path) + depthAdd
+				depth = pathDepth(slashPath) + depthAdd
 			} else {
 				depth = 0
 				notFirst = true
@@ -203,8 +213,15 @@ func (ofs *OSFS) Find(fopts *FindOptions, startpath string) (ret []string, err e
 			}
 		}
 
-		ok, dirErr = ofs.TryMatch(fopts, path, ent)
+		ok, dirErr = ofs.TryMatch(fopts, slashPath, ent)
 		if ok {
+			// matched, handle path buffering
+			if slashPath != path {
+				// slashPath inside buffer, make a copy
+				pathBuf := make([]byte, len(slashPath))
+				copy(pathBuf, slashPath)
+				path = *(*string)(unsafe.Pointer(&pathBuf))
+			}
 			ret = append(ret, path)
 
 			onMatch(path, ent)

@@ -20,18 +20,19 @@ limitations under the License.
 package queue
 
 import (
-	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
+
+	"arhat.dev/pkg/errhelper"
 )
 
 // Errors for JobQueue
-var (
-	ErrJobDuplicated = errors.New("job duplicat")
-	ErrJobConflict   = errors.New("job conflict")
-	ErrJobCounteract = errors.New("job counteract")
-	ErrJobInvalid    = errors.New("job invalid")
+const (
+	ErrJobDuplicated errhelper.ErrString = "job duplicat"
+	ErrJobConflict   errhelper.ErrString = "job conflict"
+	ErrJobCounteract errhelper.ErrString = "job counteract"
+	ErrJobInvalid    errhelper.ErrString = "job invalid"
 )
 
 type JobAction uint8
@@ -91,7 +92,6 @@ func NewJobQueue[K comparable]() *JobQueue[K] {
 		// set job queue to closed
 		hasJob:     hasJob,
 		chanClosed: true,
-		mu:         new(sync.RWMutex),
 
 		paused: 1,
 	}
@@ -104,10 +104,11 @@ type JobQueue[K comparable] struct {
 	index map[Job[K]]int
 
 	hasJob chan struct{}
-	mu     *sync.RWMutex
 	// protected by atomic
 	paused     uint32
 	chanClosed bool
+
+	mu sync.RWMutex
 }
 
 func (q *JobQueue[K]) has(action JobAction, key K) bool {

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"arhat.dev/pkg/stringhelper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -25,13 +26,24 @@ type (
 	TypeHintBool    struct{}
 )
 
-func (TypeHintNone) String() string    { return "" }
-func (TypeHintStr) String() string     { return "str" }
-func (TypeHintObject) String() string  { return "obj" }
-func (TypeHintObjects) String() string { return "[]obj" }
-func (TypeHintInt) String() string     { return "int" }
-func (TypeHintFloat) String() string   { return "float" }
-func (TypeHintBool) String() string    { return "bool" }
+// nolint:revive
+const (
+	typeHintName_None    = ""
+	typeHintName_Str     = "str"
+	typeHintName_Object  = "obj"
+	typeHintName_Objects = "[]obj"
+	typeHintName_Int     = "int"
+	typeHintName_Float   = "float"
+	typeHintName_Bool    = "bool"
+)
+
+func (TypeHintNone) String() string    { return typeHintName_None }
+func (TypeHintStr) String() string     { return typeHintName_Str }
+func (TypeHintObject) String() string  { return typeHintName_Object }
+func (TypeHintObjects) String() string { return typeHintName_Objects }
+func (TypeHintInt) String() string     { return typeHintName_Int }
+func (TypeHintFloat) String() string   { return typeHintName_Float }
+func (TypeHintBool) String() string    { return typeHintName_Bool }
 
 func (TypeHintNone) apply(v *yaml.Node) (*yaml.Node, error) {
 	return prepareYamlNode(v), nil
@@ -40,6 +52,7 @@ func (TypeHintNone) apply(v *yaml.Node) (*yaml.Node, error) {
 func applyStrHint(n *yaml.Node) (*yaml.Node, error) {
 	switch {
 	case isStrScalar(n), isBinaryScalar(n):
+		// no need to convert
 		return n, nil
 	case isBoolScalar(n), isFloatScalar(n), isIntScalar(n):
 		// TODO: shall we cast null to string directly?
@@ -55,7 +68,7 @@ func applyStrHint(n *yaml.Node) (*yaml.Node, error) {
 		Style: guessYamlStringStyle(data),
 		Kind:  yaml.ScalarNode,
 		Tag:   strTag,
-		Value: strings.TrimSuffix(string(data), "\n"),
+		Value: strings.TrimSuffix(stringhelper.Convert[string, byte](data), "\n"),
 	}, nil
 }
 
@@ -77,7 +90,7 @@ func applyObjectHint(n *yaml.Node) (ret *yaml.Node, err error) {
 		var dataBytes []byte
 		switch {
 		case isStrScalar(n):
-			dataBytes = []byte(n.Value)
+			dataBytes = stringhelper.ToBytes[byte, byte](n.Value)
 		case isBinaryScalar(n):
 			dataBytes, err = base64.StdEncoding.DecodeString(n.Value)
 			if err != nil {
@@ -89,7 +102,7 @@ func applyObjectHint(n *yaml.Node) (ret *yaml.Node, err error) {
 			)
 		}
 
-		ret = new(yaml.Node)
+		var tmp yaml.Node
 		defer func() {
 			errX := recover()
 
@@ -97,12 +110,12 @@ func applyObjectHint(n *yaml.Node) (ret *yaml.Node, err error) {
 				err = fmt.Errorf("%v", errX)
 			}
 		}()
-		err = yaml.Unmarshal(dataBytes, ret)
+		err = yaml.Unmarshal(dataBytes, &tmp)
 		if err != nil {
 			return nil, err
 		}
 
-		ret = prepareYamlNode(ret)
+		ret = prepareYamlNode(&tmp)
 		switch {
 		case ret == nil,
 			ret.Kind == yaml.MappingNode:
@@ -134,7 +147,7 @@ func applyObjectsHint(n *yaml.Node) (ret *yaml.Node, err error) {
 		var dataBytes []byte
 		switch {
 		case isStrScalar(n):
-			dataBytes = []byte(n.Value)
+			dataBytes = stringhelper.ToBytes[byte, byte](n.Value)
 		case isBinaryScalar(n):
 			dataBytes, err = base64.StdEncoding.DecodeString(n.Value)
 			if err != nil {
@@ -208,53 +221,49 @@ func castScalarNode(n *yaml.Node, newTag string) (*yaml.Node, error) {
 		return n, nil
 	}
 
-	ret := cloneYamlNode(n, newTag, n.Value)
+	var ret yaml.Node
+	cloneYamlNode(&ret, n, newTag, n.Value)
 	switch newTag {
 	case strTag, binaryTag:
 	default:
 		val, err := strconv.Unquote(n.Value)
 		if err != nil {
 			// was not quoted
-			val = n.Value
+			ret.Value = n.Value
+		} else {
+			ret.Value = val
 		}
-		ret.Value = val
 	}
 
-	return ret, nil
+	return &ret, nil
 }
 
-func cloneYamlNode(n *yaml.Node, tag, value string) *yaml.Node {
-	return &yaml.Node{
-		Kind:        n.Kind,
-		Style:       n.Style,
-		Tag:         tag,
-		Value:       value,
-		Anchor:      n.Anchor,
-		Alias:       n.Alias,
-		Content:     n.Content,
-		HeadComment: n.HeadComment,
-		LineComment: n.LineComment,
-		FootComment: n.FootComment,
-		Line:        n.Line,
-		Column:      n.Column,
-	}
-}
-
-var supportedTypeHints = map[string]TypeHint{
-	"":      TypeHintNone{},
-	"str":   TypeHintStr{},
-	"[]obj": TypeHintObjects{},
-	"obj":   TypeHintObject{},
-	"int":   TypeHintInt{},
-	"float": TypeHintFloat{},
-	"bool":  TypeHintBool{},
+// cloneYamlNode creates a new yaml.Node by copying all values from n
+// and override its tag and value
+func cloneYamlNode(out, n *yaml.Node, tag, value string) {
+	*out = *n
+	out.Tag = tag
+	out.Value = value
+	return
 }
 
 func ParseTypeHint(h string) (TypeHint, error) {
-	ret, ok := supportedTypeHints[h]
-	if !ok {
+	switch h {
+	case typeHintName_None:
+		return TypeHintNone{}, nil
+	case typeHintName_Str:
+		return TypeHintStr{}, nil
+	case typeHintName_Objects:
+		return TypeHintObjects{}, nil
+	case typeHintName_Object:
+		return TypeHintObject{}, nil
+	case typeHintName_Int:
+		return TypeHintInt{}, nil
+	case typeHintName_Float:
+		return TypeHintFloat{}, nil
+	case typeHintName_Bool:
+		return TypeHintBool{}, nil
+	default:
 		return nil, fmt.Errorf("unknown type hint %q", h)
 	}
-
-	return ret, nil
 }

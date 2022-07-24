@@ -2,11 +2,10 @@ global:
   default_git_branch: master
   env:
   - name: PROFILE_DIR
-    value@tpl: |-
-      {{- filepath.Join dukkha.WorkDir "build" "test-profile" -}}
+    value@tlang: fs.Join dukkha.WorkDir "build" "test-profile"
   values:
     cmd:
-      run_ctr@presets?str|tpl: templates/run-ctr.yml
+      run_ctr@presets?str|tmpl: templates/run-ctr.tmpl
 
 renderers:
 - http:presets:
@@ -27,14 +26,14 @@ tools:
   golang:
   - name: local
   - name: in-ctr
-    cmd@tpl#use-spec:
+    cmd@tmpl#use-spec:
       template: |-
         {{- include "golang.cmd.ctr" . -}}
       include:
-      - text@presets?str: templates/image/flavored-tag.tpl
-      - text@presets?str: golang/cmd/ctr.yml
+      - text@presets?str: templates/image/flavored-tag.tmpl
+      - text@presets?str: golang/cmd/ctr.tmpl
       variables:
-        version: "1.17"
+        version: "1.18"
 
 workflow:run:
 - name: tidy
@@ -62,12 +61,16 @@ workflow:run:
       config:
       - __@presets#cached-file?str: tools/golangci-lint/config.yaml
   jobs:
-  - cmd@presets?str|tpl#use-spec: tools/presets.tpl
+  - cmd@presets?str|tmpl#use-spec: tools/presets.tmpl
 
 - name: test
   jobs:
-  - task: golang:test(rs, {})
-  - task: golang:test(benchmark, {})
+  - task:
+      ref: golang:test(rs)
+      matrix_filter: {}
+  - task:
+      ref: golang:test(benchmark)
+      matrix_filter: {}
 
 - name: report
   matrix:
@@ -75,23 +78,21 @@ workflow:run:
     - sonar-scanner
   jobs:
   # only run sonar scan on linux and darwin during CI
-  - cmd@presets?str|tpl#use-spec: tools/presets.tpl
+  - cmd@presets?str|tmpl#use-spec: tools/presets.tmpl
     continue_on_error: true
 
 golang:test:
 - name: rs
-  __@tpl#use-spec:
+  __@tmpl#use-spec:
     template: |-
       {{- include "golang.test.pkg" . -}}
     include:
-    - text@presets?str: golang/test/pkg.yml
+    - text@presets?str: golang/test/pkg.tmpl
   matrix:
-    pkg@tpl: |-
-      {{-
-        eval.Shell "go list ./..."
-        | removePrefix (eval.Shell "go list -m" | trimSuffix "\n")
+    pkg@tlang: |-
+      (eval.Shell "go list ./...").Stdout \
+        | removePrefix ((eval.Shell "go list -m").Stdout | trimSuffix "\n") \
         | addPrefix "- "
-      -}}
   hooks:
     before:
     - shell: mkdir -p ${PROFILE_DIR}
@@ -103,12 +104,12 @@ golang:test:
   chdir: ./benchmark
   hooks:
     before:
-    - shell: mkdir -p ${PROFILE_DIR}
+    - idle@tlang: mkdir "-p" env.PROFILE_DIR
   cgo:
     enabled: true
-  race: true
+  race@tlang: ne host.kernel "windows"
   profile:
-    output_dir@env: ${PROFILE_DIR}
+    output_dir@tlang: env.PROFILE_DIR
     coverage:
       enabled: true
     memory:
@@ -117,7 +118,6 @@ golang:test:
       enabled: true
   benchmark:
     enabled: true
-  json_output_file@tpl: |-
-    {{- filepath.Join env.PROFILE_DIR "result-benchmark.json" -}}
+  json_output_file@tlang: fs.Join env.PROFILE_DIR "result-benchmark.json"
   verbose: true
   path: ./

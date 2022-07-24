@@ -25,17 +25,23 @@ func (f *BaseField) Inherit(other *BaseField) error {
 
 	if len(other.unresolvedNormalFields) != 0 {
 		if f.unresolvedNormalFields == nil {
-			f.unresolvedNormalFields = make(map[string]*unresolvedFieldSpec)
+			f.unresolvedNormalFields = make(map[string]unresolvedFieldSpec)
 		}
 
 		for k, v := range other.unresolvedNormalFields {
 			existingV, ok := f.unresolvedNormalFields[k]
 			if !ok {
+				var ref *fieldRef
+				ffield, ok := f.normalFields[k]
+				if ok {
+					ref = &ffield
+				}
+
 				err := f.addUnresolvedField(
+					ref,
+					v.rawData,
 					k,
 					"", v.renderers,
-					f.normalFields[k],
-					v.rawData,
 				)
 
 				if err != nil {
@@ -55,6 +61,7 @@ func (f *BaseField) Inherit(other *BaseField) error {
 			}
 
 			existingV.rawData = v.rawData
+			f.unresolvedNormalFields[k] = existingV
 		}
 	}
 
@@ -63,12 +70,12 @@ func (f *BaseField) Inherit(other *BaseField) error {
 
 	if len(other.unresolvedInlineMapItems) != 0 {
 		if f.unresolvedInlineMapItems == nil {
-			f.unresolvedInlineMapItems = make(map[string][]*unresolvedFieldSpec)
+			f.unresolvedInlineMapItems = make(map[string][]unresolvedFieldSpec)
 		}
 
 		for k, list := range other.unresolvedInlineMapItems {
 			for _, v := range list {
-				f.unresolvedInlineMapItems[k] = append(f.unresolvedInlineMapItems[k], &unresolvedFieldSpec{
+				f.unresolvedInlineMapItems[k] = append(f.unresolvedInlineMapItems[k], unresolvedFieldSpec{
 					ref:       f.inlineMap,
 					rawData:   v.rawData,
 					renderers: v.renderers,
