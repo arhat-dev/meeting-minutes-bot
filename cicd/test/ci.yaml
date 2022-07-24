@@ -1,0 +1,6 @@
+workflow:run:
+- name: test
+  jobs:
+  - task:
+      ref: golang:test(pkg)
+      matrix_filter: {}

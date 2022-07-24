@@ -1,6 +1,8 @@
 // Package fsm implements a finite state machine
 package fsm
 
+// TODO
+
 type State[V any] struct {
 	state uint32
 
@@ -8,7 +10,7 @@ type State[V any] struct {
 }
 
 func (s *State[V]) Value() V { return s.value }
-func (s *State[V]) Next()
+func (s *State[V]) Next()    {}
 
 type Callback interface {
 }

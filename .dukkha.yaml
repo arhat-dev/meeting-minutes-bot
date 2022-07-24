@@ -1,10 +1,12 @@
-include:
-# add renderer `presets`
-- text@http?str: https://raw.githubusercontent.com/arhat-dev/dukkha-presets/dev/setup-dev.yml
-- path: cicd
-
+# renderers are added before including, here we need to at least cache bootstrap files
+# downloaded from http
 renderers:
 - http:
     cache:
       enabled: true
       timeout: 5h
+
+include:
+# add renderer `presets`
+- text@http?str: https://raw.githubusercontent.com/arhat-dev/dukkha-presets/dev/setup-dev.yml
+- path: cicd

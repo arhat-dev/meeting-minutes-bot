@@ -1,6 +1,6 @@
 {{- define "message.footer" -}}
 
-{{- if not .IsPrivateMessage -}}
+{{- if not .IsPrivate -}}
 <hr>
 {{- end -}}
 

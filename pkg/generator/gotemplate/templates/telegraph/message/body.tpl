@@ -6,7 +6,7 @@
 {{- end -}}
 
 {{- if .IsReply -}}
-  {{- $replyTo := findMessage .ReplyToMessageID -}}
+  {{- $replyTo := findMessage .ReplyTo -}}
   {{- if $replyTo -}}
     {{- nindent 0 "" -}}
     (in reply to

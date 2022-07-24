@@ -8,7 +8,7 @@
 
 {{- range $_, $msg := .Messages -}}
 
-  {{- if not .IsPrivateMessage -}}
+  {{- if not .IsPrivate -}}
     {{- template "message.header" $msg -}}
   {{- end -}}
 
