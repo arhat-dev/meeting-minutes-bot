@@ -42,7 +42,7 @@ func (tt *tTemplate) ExecuteTemplate(wr io.Writer, name string, data *rt.Generat
 }
 
 func loadTemplatesFromFS(base any, dirFS fs.FS) (tplExecutor, error) {
-	files, err := doublestar.Glob(dirFS, "**/*.tpl")
+	files, err := doublestar.Glob(dirFS, "**/*.tmpl")
 	if err != nil {
 		return nil, fmt.Errorf("no template file found: %w", err)
 	}
